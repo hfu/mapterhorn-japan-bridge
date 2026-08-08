@@ -1,3 +1,12 @@
+window.onerror = (msg, src, line, col, err) => {
+  document.title = 'JS ERROR: ' + msg;
+  console.error('onerror:', msg, src, line, col, err?.stack);
+};
+window.onunhandledrejection = (e) => {
+  document.title = 'PROMISE ERROR: ' + e.reason;
+  console.error('unhandledrejection:', e.reason);
+};
+
 let protocol = new pmtiles.Protocol();
 maplibregl.addProtocol('pmtiles', protocol.tile);
 
