@@ -15,6 +15,8 @@ fetch('style.json')
       // CJK文字はブラウザのシステム sans-serif フォントで描画させる
       localIdeographFontFamily: 'sans-serif'
     });
+    window.map = map;
+    map.on('error', (e) => console.error('map error:', e.error?.message || e));
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
     map.addControl(new maplibregl.TerrainControl({ source: 'mapterhorn', exaggeration: 1 }), 'top-right');
