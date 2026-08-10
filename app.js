@@ -20,6 +20,7 @@ fetch('style.json')
       center: [140.73, 41.79], // 函館山・五稜郭 (current coverage; recenter as coverage grows)
       zoom: 13,
       pitch: 50,
+      maxPitch: 85,
       // bvmap のラベルは NotoSansJP/NotoSerifJP のグリフを参照するが、
       // CJK文字はブラウザのシステム sans-serif フォントで描画させる
       localIdeographFontFamily: 'sans-serif'

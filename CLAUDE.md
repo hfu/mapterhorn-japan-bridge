@@ -23,34 +23,45 @@ up, this whole effort — this repo, the `hfu/mapterhorn` source-catalog
 entries it depends on, the `smartmaps/mapterhorn-japan-bridge` Source
 Cooperative product — should be considered retirable.
 
+**Scope, as of 2026-08-11 (DECISIONS.md D12): Kyushu/Okinawa only,
+best-effort, no deadline.** Hokkaido is deliberately frozen after
+`aalto`'s external HDD failed outright and took all 46 of its
+raw region-pack downloads with it — do not resume Hokkaido work
+without an explicit fresh decision from Hidenori. See `HANDOVER.md`'s
+2026-08-11 entry for the full incident.
+
 This repo itself contains **no data-processing pipeline**. It's the
 documentation home for the bridge effort as a whole, plus a GitHub
 Pages preview viewer. The actual pipeline lives in `hfu/mapterhorn`
 (see below) — deliberately kept there separately, not merged into
 this repo or vice versa.
 
-## The four-way split (repos × machines) — read this before doing anything
+## The three-way split (repos, one machine now) — read this before doing anything
 
-This effort spans **two repos** and **two machines**. Mixing them up
-is the single easiest way to waste a session, so:
+This effort spans **two repos** — `hfu/mapterhorn` was always its own
+third repo/fork, git-managed separately, see below — but as of
+2026-08-11 (DECISIONS.md D12) they all run on **one machine**:
+`aalto`'s external HDD (this whole project's original working-copy
+location for `japan-geotiff-dem`) failed outright and is retired.
+`slate` is now the sole machine for everything.
 
 | | `japan-geotiff-dem` | `hfu/mapterhorn` | `hfu/mapterhorn-japan-bridge` (this repo) |
 |---|---|---|---|
 | **What** | GSI DEM → GeoTIFF, published to Source Cooperative | Fork of `mapterhorn/mapterhorn`; GeoTIFF → PMTiles pipeline | Docs + GitHub Pages preview viewer only |
-| **Runs on** | `aalto` (this session's main Mac, M1/8GB, external HDD at `/Volumes/github`) | `slate` (M4 Mac mini, 16GB, real SSD at `/Volumes/Migrate-2025-04`, reached via `ssh hfu@slate.local`) | Nowhere — static site only |
-| **Why that machine** | Already set up there; unrelated to this effort | Mapterhorn's aggregation stage needs RAM + genuine SSD random access `aalto` doesn't have (D2) | N/A |
+| **Runs on** | `slate` (M4 Mac mini, 16GB, real SSD at `/Volumes/Migrate-2025-04`, reached via `ssh hfu@slate.local`) — `git`-tracked at `/Volumes/Migrate-2025-04/github/japan-geotiff-dem-repo`, not the old Justfile-only working copies | `slate`, same machine, `/Volumes/Migrate-2025-04/github/hfu-mapterhorn/` | Nowhere — static site only |
+| **Why that machine** | `aalto`'s external HDD failed (D12); `slate` already had the fast SSD this needs anyway | Mapterhorn's aggregation stage needs RAM + genuine SSD random access `aalto` never had (D2) | N/A |
 | **Constraints** | See that repo's own `CLAUDE.md` | **Don't add unrelated features** — Hidenori wants this fork to stay close to upstream, bug fixes only (see `FORK_NOTES.md`) | Keep it small: viewer + docs, no pipeline code |
-| **Publishes to** | `smartmaps/japan-geotiff-dem` | (nothing directly) | `smartmaps/mapterhorn-japan-bridge` (README + `japan.pmtiles`), via `aalto` since only `aalto` has `aws`/`source-coop` credentials set up |
+| **Publishes to** | `smartmaps/japan-geotiff-dem` | (nothing directly) | `smartmaps/mapterhorn-japan-bridge` (README + `japan.pmtiles`) |
 
-Practical consequence: when you (Claude) are working on the mapterhorn
-pipeline itself, you'll be running commands **on `slate` over SSH**
+Practical consequence: **everything now runs on `slate` over SSH**
 from whatever machine hosts this conversation — e.g.
 `ssh hfu@slate.local 'eval "$(/opt/homebrew/bin/brew shellenv)" && cd
 "/Volumes/Migrate-2025-04/github/hfu-mapterhorn/pipelines" && uv run
-python ...'`. Uploads to Source Cooperative, by contrast, need to
-happen from wherever `aws`/`source-coop` are actually configured
-(`aalto` in this session) — `scp` the output there first if it was
-built on `slate`.
+python ...'`. Uploads to Source Cooperative also happen directly from
+`slate` (its own `source-coop`/`aws` credentials, set up 2026-08-10 via
+an SSH-tunneled OAuth loopback — see `japan-geotiff-dem`'s own
+`HANDOVER.md`) — no more routing through `aalto`, no more `scp`-ing
+output between machines for a publish step.
 
 ## Source-catalog entries in `hfu/mapterhorn`
 
@@ -67,7 +78,19 @@ All under `source-catalog/` in the `hfu/mapterhorn` clone on `slate`
   `japan-geotiff-dem`'s local `dst/1` at the time — 12,736 entries,
   covering only Z001–Z012's worth of Hokkaido; needs regenerating
   against whatever's actually published before using it for real, see
-  D3/D4 and `japan-geotiff-dem`'s own `HANDOVER.md`).
+  D3/D4 and `japan-geotiff-dem`'s own `HANDOVER.md`). **Frozen as of
+  2026-08-11 (D12) — do not touch without an explicit fresh decision.**
+- `jpkyushutest1`/`jpkyushutest5m`/`jpkyushutest10m` — the real
+  Kyushu/Okinawa entries (this repo's sole focus as of D12), built
+  2026-08-10/11 from whatever's currently published on
+  `smartmaps/japan-geotiff-dem` for the 3900-5199 JIS mesh range, no
+  geographic cropping. Originally `jpkyushutest1` was a throwaway
+  pipeline speed-validation entry (name kept on repurposing to avoid
+  re-downloading). No 5m/10m-fallback dedup issues found for `5m`/
+  `10m`; `1m`'s `file_list.txt` needs periodic regeneration as more of
+  the 2026-06-03 survey refresh lands and gets synced (see
+  `japan-geotiff-dem`'s own `HANDOVER.md` for that pipeline's current
+  state/ETA).
 - Existing upstream entries `jpdem1a`/`jpdem5a-c`/`jpdem10a-b` (full
   Japan, various resolutions, produced via `hfu/fusi`, not this
   effort) — **never put these in `source-store/` alongside the
@@ -144,18 +167,21 @@ Two viewers:
    GitHub Pages at `hfu.github.io/mapterhorn-japan-bridge/`) — reuses
    `hfu/kitavolca`'s basemap+hillshade+3D-terrain pattern (GSI
    optimal vector tiles, grayscale, via `stars.optgeo.org/bvmap`).
-   **Currently broken as of 2026-08-08 — see `HANDOVER.md`'s open
-   issue before touching this.** The style loads successfully
-   (controls render, bvmap's attribution string appears) but neither
-   the bvmap vector layers nor the hillshade layer visibly render, and
-   network logs show zero requests to `stars.optgeo.org` ever being
-   made despite `bvmap` being a valid source in the loaded style.
+   The 2026-08-08 rendering bug (`DECISIONS.md` D10) was resolved as
+   of 2026-08-09 — not reproducible, likely external and self-cleared;
+   see D10's update. `app.js`'s `maxPitch` is raised to 85 (MapLibre's
+   real internal cap, was the library default of 60) per Hidenori's
+   request.
 
 ## Source Cooperative publishing
 
 Same convention as `japan-geotiff-dem` (that repo's `CLAUDE.md`/
 `DECISIONS.md` D2 has the full writeup) — Hidenori runs `source-coop
-login` on **aalto** (the only machine with `aws`/`source-coop`
-installed in this session), Claude only ever uses `--profile
-source-coop`, never `source-coop creds` directly. Target:
-`s3://smartmaps/mapterhorn-japan-bridge`.
+login` on **`slate`** (as of 2026-08-11, D12; previously `aalto`, now
+retired), via an SSH-tunneled OAuth loopback since `slate` is headless
+(`ssh -N -L 8484:localhost:8484 slate.local`, then `source-coop login
+--port 8484` on `slate`, then Hidenori completes the browser auth
+himself). Claude only ever uses `--profile source-coop`, never
+`source-coop creds` directly, and deletes any `-v`/`--verbose` login
+log immediately after confirming success (it can print live credentials
+in plaintext). Target: `s3://smartmaps/mapterhorn-japan-bridge`.
