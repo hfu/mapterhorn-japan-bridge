@@ -1277,4 +1277,62 @@ Paste this after `/clear` to pick up exactly here:
 > Standing constraint, unchanged: never publish `japan.pmtiles` (or any
 > bundled `pmtiles`) and never `git push` without Hidenori's explicit
 > go-ahead.
-> and wait for direction.
+
+## 2026-08-11 (same day, follow-up): download progress checkpoint; `japan-geotiff-dem` republished with real Kyushu/Okinawa data; remaining-15 region-pack recovery underway
+
+Quick same-day addendum — most of today's real activity is on the
+`japan-geotiff-dem` side; see that repo's own `HANDOVER.md` same-day
+follow-up entry for the full account (repo-consolidation health check,
+`aalto`'s HDD formally declared a disposal case, Kyushu/Okinawa
+`Z010`-`Z019` integrity re-verified clean, recovery of the missing 15
+region-packs started via the `Downloads`-folder relay). This entry is
+just what it means for this repo's own PMTiles-build side.
+
+- **`jpkyushutest1`/`5m`/`10m` downloads (in `hfu/mapterhorn`, a third
+  repo) continuing steadily on `slate`**, unaffected by anything on
+  the `japan-geotiff-dem` side (different bottleneck — Source
+  Cooperative's own per-file HTTPS fetch rate, not local storage).
+  Checkpoint as of 2026-08-11 11:08 JST: 1m at 37,269/71,577 (52%,
+  ~0.75 files/s), 5m at 34,680/91,595 (38%, ~1.29 files/s), 10m
+  complete (1,363 files). Both rates have stayed steady all day —
+  projected completion for both **around 23:30-00:00 JST tonight**,
+  consistent with earlier same-day estimates. Once download completes:
+  `source_bounds.py` → `source_polygonize.py` → check the resulting
+  `aggregation_covering.py` item count before committing to a full
+  aggregation run, since this scale (71K+91K positions, all of
+  Kyushu/Okinawa) is larger than any prior trial in this project.
+- **`japan-geotiff-dem`'s own bucket got its first real
+  post-recovery publish**: `s3://smartmaps/japan-geotiff-dem/1/` now
+  carries `Z010`-`Z019`'s 14,116 GeoTIFFs (1,829 with newer 2026
+  survey dates), spot-verified against S3 directly. This means
+  `jpkyushutest1`'s `file_list.txt` (built earlier from whatever was
+  published *before* today's re-sync) may already be slightly stale
+  for the newest-dated meshes in that range — not yet refreshed this
+  round; worth a `file_list.txt` regen pass once the current download
+  finishes, following the same dedup-by-newest-date logic used when
+  it was first built (see `CLAUDE.md`'s source-catalog section).
+- **Recovery of the missing 15 Kyushu/Okinawa region-packs is
+  underway** (Hidenori downloading from GSI into `aalto`'s
+  `~/Downloads`, Claude relaying to `slate`) — see
+  `japan-geotiff-dem`'s own entry for the exact Z-number tracking
+  table. As these land and get extracted/converted/synced, more of
+  `jpkyushutest1`'s current 71,577-position footprint will carry
+  fresher survey dates (the footprint itself won't grow much, since it
+  already covers all of Kyushu/Okinawa's currently-published extent —
+  see that same source-catalog note).
+
+### Next steps
+
+- [ ] Once `jpkyushutest1`/`5m`/`10m` downloads finish (~tonight),
+      run `source_bounds.py` → `source_polygonize.py`, then check
+      `aggregation_covering.py`'s item count before running the full
+      aggregation — this is unprecedented scale for this project.
+- [ ] Consider refreshing `jpkyushutest1`'s `file_list.txt` against
+      `japan-geotiff-dem`'s newly-synced state (1,829 newer-dated
+      meshes) before or after the current download completes — either
+      works, but don't forget it's now somewhat stale.
+- [ ] Never publish `japan.pmtiles` without Hidenori's explicit
+      go-ahead, as always.
+- [ ] Keep watching for whether upstream `mapterhorn/mapterhorn`'s own
+      `jpdem1a` picks up the July 2026 GSI update — still this whole
+      effort's eventual retirement condition.
