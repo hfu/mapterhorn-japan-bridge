@@ -890,7 +890,11 @@ here — nothing above this line was summarized or guessed at.
 
 ## D12: `aalto`'s external HDD failed outright; Hokkaido frozen, Kyushu/Okinawa-only, `slate` is now this repo's sole machine too
 
-**Status**: Decided 2026-08-11, in effect immediately. Mirrors
+**Status**: Decided 2026-08-11, in effect immediately.
+**Hokkaido-freeze portion superseded 2026-08-12**: Hidenori restarted
+Hokkaido fully from scratch (see `japan-geotiff-dem`'s own
+`HANDOVER.md`/`DECISIONS.md`); the slate-sole-machine and Kyushu/
+Okinawa-first parts of this decision stand unchanged. Mirrors
 `japan-geotiff-dem`'s own D12 (same incident, same decision, two
 repos) — see that repo's `DECISIONS.md` for the full diagnostic trail;
 this entry covers what it means specifically for this repo.

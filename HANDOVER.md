@@ -1249,34 +1249,152 @@ above) has also been reapplied.
       `jpdem1a` picks up the July 2026 GSI update — that's this whole
       repo's retirement condition (see `CLAUDE.md`'s Mission section).
 
+## 2026-08-12: overnight Kyushu/Okinawa sample-PMTiles pipeline launched unattended; Hokkaido-region source-store entries parked (to become permanent); slate hygiene incidents (stray grep, low free memory)
+
+Kicked off, unattended, once `jpkyushutest1`/`jpkyushutest5m`
+downloads (in progress since the prior session) finished: a single
+`nohup`+`disown`'d shell script on `slate`
+(`/tmp/kyushu_pmtiles_pipeline.sh`, log at
+`/tmp/kyushu-pmtiles-pipeline.log`) chains `source_bounds.py` →
+`source_polygonize.py` (4 processes) → `aggregation_covering.py` →
+`AGGREGATION_WORKERS=4 aggregation_run.py` →
+`downsampling_covering.py` → `DOWNSAMPLING_WORKERS=4
+downsampling_run.py` → `bundle.py 1`, for `jpkyushutest1`/`5m`/`10m`
+only. **Deliberately stops after `bundle.py`** — does not merge into
+`japan.pmtiles` or upload, per this repo's standing "never publish
+without Hidenori's explicit go-ahead" rule. The `aggregation_covering.py`
+item-count checkpoint that would normally warrant a human look (this
+is unprecedented scale for this project) was knowingly skipped since
+the run is unattended overnight — Hidenori explicitly authorized
+proceeding best-effort rather than blocking on that checkpoint.
+
+**Found and worked around a real scoping bug before it could
+contaminate tonight's output**: `aggregation_covering.py` globs *every*
+`source-store/*/bounds.csv` unconditionally (no source-selection flag
+exists — confirmed by reading the code). `source-store/` still held
+`bounds.csv` for the old Hokkaido-city entries
+(`jphakodatecity1`/`5m`/`10m`, `jphakodatetrialsea`,
+`jpsapporo1`/`5m`/`10m`/`sea`, `jpshakotan1`/`5m`/`10m`) from earlier
+work — left in as-is, tonight's "Kyushu/Okinawa only" build would have
+silently merged in stale Hokkaido-city data. **Parked all 11 entries**
+(moved to `source-store-hokkaido-parked/`) before the pipeline reached
+`aggregation_covering.py`; the script's own tail restores them to
+`source-store/` after `bundle.py` completes.
+
+**Decided (Hidenori) not to interrupt the in-flight run to change this
+parking logic, but to make the parking permanent going forward**: once
+tonight's script finishes and restores the 11 entries, re-park them
+(this time for good, not temporarily) — Hokkaido's `hfu-mapterhorn`
+source-catalog entries have no near-term use anyway, since Hokkaido's
+GeoTIFF redo (46 region-packs, re-extract, re-convert, re-sync — see
+`japan-geotiff-dem`'s own `HANDOVER.md`, started today) needs to reach
+Source Cooperative before a fresh Hokkaido `source_download.py` run
+would even have new data to fetch. This removes the need for
+park/restore bookkeeping on every future Kyushu/Okinawa-only run.
+
+**Progress checkpoint, ~06:00 JST**: `source_bounds.py` finished for
+all three sources in ~7 minutes (01:25-01:32). `source_polygonize.py
+jpkyushutest1 4` (71,564 files) has been running since 01:32 —
+per-file footprint generation looks complete (`polygon-store/
+jpkyushutest1/` file count matches `bounds.csv`'s 71,564 lines) and it
+appears to now be inside `merge_source()`'s sequential `ogr2ogr`
+append loop, which prints no per-file output (`silent=True`), hence no
+visible log movement. `jpkyushutest5m` (91,595 files, ~1.3x `1m`'s
+count) and `jpkyushutest10m` (1,363 files) haven't started yet — pure
+linear extrapolation from `1m`'s ~4h17m suggests `5m`'s polygonize
+alone could take **~5.5 more hours**; `aggregation_run`/
+`downsampling_run`/`bundle.py`'s durations are genuinely unknown at
+this scale (no prior run this large). Realistic expectation communicated
+to Hidenori: a local sample bundle is unlikely before this afternoon,
+not "by morning."
+
+**Two `slate` hygiene issues found and fixed, unrelated to this
+pipeline's own correctness but real contributors to tonight's reported
+heat/load**:
+1. A stray `grep` from earlier ad hoc doc research recursed
+   uncontrolled into `japan-geotiff-dem-repo/dst/1/`'s tens of
+   thousands of binary `.tif` files (missing `--include` filter) and
+   sat at ~100% CPU for 9+ hours before being noticed via `ps aux` and
+   killed. Not part of any real pipeline.
+2. `slate` was found running as a de facto desktop session (Brave
+   Browser + Slack, both with multiple helper processes) despite being
+   meant to run headless/SSH-only — physical memory was down to
+   269MB free out of 16GB before these were quit gracefully via
+   `osascript ... quit`, recovering to ~1.1GB free. Root cause per
+   Hidenori: the physical keyboard needed for local login ended up at
+   his workplace, leaving `slate` headless "by accident" rather than
+   by design — worth remembering that `slate` isn't guaranteed to be
+   running lean just because it's meant to be headless.
+
+**Storage/time strategy for a future full-Japan PMTiles build —
+captured as a TODO, deliberately not started** (Hidenori's own
+framing, given limited session budget): (1) once a pack/zip/GeoTIFF is
+durably published to Source Cooperative, track that fact in a
+lightweight metadata store (CSV or simple KVP) so the local
+intermediate copy can be deleted aggressively instead of kept
+indefinitely (see `japan-geotiff-dem`'s own `HANDOVER.md` for the
+upstream half of this same idea); (2) treat each metatile package as
+immutable once built — a "done, never rebuild" label — and avoid
+merging into `japan.pmtiles` just to sanity-check one metatile, since
+that merge is the expensive step and should happen on a deliberate
+schedule, not per-metatile; (3) before attempting full-Japan scale,
+need a concrete estimate of how many metatile packages the whole
+country would produce and whether `slate`'s storage actually covers
+that — not yet estimated. Revisit with a full budget, not mid-session.
+
+### Next steps
+
+- [ ] Check on the overnight pipeline (`/tmp/kyushu-pmtiles-pipeline.log`
+      on `slate`) — confirm `jpkyushutest1`'s merge finished, watch
+      `jpkyushutest5m`/`10m` polygonize, and eventually
+      `aggregation_run`/`downsampling_run`/`bundle.py`.
+- [ ] Once the script finishes and restores the 11 Hokkaido-city
+      `source-store` entries, re-park them permanently (not
+      temporarily) per the decision above.
+- [ ] Never merge into `japan.pmtiles` or upload without Hidenori's
+      explicit go-ahead, as always — the overnight script deliberately
+      stops at `bundle.py`.
+- [ ] Work out the metatile-count/storage estimate above before
+      attempting anything at full-Japan or full-Hokkaido+Kyushu/
+      Okinawa scale.
+- [ ] Keep watching for whether upstream `mapterhorn/mapterhorn`'s own
+      `jpdem1a` picks up the July 2026 GSI update — still this whole
+      effort's eventual retirement condition.
+
 ## Resume prompt
 
 Paste this after `/clear` to pick up exactly here:
 
 > Resuming the `mapterhorn-japan-bridge` effort. Read, in order:
 > `/Volumes/Migrate-2025-04/github/mapterhorn-japan-bridge/CLAUDE.md`
-> (this repo now runs entirely on `slate` — `aalto`'s copy, and its
-> external HDD, both failed/are retired as of 2026-08-11), this file's
-> 2026-08-11 entry (the recovery + policy pivot), and `DECISIONS.md`
-> D12 (the frozen-Hokkaido/Kyushu-only/slate-sole-machine decision) and
-> D11 (background on the elevation-pipeline fixes, still valid).
+> (runs entirely on `slate`), this file's 2026-08-12 entry (overnight
+> Kyushu/Okinawa sample-PMTiles pipeline, Hokkaido-region source-store
+> parking made permanent, slate hygiene fixes), and `DECISIONS.md` D12
+> (`slate`-sole-machine — note Hokkaido itself is no longer frozen as
+> of 2026-08-12, see `japan-geotiff-dem`'s own log for that).
 >
-> **Current scope**: Kyushu/Okinawa only, best-effort, no deadline.
-> Hokkaido is deliberately frozen, not abandoned — do not resume it
-> without checking with Hidenori first. Of Kyushu/Okinawa's 25
-> region-pack zips, only 10 (`Z010`-`Z019`) survive `aalto`'s drive
-> failure; the other 15 would need re-downloading from GSI if ever
-> wanted, not currently planned.
+> **Kyushu/Okinawa**: all 25 raw region-packs are now on `slate`
+> (`japan-geotiff-dem`'s own pipeline). Check
+> `/tmp/kyushu-pmtiles-pipeline.log` on `slate` for the overnight
+> unattended `source_bounds`→`source_polygonize`→`aggregation_covering`
+> →`aggregation_run`→`downsampling_covering`→`downsampling_run`→
+> `bundle.py 1` run's current stage — as of the last check (~06:00
+> JST) it was still in `jpkyushutest1`'s `source_polygonize`/merge
+> step, with `5m`/`10m` and the aggregation/downsampling/bundle stages
+> still ahead; realistic completion is afternoon, not morning.
 >
-> Check `japan-geotiff-dem`'s own `HANDOVER.md`/`CLAUDE.md` for the
-> current state of the upstream GeoTIFF pipeline (also now
-> `slate`-only) before assuming what's actually published and
-> downloadable for this repo's own `jpkyushutest1`/`5m`/`10m`
-> source-catalog entries in `hfu/mapterhorn`.
+> **Hokkaido**: no longer frozen — Hidenori is redoing it fully from
+> scratch (all 46 region-packs, GeoTIFF side only so far). Do not start
+> any Hokkaido `hfu-mapterhorn` source-catalog/PMTiles work yet; there's
+> nothing new to fetch until `japan-geotiff-dem`'s own pipeline
+> republishes fresh Hokkaido GeoTIFFs to Source Cooperative.
 >
-> Standing constraint, unchanged: never publish `japan.pmtiles` (or any
-> bundled `pmtiles`) and never `git push` without Hidenori's explicit
-> go-ahead.
+> Standing constraint, unchanged: never merge into or publish
+> `japan.pmtiles` (or any bundled `pmtiles`) without Hidenori's explicit
+> go-ahead. (Committing/pushing plain `.md` documentation updates like
+> this one, when Hidenori explicitly asks for it, is fine — the
+> standing caution is specifically about `pmtiles` publishes and about
+> pushing code changes without being asked.)
 
 ## 2026-08-11 (same day, follow-up): download progress checkpoint; `japan-geotiff-dem` republished with real Kyushu/Okinawa data; remaining-15 region-pack recovery underway
 
