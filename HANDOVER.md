@@ -1548,3 +1548,20 @@ just what it means for this repo's own PMTiles-build side.
 - [ ] Keep watching for whether upstream `mapterhorn/mapterhorn`'s own
       `jpdem1a` picks up the July 2026 GSI update — still this whole
       effort's eventual retirement condition.
+
+## 2026-08-14 07:22 JST — quick addendum before the 10-day gap: `aggregation_run` finished, `downsampling_run` now running
+
+`aggregation_run.py` (all 1,119 items) **completed** sometime between
+2026-08-14 ~04:19 and ~05:45 JST — no crash, the pipeline script
+automatically advanced to the next stage on its own.
+`downsampling_run.py` started 05:45 JST; as of this entry it has
+processed 233/2,697 downsampling items in ~97 minutes (~2.4
+items/min) — much faster than the aggregation stage. At that rate the
+remaining ~2,464 items would take roughly **17 more hours**, well
+within the 10-day unattended window. After this stage: `bundle.py 1`
+(the final step this run is scoped to — still deliberately not
+merging into `japan.pmtiles` or uploading). Memory remains very tight
+(74MB free) but stable, disk 1.1TB free, no other anomalies. This
+entry supersedes this files main 2026-08-13/14 entrys "aggregation_run
+in progress" framing — check current stage on resume rather than
+assuming either entry is still accurate after 10 real days.
