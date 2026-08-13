@@ -1361,40 +1361,134 @@ that — not yet estimated. Revisit with a full budget, not mid-session.
       `jpdem1a` picks up the July 2026 GSI update — still this whole
       effort's eventual retirement condition.
 
+## 2026-08-13/14: aggregation_run in progress 24+ hours, stable; two real slate-hygiene incidents found and fixed; 10-day unattended gap starting
+
+**`aggregation_run.py` (1,119 items, `AGGREGATION_WORKERS=4`) has been
+running continuously since 2026-08-13 04:23 JST** — as of this entry,
+over 24 hours later, all 4 worker processes are still the same PIDs
+(no crashes, no restarts), each with 1000+ CPU-minutes accumulated.
+Confirmed real forward progress by watching `tmp-store/` item
+subdirectories change and shrink after each completion (idempotent
+cleanup is working correctly, contrary to a stale `FORK_NOTES.md`-era
+worry that `rmtree` might be commented out): a zoom-10 macrotile over
+the Kumamoto/Nagasaki border (Shimabara Peninsula/Amakusa area,
+computed from the `{z}-{x}-{y}-{child_z}` tmp-store naming via the
+standard Web Mercator tile formula) completed first, then a batch of 4
+zoom-11 tiles, now onto a batch of 4 zoom-12 tiles. **At least 5
+metatiles confirmed complete out of 1,119** — true throughput is still
+genuinely uncertain (early items are a poor sample: the first alone
+took ~15 hours, apparently unusually heavy), ranging from tens to 100+
+days if the slower observed rate holds. Hidenori is explicitly fine
+with slowness as long as it stays stable, which it has.
+
+**Diagnosed the machine's actual bottleneck, at Hidenori's request**:
+`iostat` showed `disk4` (the external USB SSD holding the whole
+working tree) sustaining ~300MB/s at ~985 transfers/sec during heavy
+pipeline stages — consistent with USB 3.0/3.2 Gen1 (5Gbps) class
+performance, roughly 17-25x slower than a modern internal NVMe PCIe4
+SSD (5,000-7,500MB/s). Meanwhile `vm_stat`'s `Swapins`/`Swapouts`
+counters barely moved over several hours despite very low free memory
+throughout — meaning memory has been living dangerously close to the
+edge but was *not* actively thrashing; **storage I/O bandwidth, not
+memory, was the more binding constraint**. Worth remembering for the
+"ideal hardware" line of discussion — a NUC/mini-PC's internal NVMe
+would likely help more here than RAM alone would.
+
+**Two real slate-hygiene incidents found and fixed this session**,
+neither caused by this pipeline's own code but both real contributors
+to load/instability risk:
+
+1. **A stray `grep`** from earlier ad hoc doc research (missing
+   `--include` filter, recursed into `japan-geotiff-dem`'s `dst/1/`
+   binary `.tif` files) sat pinned at ~100% CPU for 9+ hours before
+   being noticed via `ps aux` and killed.
+2. **`Activity Monitor.app` itself had been running since 2026-06-19**
+   (~2 months), pinned at ~100% CPU, having accumulated over 2,580
+   CPU-*hours*. A graceful `quit` AppleEvent timed out (the app was too
+   busy spinning to respond); a plain `SIGTERM` (`kill <pid>`, not
+   `-9`) succeeded where the AppleEvent didn't. Effect was immediate
+   and large: free physical memory jumped from 406MB to **4.2GB**, and
+   the memory compressor's footprint dropped by ~3.5GB. This was the
+   single biggest hygiene win of the whole session — a monitoring tool
+   had quietly become the thing most worth monitoring.
+
+Both incidents reinforce the same lesson as `japan-geotiff-dem`'s own
+extract/convert/sync-loop shutdown (see that repo's own `HANDOVER.md`
+2026-08-13/14 entry): on a machine this memory-constrained, checking
+`ps aux`/`top` for *unexpected* long-lived high-CPU processes is cheap
+and can free more headroom than any single code change.
+
+**10-day unattended gap starting**: Hidenori is stepping away from the
+console for about 10 days, starting a few hours after this entry —
+coinciding with `aalto`'s own ~10-day network disconnection from
+`slate` (see `japan-geotiff-dem`'s own `HANDOVER.md` for that side).
+**Decision: let `aggregation_run`/`downsampling_run`/`bundle.py` keep
+running completely unattended for the duration — do not interrupt or
+restart it during the gap**, since it's been stable for 24+ hours and
+any interruption risks losing real progress with no one available to
+supervise a restart. The planned `hfu/mapterhorn` upstream merge (2
+commits — `fdd6adc` tar-store support, `57f8481` the worker/downloader
+memory-reduction rewrite that changes `aggregation_run.py`'s own
+behavior, requiring a companion `downloader.py` process not yet set
+up) is **explicitly deferred until after this run completes** — merging
+code that changes the very script currently mid-run, with no one
+around to catch a resulting hang, would be reckless. Hokkaido relay
+stays deferred too (see `japan-geotiff-dem`'s own entry).
+
+### Next steps
+
+- [ ] On resume, first check whether `aggregation_run.py`'s 1,119
+      items have actually finished (`ps aux | grep aggregation_run`,
+      check `/tmp/kyushu-pmtiles-pipeline.log` for `downsampling`/
+      `bundle` stage markers) before assuming anything — 10 real days
+      is a long time for this to have silently finished, stalled, or
+      (if `slate` rebooted for any reason) stopped entirely.
+- [ ] Only after confirming the run is done: merge upstream's 2
+      commits into `hfu/mapterhorn`, adapting or deliberately skipping
+      the new `downloader.py`/queue-based worker model (same selective
+      pattern `FORK_NOTES.md` already used for `downsampling_run.py`)
+      — verify by actually running it on `slate`, not just merging and
+      trusting it, per Hidenori's own explicit instruction.
+- [ ] Only after that: relay Hokkaido's (by-then long-complete) 46
+      region-packs from `aalto` to `slate` and let
+      `japan-geotiff-dem`'s pipeline process them.
+- [ ] Only after that: revisit the "aggressively delete intermediate
+      files" national-scale storage strategy (metadata-tracked
+      publish state, immutable-once-built metatile packages, deferred
+      `japan.pmtiles` merges) that Hidenori sketched but deliberately
+      deferred implementing mid-session.
+- [ ] Never merge into or publish `japan.pmtiles` without Hidenori's
+      explicit go-ahead, as always.
+
 ## Resume prompt
 
 Paste this after `/clear` to pick up exactly here:
 
 > Resuming the `mapterhorn-japan-bridge` effort. Read, in order:
 > `/Volumes/Migrate-2025-04/github/mapterhorn-japan-bridge/CLAUDE.md`
-> (runs entirely on `slate`), this file's 2026-08-12 entry (overnight
-> Kyushu/Okinawa sample-PMTiles pipeline, Hokkaido-region source-store
-> parking made permanent, slate hygiene fixes), and `DECISIONS.md` D12
-> (`slate`-sole-machine — note Hokkaido itself is no longer frozen as
-> of 2026-08-12, see `japan-geotiff-dem`'s own log for that).
+> (runs entirely on `slate`), this file's 2026-08-13/14 entry
+> (`aggregation_run` stable 24+ hours in, two slate-hygiene incidents
+> fixed — a stray `grep` and, notably, `Activity Monitor.app` itself
+> pinned at 100% CPU since June — and the 10-day unattended gap
+> starting), and `DECISIONS.md` D12.
 >
-> **Kyushu/Okinawa**: all 25 raw region-packs are now on `slate`
-> (`japan-geotiff-dem`'s own pipeline). Check
-> `/tmp/kyushu-pmtiles-pipeline.log` on `slate` for the overnight
-> unattended `source_bounds`→`source_polygonize`→`aggregation_covering`
-> →`aggregation_run`→`downsampling_covering`→`downsampling_run`→
-> `bundle.py 1` run's current stage — as of the last check (~06:00
-> JST) it was still in `jpkyushutest1`'s `source_polygonize`/merge
-> step, with `5m`/`10m` and the aggregation/downsampling/bundle stages
-> still ahead; realistic completion is afternoon, not morning.
+> **First thing on resume**: check whether `aggregation_run.py` (1,119
+> items) actually finished during the gap — don't assume either way.
+> `ps aux | grep aggregation_run` and check
+> `/tmp/kyushu-pmtiles-pipeline.log` on `slate` for `downsampling`/
+> `bundle` stage markers past `aggregation_run`.
 >
-> **Hokkaido**: no longer frozen — Hidenori is redoing it fully from
-> scratch (all 46 region-packs, GeoTIFF side only so far). Do not start
-> any Hokkaido `hfu-mapterhorn` source-catalog/PMTiles work yet; there's
-> nothing new to fetch until `japan-geotiff-dem`'s own pipeline
-> republishes fresh Hokkaido GeoTIFFs to Source Cooperative.
+> **Sequencing, unchanged, all still gated on the above finishing**:
+> (1) merge upstream `hfu/mapterhorn`'s 2 pending commits (verify by
+> actually running on `slate`, not just merging), (2) relay Hokkaido's
+> 46 region-packs from `aalto` to `slate` and let `japan-geotiff-dem`
+> process them, (3) revisit the national-scale storage-efficiency
+> strategy. Do not skip ahead in this order even if the gap has made
+> it tempting.
 >
 > Standing constraint, unchanged: never merge into or publish
 > `japan.pmtiles` (or any bundled `pmtiles`) without Hidenori's explicit
-> go-ahead. (Committing/pushing plain `.md` documentation updates like
-> this one, when Hidenori explicitly asks for it, is fine — the
-> standing caution is specifically about `pmtiles` publishes and about
-> pushing code changes without being asked.)
+> go-ahead.
 
 ## 2026-08-11 (same day, follow-up): download progress checkpoint; `japan-geotiff-dem` republished with real Kyushu/Okinawa data; remaining-15 region-pack recovery underway
 
