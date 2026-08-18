@@ -1566,19 +1566,19 @@ entry supersedes this files main 2026-08-13/14 entrys "aggregation_run
 in progress" framing — check current stage on resume rather than
 assuming either entry is still accurate after 10 real days.
 
-## 2026-08-19 06:xx JST — remote connectivity restored (spacex ProxyJump); confirming the 2026-08-14 trial's actual outcome after the 10-day gap
+## 2026-08-19 06:xx JST — remote connectivity restored (SSH jump-host route); confirming the 2026-08-14 trial's actual outcome after the 10-day gap
 
 `slate` has been unreachable directly since 2026-08-14 (see the prior
-entry's own note). This session, Hidenori set up an `aalto`→
-`spacex.optgeo.org`→`slate.local` SSH ProxyJump (`~/.ssh/config` on
-`aalto`, host alias `slate-via-spacex`, reusing the existing
+entry's own note). This session, Hidenori set up a new SSH jump-host
+route from `aalto` to `slate` (configured locally in `aalto`'s own
+`~/.ssh/config` — exact topology deliberately not detailed in this
+public repo; ask Hidenori if you need it), reusing the existing
 `id_ed25519_slate` key that was already authorized on `slate` from
-December) — no new keys or `authorized_keys` changes needed anywhere,
-since ProxyJump just relays TCP through `spacex` and the actual SSH
-authentication happens end-to-end between `aalto` and `slate`. This
-restored Claude's ability to inspect `slate` directly, for the first
-time since the outage began, without needing Hidenori to relay
-findings manually.
+December — no new keys or `authorized_keys` changes needed anywhere,
+since the route just relays TCP and the actual SSH authentication
+happens end-to-end between `aalto` and `slate`. This restored Claude's
+ability to inspect `slate` directly, for the first time since the
+outage began, without needing Hidenori to relay findings manually.
 
 **The trial's actual outcome, confirmed from disk state (not from
 `check_progress.py` — see the bug below)**: the last entry (2026-08-14
@@ -1670,13 +1670,14 @@ not any in-flight `merged.gpkg`).
    immediately. Always check what a run was actually scoped to do
    before treating an absent downstream artifact as evidence of
    failure.
-4. **SSH ProxyJump through `spacex.optgeo.org` to `slate.local` now
-   works from `aalto`, using the already-existing `id_ed25519_slate`
-   key** (`Host slate-via-spacex` in `aalto`'s `~/.ssh/config`) — no
-   new keys were needed anywhere, since ProxyJump is a pure relay.
-   This restores remote inspectability of `slate` going forward,
-   independent of whatever made direct `slate.local` resolution stop
-   working from `aalto`'s network.
+4. **SSH access to `slate` from `aalto` restored via a jump-host
+   route** (configured locally in `aalto`'s own `~/.ssh/config`,
+   topology not detailed here — public repo), reusing the
+   already-existing `id_ed25519_slate` key — no new keys were needed
+   anywhere, since the route is a pure relay. This restores remote
+   inspectability of `slate` going forward, independent of whatever
+   made direct `slate.local` resolution stop working from `aalto`'s
+   network.
 
 ### Next steps
 
@@ -1791,26 +1792,19 @@ existing standing rule, `merge_japan_bundles.py` producing a local
 `japan.pmtiles` is not the same as publishing it — that still needs
 Hidenori's explicit go-ahead separately.
 
-### Also this session: SSH access to `slate` restored via ProxyJump
+### Also this session: SSH access to `slate` restored via a jump-host route
 
-`aalto`'s `~/.ssh/config` now has:
-```
-Host slate-via-spacex
-  HostName slate.local
-  User hfu
-  IdentityFile ~/.ssh/id_ed25519_slate
-  IdentitiesOnly yes
-  ProxyJump spacex.optgeo.org
-```
-`ssh slate-via-spacex` from `aalto` reaches `slate` directly,
-non-interactively, reusing the pre-existing key (no new
-`authorized_keys` entries anywhere). This is how the investigation
-above was actually carried out. Next logical extension, not yet
-attempted: redo the `source-coop login` OAuth loopback flow (needed
-for this project's own Source Cooperative publishing) through this
-same ProxyJump route instead of the old direct-LAN tunnel it used to
-require — the actual OAuth approval remains Hidenori's own step in a
-browser, as always.
+`aalto` now has a working SSH host alias that reaches `slate` directly
+and non-interactively, reusing the pre-existing `id_ed25519_slate` key
+(no new `authorized_keys` entries anywhere). **Exact jump-host
+topology deliberately not written here** — this is a public repo;
+ask Hidenori or check `aalto`'s own `~/.ssh/config` if you need the
+details. This is how the investigation above was actually carried
+out. Next logical extension, not yet attempted: redo the
+`source-coop login` OAuth loopback flow (needed for this project's own
+Source Cooperative publishing) through this same route instead of the
+old direct-LAN tunnel it used to require — the actual OAuth approval
+remains Hidenori's own step in a browser, as always.
 
 ### Next steps
 
