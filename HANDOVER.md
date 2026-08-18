@@ -1693,3 +1693,137 @@ not any in-flight `merged.gpkg`).
 - [ ] `japan-geotiff-dem`'s own JCI 2026-09 push continues to take
       priority, unchanged — this entry is investigation only, nothing
       here blocks or is blocked by that effort.
+
+## 2026-08-19 06:xx JST (same session, continued): `polygon-store` fast-storage relocation investigated — disk speed turns out NOT to be the bottleneck; found a real GDAL-upgrade regression in `source_polygonize.py` instead
+
+Continuing directly from the trial-confirmation entry above. Hidenori's
+original framing ("将来に向けた入念な調査" — careful investigation for
+the future, not urgent) for relocating `polygon-store/` onto `slate`'s
+native SSD via a symlink, to speed up `source_polygonize.py`'s
+`merge_source()` step.
+
+### Raw storage benchmarks (internal SSD `/` vs. external USB SSD `/Volumes/Migrate-2025-04`)
+
+- **Sequential write** (1GB, `dd bs=1m`): internal **2.80GB/s**,
+  external **424MB/s** — internal ~6.6x faster.
+- **Small write+fsync** (2000× 4KB writes to the same file, `dd
+  conv=fsync`): internal **920 ops/s** (~1.09ms/op), external **650
+  ops/s** (~1.54ms/op) — internal only ~1.4x faster. Much smaller gap
+  than the sequential number suggests, once fsync (the real cost for
+  transactional writes) dominates.
+
+### The decisive test: the actual `ogr2ogr -update -append` command, repeated
+
+Raw `dd` benchmarks don't tell you whether `merge_source()`'s real
+bottleneck is disk I/O at all — the workload is thousands of separate
+subprocess invocations, each opening/writing/closing a SQLite-backed
+GPKG. Built a synthetic single-polygon source GPKG (98KB, matching the
+real per-mesh footprint output size) and ran the exact production
+command 500 times in a loop, appending into a growing target, on each
+volume:
+
+| | internal SSD | external USB SSD |
+|---|---|---|
+| 500 appends, total time | 46.0s | 50.6s |
+| per-append average | ~92ms | ~101ms |
+| difference | **~10%** | |
+
+**Per-append time stayed essentially constant across the whole run**
+(9.1s → 9.2s → 9.3s → 9.3s per 100-append block) even as the target
+file grew — no sign of the "gets slower as the file grows" pattern
+that motivated this investigation in the first place, at least at this
+scale (500 appends, final file 200KB — real sources may run into the
+tens of thousands of appends, not independently tested at that scale
+this session).
+
+**Conclusion: storage speed is very likely not the dominant cost
+here.** ~90-100ms per invocation, nearly flat regardless of which
+disk, points at fixed per-process overhead — Python subprocess launch
++ GDAL driver/SQLite initialization + open/close — as the real
+bottleneck, not disk throughput. **Moving `polygon-store/` to the
+native SSD would likely deliver only a modest (~10%) improvement, not
+the meaningful speedup originally hoped for.** If `merge_source()`
+needs to actually get faster, the more promising direction is
+reducing the *number of subprocess invocations* — e.g. batching many
+inputs into fewer `ogr2ogr`/`ogrmerge.py` calls, or using GDAL's
+Python bindings (`osgeo.ogr`) directly in-process instead of shelling
+out per file — not a storage-tier change. Not attempted this session
+(out of scope for "investigation only"); flagging as the real lever
+for whoever picks this up next.
+
+### Real bug found: GDAL 3.13.3 (released 2026-08-13, one day before the
+outage) rejects a duplicate `-append` flag that `source_polygonize.py`
+passes
+
+```python
+command = f'ogr2ogr -f GPKG -update -append {merged_filepath} polygon-store/{source}/{filename}.gpkg -nln out -append -addfields'
+```
+
+`-append` appears twice. Reproduced directly: this exact command
+form fails immediately with `ERROR 1: Duplicate argument -append` on
+the GDAL currently installed (`3.13.3 "Iowa City"`, released
+2026/08/13 — installed via Homebrew, auto-upgraded independent of this
+project). Every existing `polygon-store/*.gpkg` union output was
+written **before** 2026-08-13 (Aug 8-13 timestamps) — consistent with
+an older, more permissive GDAL silently tolerating the duplicate flag.
+**This means `merge_source()` is currently broken for any new source**
+— it would fail on the very first `-update -append` call. Confirmed
+the fix is trivial (drop the second `-append`, `-addfields` alone is
+sufficient with `-update` already set); **not yet applied to the
+actual file** — this session was investigation-only, deliberately not
+touching pipeline code.
+
+### Recommendation on sequencing (Hidenori asked directly)
+
+Between (a) actually completing the `japan.pmtiles` merge from the
+already-finished 2026-08-14 trial bundles, and (b) relocating
+`polygon-store` + resuming conversion of more Kyushu/Okinawa regions:
+**(a) first.** All the upstream work (aggregation, downsampling,
+bundle.py) is already done and sitting in `bundle-store/`
+(~74GB) — running `merge_japan_bundles.py` costs nothing new and
+would validate the whole trial end-to-end before investing further.
+(b) is explicitly framed as unhurried future work, still has an
+unresolved disk-headroom question (54GB free on the internal SSD) and
+now, per the benchmark above, a much smaller expected payoff than
+originally hoped — worth reconsidering the whole approach (batching
+over storage-tier) before actually implementing anything. Per the
+existing standing rule, `merge_japan_bundles.py` producing a local
+`japan.pmtiles` is not the same as publishing it — that still needs
+Hidenori's explicit go-ahead separately.
+
+### Also this session: SSH access to `slate` restored via ProxyJump
+
+`aalto`'s `~/.ssh/config` now has:
+```
+Host slate-via-spacex
+  HostName slate.local
+  User hfu
+  IdentityFile ~/.ssh/id_ed25519_slate
+  IdentitiesOnly yes
+  ProxyJump spacex.optgeo.org
+```
+`ssh slate-via-spacex` from `aalto` reaches `slate` directly,
+non-interactively, reusing the pre-existing key (no new
+`authorized_keys` entries anywhere). This is how the investigation
+above was actually carried out. Next logical extension, not yet
+attempted: redo the `source-coop login` OAuth loopback flow (needed
+for this project's own Source Cooperative publishing) through this
+same ProxyJump route instead of the old direct-LAN tunnel it used to
+require — the actual OAuth approval remains Hidenori's own step in a
+browser, as always.
+
+### Next steps
+
+- [ ] Run `merge_japan_bundles.py` on `slate` to actually produce a
+      fresh local `japan.pmtiles` from the 2026-08-14 trial's bundles
+      — recommended next action, cheap and validates the trial.
+      **Not yet run this session.**
+- [ ] Fix the duplicate `-append` in `source_polygonize.py` before
+      the next time a new source needs `merge_source()` — currently
+      broken.
+- [ ] Before pursuing `polygon-store` relocation further: reconsider
+      whether batching (fewer subprocess calls) is a better lever than
+      storage tier, given the ~10% benchmark result.
+- [ ] If `source-coop login` is needed on `slate` again, try the new
+      ProxyJump route for the port-forward instead of the old
+      direct-LAN tunnel.
