@@ -1565,3 +1565,131 @@ merging into `japan.pmtiles` or uploading). Memory remains very tight
 entry supersedes this files main 2026-08-13/14 entrys "aggregation_run
 in progress" framing — check current stage on resume rather than
 assuming either entry is still accurate after 10 real days.
+
+## 2026-08-19 06:xx JST — remote connectivity restored (spacex ProxyJump); confirming the 2026-08-14 trial's actual outcome after the 10-day gap
+
+`slate` has been unreachable directly since 2026-08-14 (see the prior
+entry's own note). This session, Hidenori set up an `aalto`→
+`spacex.optgeo.org`→`slate.local` SSH ProxyJump (`~/.ssh/config` on
+`aalto`, host alias `slate-via-spacex`, reusing the existing
+`id_ed25519_slate` key that was already authorized on `slate` from
+December) — no new keys or `authorized_keys` changes needed anywhere,
+since ProxyJump just relays TCP through `spacex` and the actual SSH
+authentication happens end-to-end between `aalto` and `slate`. This
+restored Claude's ability to inspect `slate` directly, for the first
+time since the outage began, without needing Hidenori to relay
+findings manually.
+
+**The trial's actual outcome, confirmed from disk state (not from
+`check_progress.py` — see the bug below)**: the last entry (2026-08-14
+07:22 JST) left `downsampling_run.py` at 233/2,697 items (8.6%), with
+`bundle.py 1` as the next and final scoped step (deliberately not
+merging into `japan.pmtiles` or uploading). Checking
+`aggregation-store/01KZVPVTAM9V0QP8SRR42XRYKW/` directly:
+
+- Aggregation: **1,119/1,119 items done (100%)** — matches "no crash,
+  advanced automatically" from the prior entry.
+- Downsampling: **2,697/2,697 items done (100%)** — finished, and
+  much faster than the ~17-hour estimate implied. File mtimes across
+  `bundle-store/*.pmtiles` cluster tightly between **12:38 and 12:54
+  JST on 2026-08-14** — i.e. downsampling actually finished sometime
+  between 07:22 and ~12:38, roughly 5.3 hours, not the ~17 hours a
+  linear extrapolation from the 07:22 rate (~2.4 items/min) would have
+  predicted. Worth remembering: this pipeline's throughput is not
+  constant across a run (later items may be smaller/cheaper, or
+  contention eases as other things finish) — don't treat an early-run
+  rate as a reliable full-run ETA without margin.
+- `bundle.py 1`: **completed as scoped** — 11 regional z6 bundle files
+  in `bundle-store/` (`6-54-25.pmtiles` through `6-57-27.pmtiles`,
+  ~74GB total, largest single file 51.9GB), all finished writing by
+  12:54 JST. This is exactly the stopping point the prior entry
+  specified ("still deliberately not merging into `japan.pmtiles` or
+  uploading") — the absence of a freshly-dated `japan.pmtiles` is
+  **not a failure**, it's the plan working as designed.  The existing
+  `bundle-store/japan.pmtiles` (3.3GB, dated 2026-08-10 07:28) predates
+  this trial entirely and was never touched by it.
+
+**Conclusion: the full-scope trial (aggregation → downsampling →
+bundle) completed successfully and unattended**, most likely finishing
+its work within an hour or so of the last checkpoint we have, well
+before whatever made `slate` unreachable actually happened. No data
+was lost, nothing needs to be re-run. `bundle-store`/`pmtiles-store`
+together hold ~145GB of real, valid output on
+`/Volumes/Migrate-2025-04` (1.1TB free, unaffected).
+
+**Real bug found in `check_progress.py`**, worth fixing whenever this
+script is next touched: `check_aggregation_status()` globs
+`aggregation-store/{agg_id}/*-aggregation.done`, but the actual file
+this pipeline writes is named `*-aggregation.csv.done` (confirmed
+directly: `ls aggregation-store/01KZVPVTAM9V0QP8SRR42XRYKW | sed -E
+'s/^[0-9-]+//' | sort -u` shows `aggregation.csv`,
+`aggregation.csv.done`, `downsampling.csv`, `downsampling.csv.todo`,
+`downsampling.done` — no bare `aggregation.done` exists). Because of
+this, `check_progress.py` will **always report 0% aggregation
+progress**, regardless of true state — confirmed by running it live
+just now: it printed "Items completed: 0/1,119 (0.0%)" against a run
+that was actually 100% done. Anyone trusting this script's aggregation
+percentage during a live run would be misled into thinking it's stuck
+at 0% forever. Downsampling's own status check in the same script
+reads `downsampling.log` (a file that doesn't currently exist in this
+directory, possibly cleaned up or never created this run) rather than
+glob-counting `*-downsampling.done`, so it likely has the same
+class of staleness risk, not independently verified this session.
+
+**Disk space check on `slate`, ahead of the `polygon-store`
+fast-storage discussion**: the internal boot SSD (`/`, backed by
+`/System/Volumes/Data`) has **only 54GB free** (228GB container, 141GB
+used). This matters directly for Hidenori's proposal (this same
+session) to relocate `polygon-store/` onto `slate`'s native SSD via a
+symlink, to speed up `source_polygonize.py`'s `merge_source()` step
+(repeated `ogr2ogr -update -append` into a single growing `.gpkg`,
+identified this session as the likely "積み上げが遅い" boundary-
+accumulation slowness) — a working set anywhere near the ~60GB figure
+floated earlier would **not comfortably fit** in the current 54GB
+free. Worth re-checking free space at the time this is actually
+attempted, and possibly clearing headroom first (or scoping the
+fast-storage relocation to a single source's `merge_source()` run at a
+time, given each source's own working `merged.gpkg` is presumably far
+smaller than 60GB — not yet measured directly, since `polygon-store/`
+on disk right now only holds the small finished union `.gpkg` outputs,
+not any in-flight `merged.gpkg`).
+
+### Lessons
+
+1. **A `check_progress.py`-reported 0% doesn't mean 0% real progress**
+   — always cross-check against actual `aggregation-store/` file
+   counts (or fix the glob pattern) before concluding a run is stuck.
+2. **Don't extrapolate an unattended pipeline's ETA linearly from an
+   early checkpoint** — this run finished roughly 3x faster than the
+   07:22 rate implied. Pad estimates, or just check back rather than
+   trusting the number.
+3. **A pipeline stopping exactly where it was scoped to stop is
+   success, not failure** — "no fresh `japan.pmtiles`" looked
+   suspicious in isolation; reading the prior entry's own explicit
+   scope note ("deliberately not merging... this run") resolved it
+   immediately. Always check what a run was actually scoped to do
+   before treating an absent downstream artifact as evidence of
+   failure.
+4. **SSH ProxyJump through `spacex.optgeo.org` to `slate.local` now
+   works from `aalto`, using the already-existing `id_ed25519_slate`
+   key** (`Host slate-via-spacex` in `aalto`'s `~/.ssh/config`) — no
+   new keys were needed anywhere, since ProxyJump is a pure relay.
+   This restores remote inspectability of `slate` going forward,
+   independent of whatever made direct `slate.local` resolution stop
+   working from `aalto`'s network.
+
+### Next steps
+
+- [ ] Decide whether to actually pursue the `polygon-store` →
+      native-SSD relocation given the 54GB free-space constraint —
+      still an open, deliberately unhurried investigation per
+      Hidenori's own framing ("あくまで、将来に向けた入念な調査").
+- [ ] If pursued: measure a single source's actual peak `merge_source()`
+      working-set size before assuming the ~60GB figure applies
+      uniformly.
+- [ ] Consider fixing `check_progress.py`'s aggregation-done glob
+      pattern next time this script is touched, so it stops
+      permanently under-reporting.
+- [ ] `japan-geotiff-dem`'s own JCI 2026-09 push continues to take
+      priority, unchanged — this entry is investigation only, nothing
+      here blocks or is blocked by that effort.
