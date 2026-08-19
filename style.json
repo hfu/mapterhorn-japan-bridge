@@ -14,7 +14,7 @@
     },
     "mapterhorn": {
       "type": "raster-dem",
-      "url": "pmtiles://https://data.source.coop/smartmaps/mapterhorn-japan-bridge/japan.pmtiles",
+      "url": "pmtiles://https://depot.optgeo.org/japan.pmtiles",
       "encoding": "terrarium",
       "tileSize": 512,
       "attribution": "国土地理院 (GSI Japan). Processed with <a href='https://mapterhorn.com'>Mapterhorn</a> (interim bridge)."
