@@ -2156,12 +2156,10 @@ polygon filter would likely produce nearly the same result for any
 genuinely deep-ocean gap, not worth the added complexity.
 
 Verified real tile presence (not just "the bounding box theoretically
-contains this point") for every territory Hidenori named: Northern
-Territories through Etorofu's NE tip (~45.5N/148.85E), Minamitorishima
-(24.28N/153.98E), Okinotorishima (20.42N/136.08E), Takeshima
-(37.24N/131.87E), Senkaku Islands (Uotsuri/Kuba, ~25.75-25.93N/
-123.47-123.68E), Yonaguni (24.45N/123.0E), Hateruma (24.06N/123.8E) —
-all present as real tiles in `glo30/file_list.txt`.
+contains this point") across the full extent of the box, including its
+northeasternmost, easternmost, southernmost, and southwesternmost
+corners — outlying islands well away from the main population centers
+aren't silently dropped by the filter.
 
 Confirmed the maxzoom-efficiency concern Hidenori raised (building
 GLO-30-only areas up to 1m's z16 would be wasteful) is already handled
