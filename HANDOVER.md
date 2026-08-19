@@ -2518,3 +2518,119 @@ Paste this after `/clear` to pick up exactly here:
 > finishing its national 1m publish on `aalto` — check that repo's own
 > `HANDOVER.md` for whether it's done yet before assuming you can
 > start that.
+
+## 2026-08-20: checkpoint before `/clear` — `jpnational1`/`10`/`sea` fully done through polygonize, `jpnational5` mid-polygonize (real D15 scale test), `japan-geotiff-dem` now fully national
+
+### Big external update: `japan-geotiff-dem` (on `aalto`) finished JCI 2026-09
+
+All 11 Zones are now complete there (北海道・東北・関東1-3・北陸・中部・
+近畿・中国・四国・九州沖縄) — see that repo's own `HANDOVER.md` and
+`UNopenGIS/7#978`'s final comment. This **removes the gating condition**
+noted in this file's own earlier D14/D15 entries: `jpnational1`'s
+national-scope expansion (matching what `jpnational5`/`jpnational10`
+already did) was deliberately deferred until `japan-geotiff-dem`
+finished — that's now true. **Hidenori was asked whether to proceed
+with `jpnational1`'s national expansion and had not yet answered as of
+this entry** — don't start it without checking first.
+
+### Status of all four sources, this checkpoint
+
+- **`jpnational1`** (75,818 tiles, still Kyushu-range scope): download
+  + bounds + D15 polygonize all **complete and verified**
+  (`Feature Count: 1`, extent `(127.63, 26.07) - (142.24, 34.67)` —
+  matches the Kyushu/Okinawa/Shikoku/western-Chugoku range exactly).
+  Confirms D15's rewrite works correctly at real production scale
+  (75,818 files), not just the small `jpnational10` validation run.
+- **`jpnational10`** (4,981 tiles, national scope): download + bounds
+  + D15 polygonize all **complete and verified** (from the prior
+  checkpoint).
+- **`jpnationalsea`** (275 tiles, GLO-30, national scope): download +
+  bounds + D15 polygonize all **complete and verified**
+  (`Feature Count: 1`, extent matching the intended EEZ bounding box).
+- **`jpnational5`** (378,618 tiles, national scope): download
+  **complete** (378,616/378,618 — effectively 100%).
+  `source_bounds.py` complete (3m49s). **`source_polygonize.py
+  jpnational5 4` running now** (D15 code) — this is the real
+  stress-test for D15's rewrite at genuinely large scale (~5x
+  `jpnational1`'s file count); not yet finished as this entry is
+  written. On resume, check `ls -la polygon-store/jpnational5.gpkg` —
+  stale mtime was `Aug 13 04:07` before this run started; a fresh
+  mtime + `ogrinfo -so ... union` showing `Feature Count: 1` and a
+  national-extent bounding box is the completion signal.
+
+### Next steps, in order
+
+- [ ] Confirm `jpnational5`'s polygonize finishes cleanly (see check
+      above).
+- [ ] **Ask Hidenori** (if not already answered): proceed with
+      `jpnational1`'s own national-scope expansion now that
+      `japan-geotiff-dem` is fully national? If yes: regenerate
+      `source-catalog/jpnational1/file_list.csv` unfiltered (same
+      approach as `jpnational5`/`jpnational10`'s own expansion, D14's
+      companion decision) from `smartmaps/japan-geotiff-dem/1/
+      latest_file_list.csv.gz`, update `metadata.json`, re-download
+      (aria2c, D14) and re-run bounds/polygonize (D15) at the new
+      national scope.
+- [ ] Once all four sources are confirmed polygonized at their final
+      scope (three already national, `jpnational1` pending the above
+      decision): `aggregation_covering.py` → `aggregation_run.py` →
+      `downsampling_covering.py` → `downsampling_run.py` → `bundle.py`
+      → `merge_japan_bundles.py` (`TMPDIR=/Volumes/Migrate-2025-04/tmp`)
+      → `rsync` `japan.pmtiles` to `stars` (`/home/stars/data/`, not
+      Source Cooperative — D13). **This would be the first genuinely
+      national-scope `japan.pmtiles` build this project has ever
+      attempted** if `jpnational1` also goes national first — disk
+      usage is worth rechecking before/during that run (was 987GB free
+      on `/Volumes/Migrate-2025-04` at the last check, comfortable
+      margin, but this is uncharted scale for `aggregation_run.py`).
+- [ ] The GitHub Pages viewer already points at the current
+      `stars`-hosted `japan.pmtiles` (`depot.optgeo.org`) — no
+      further change needed there once a fresh build is uploaded, it
+      just needs the file at that same path/name to update.
+
+## Resume prompt
+
+Paste this after `/clear` to pick up exactly here:
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` on `slate`. Read
+> this file's last few entries (D14, D15, and this one) plus
+> `DECISIONS.md` D13/D14/D15 before touching anything.
+>
+> **Big context change**: `japan-geotiff-dem` (on `aalto`) finished
+> its JCI 2026-09 work — all 11 Zones done, fully national 1m/5m/10m
+> coverage now published. This removes the gate that was blocking
+> `jpnational1`'s own national-scope expansion.
+>
+> **First**: check whether `jpnational5`'s `source_polygonize.py`
+> (D15 code, real ~378,618-file scale test) has finished —
+> `ls -la polygon-store/jpnational5.gpkg` (fresh mtime, not
+> `Aug 13 04:07`) and `ogrinfo -so polygon-store/jpnational5.gpkg
+> union` (`Feature Count: 1`, national-extent bounding box). If not
+> done yet, it's fine to just wait — D15 is proven correct at this
+> point (verified on both `jpnational10` and the full `jpnational1`,
+> 75,818 files), this is a scale question not a correctness one.
+>
+> **Then, ask Hidenori** (don't assume — he was asked this exact
+> question right before the `/clear` and may not have answered yet):
+> proceed with `jpnational1`'s own national-scope expansion now that
+> `japan-geotiff-dem` is fully national? `jpnational5`/`jpnational10`
+> already did this (regenerate `file_list.csv` unfiltered from
+> `smartmaps/japan-geotiff-dem/1/latest_file_list.csv.gz`, update
+> `metadata.json`, re-download via aria2c, re-run bounds/polygonize
+> via D15) — same recipe would apply to `jpnational1` if he says yes.
+>
+> **`jpnational10`** and **`jpnationalsea`** are both already fully
+> done through polygonize (national scope) — nothing more needed
+> there until the aggregation stage.
+>
+> **Once all four sources are ready at their final scope**: continue
+> to `aggregation_covering.py` → `aggregation_run.py` →
+> `downsampling_covering.py` → `downsampling_run.py` → `bundle.py` →
+> `merge_japan_bundles.py` (`TMPDIR=/Volumes/Migrate-2025-04/tmp`) →
+> `rsync` the result to `stars` (`/home/stars/data/`, **not** Source
+> Cooperative — SC's multipart upload kept failing on this file, D13).
+> If `jpnational1` does go national, this would be the first genuinely
+> national-scope `japan.pmtiles` this project has built — worth
+> re-checking disk usage on `/Volumes/Migrate-2025-04` before/during
+> (was 987GB free at the last checkpoint, comfortable but untested at
+> this scale).
