@@ -1951,3 +1951,95 @@ that step separately.
       CLAUDE.md-equivalent) so it isn't rediscovered from scratch next
       time a large intermediate-file script runs low on root space --
       not done yet, this HANDOVER entry is the only record so far.
+
+## 2026-08-19 (same session, closing): session pause for `/clear` — resume prompt
+
+Closing out a long session (full detail in the three entries above:
+trial confirmation, `polygon-store`/GDAL investigation, `japan.pmtiles`
+fix) at Hidenori's request, ahead of `/clear`.
+
+### Current state
+
+- `japan.pmtiles` rebuilt successfully in `bundle-store/`: 789,984
+  tiles, ~70.7GB, verified non-corrupt. **Local only, not published.**
+  **This is the queued next action** — Hidenori wants to verify it and
+  upload to Source Cooperative once this session resumes.
+- `jpkyushutest1` download+bounds+polygonize pipeline (this session's
+  refreshed 75,724-position `file_list.txt`, up from 71,577) still
+  running: ~71,867/75,724 downloaded (~95%) as of this entry, `source_
+  bounds.py`/`source_polygonize.py` not yet reached. Log:
+  `/tmp/jpkyushutest1_pipeline.log`. Check `ps aux` for `source_
+  download.py`/`source_bounds.py`/`source_polygonize.py`/`ogr2ogr` to
+  see which stage it's actually in on resume.
+- `jpkyushutest5m`/`jpkyushutest10m` exist locally (downloaded, same
+  3900-5199 scope) but are **deliberately left uncommitted** in `hfu/
+  mapterhorn` per Hidenori's own call — Kyushu-scoped test artifacts,
+  not national, not worth formalizing into git.
+- `slate` internal SSD: 228GB total, 85GB free (up from 55GB at
+  session start — reclaimed ~31GB of safe cache/orphaned-app data).
+  FileVault confirmed **on** — no reboot without physical/GUI access
+  (expected ~2026-08-23 night). Pending macOS Tahoe 26.6.2 update
+  stays deferred until then.
+- 3 orphaned `colima start` processes from 2026-08-10 killed.
+- GDAL 3.13.3 duplicate-`-append` regression fixed and pushed to
+  `hfu/mapterhorn` (commit `69d4288`).
+- `jpkyushutest1/file_list.txt` regenerated and pushed (commit
+  `a0b9b16`).
+
+### Next steps, in order
+
+- [ ] **First**: verify `bundle-store/japan.pmtiles` is genuinely good
+      (re-check header vs. file size if any doubt — see the fix entry
+      above for the exact check) and upload to Source Cooperative.
+      This needs Hidenori's explicit go-ahead for the actual publish
+      step, per the standing rule — don't just run `upload.py` or
+      equivalent without confirming first.
+- [ ] Check on the `jpkyushutest1` pipeline — if download finished,
+      let `source_bounds.py`/`source_polygonize.py` run (or kick them
+      off manually if the `just` chain didn't auto-continue); once
+      `source_polygonize.py` completes, run `aggregation_covering.py`
+      and report its item count before deciding whether/how to run a
+      full `aggregation_run.py` for this expanded coverage.
+- [ ] If a fresh aggregation/downsampling/bundle cycle produces new or
+      changed `6-x-y.pmtiles` files (11 exist now; expected to stay 11
+      since the geographic extent doesn't change, only density within
+      it — not yet confirmed), re-run `merge_japan_bundles.py` with
+      `TMPDIR=/Volumes/Migrate-2025-04/tmp` to fold them in.
+- [ ] `japan-geotiff-dem`'s own JCI 2026-09 push continues in parallel
+      on `aalto`, unrelated to this thread — see that repo's own
+      HANDOVER.md for its current state (Hokuriku in progress as of
+      this session).
+
+## Resume prompt
+
+Paste this after `/clear` to pick up exactly here:
+
+> Resuming `mapterhorn-japan-bridge` / `hfu/mapterhorn` work on
+> `slate`. Read this file's most recent entries (trial confirmation,
+> `polygon-store`/GDAL investigation, `japan.pmtiles` fix, this closing
+> entry) for full context. `slate` is reachable from `aalto` via an
+> SSH jump-host route (topology in `aalto`'s own `~/.ssh/config`,
+> deliberately not written here since this repo is public) — use that
+> to inspect/drive `slate` directly rather than asking Hidenori to
+> relay anything.
+>
+> **First priority**: verify the freshly-rebuilt `bundle-store/
+> japan.pmtiles` (789,984 tiles, ~70.7GB — built by fixing a
+> `tempfile`-directory bug, see the fix entry above for the exact
+> verification method: header's `tile_data_offset + tile_data_length`
+> must equal the actual file size) and **upload it to Source
+> Cooperative** — this is the explicit next action Hidenori queued
+> before this `/clear`. Get his explicit go-ahead before the actual
+> publish/upload step, per the standing rule.
+>
+> **Second**: check on the `jpkyushutest1` download+bounds+polygonize
+> pipeline (was ~95% through downloading as of this entry) and
+> continue it toward `aggregation_covering.py`, reporting its item
+> count before committing to a full `aggregation_run.py`.
+>
+> **Remember**: FileVault is on, so no reboot without physical/GUI
+> access (not available until ~2026-08-23 night) — don't attempt one
+> even if disk/memory pressure suggests it would help. If a script
+> needs a large intermediate file and disk space on `/` gets tight,
+> point `TMPDIR` (or equivalent) at `/Volumes/Migrate-2025-04` first —
+> proven pattern from this session, likely to recur.
