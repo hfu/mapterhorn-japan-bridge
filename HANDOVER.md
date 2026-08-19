@@ -2388,3 +2388,133 @@ Paste this after `/clear` to pick up exactly here:
 > and is the real scale-test for D15's rewrite once it gets to its own
 > polygonize stage — don't wait on it before proceeding with
 > `jpnational1`'s own pipeline above.
+
+## 2026-08-19 (continued): checkpoint before `/clear` — `jpnationalsea` polygonize done, `jpnational1` still running, `japan.pmtiles` viewer repointed at `stars`
+
+### Progress since the last checkpoint
+
+- **`jpnationalsea`: fully done through polygonize.** Downloaded
+  (275/275, D14 aria2c), `source_bounds.py` + `source_polygonize.py
+  jpnationalsea 4` (D15 batched code) both completed clean — verified
+  `polygon-store/jpnationalsea.gpkg`: `Feature Count: 1`,
+  `Extent: (121.999861, 20.000139) - (153.999861, 47.000139)`,
+  matching the intended national EEZ bounding box. Run **in parallel**
+  with `jpnational1`'s own polygonize (small enough, ~275 files, that
+  this didn't meaningfully compete for resources).
+- **`jpnational1`: polygonize still running** under the D15 code,
+  resumed ~19:12 JST, **not yet finished** as this entry is written
+  (~2.5h+ elapsed — `jpnational10`'s own full validation run took well
+  under a minute at 4,981 files, but `jpnational1` is 75,818 files —
+  ~15x more — and, unlike the `merge_source()` step D15 actually sped
+  up, `polygonize_source()`'s own `gdal_footprint` extraction phase
+  redoes every file with `-overwrite` regardless of the ~18k already
+  computed from an earlier interrupted run, so this is genuinely
+  proportionally slower, not stuck). Check
+  `ls polygon-store/jpnational1.gpkg`'s mtime on resume — as of this
+  entry it's still `Aug 12 13:28`, the stale pre-session file; a fresh
+  mtime plus `ogrinfo -so ... union` showing `Feature Count: 1` is the
+  signal it actually finished.
+- **`jpnational5`: still downloading**, ~47.6% (180,118/378,618) as of
+  this entry. Its own `source_bounds.py`/`source_polygonize.py` haven't
+  started.
+- **`jpnational10`: fully done** (download + D15 polygonize), from the
+  prior checkpoint.
+- **Viewer repointed at `stars`**: `style.json`'s `mapterhorn` raster-
+  dem source URL changed from the stale Source Cooperative object
+  (`data.source.coop/.../japan.pmtiles`, ~2GB, last real update
+  2026-08-09) to `pmtiles://https://depot.optgeo.org/japan.pmtiles`
+  (the 70.7GB `stars`-hosted current build, D13). Verified live at
+  `https://hfu.github.io/mapterhorn-japan-bridge/` after GitHub Pages'
+  CDN caught up (~1min propagation delay observed) — base map and
+  terrain-toggle UI render correctly. `encoding: "terrarium"` in
+  `style.json` was double-checked against D11 (the orthophoto/RGB-
+  encoding bug fix) before touching anything else — D11's fix defaults
+  `TILE_ENCODING` to `terrarium` and the current `japan.pmtiles` build
+  postdates that fix, so the existing encoding declaration is correct;
+  only the URL needed to change.
+
+### Environment note (aalto-side, not this repo, but relevant if `aalto` commands start failing)
+
+`aalto`'s `~/Downloads` briefly became fully inaccessible
+(`Operation not permitted` on `ls`/`unzip`/`rm`, while `stat` on the
+directory itself still worked) — a macOS TCC/Full-Disk-Access glitch
+after a Claude.app auto-update, not real data corruption. Fixed by
+relaunching Claude.app. Mentioned here because it briefly looked like
+a corrupted download (`chubu` Zone's Z008 pack got a false "CRC check
+failed") — if something similar happens again on either machine, check
+whether `stat`/`ls -ld` on the parent directory succeeds while listing
+contents fails; that specific combination means TCC, not corruption.
+
+### Next steps, in order
+
+- [ ] Confirm `jpnational1`'s polygonize finished
+      (`polygon-store/jpnational1.gpkg` fresh mtime, `Feature Count: 1`
+      via `ogrinfo`).
+- [ ] Once confirmed: `aggregation_covering.py` → `aggregation_run.py`
+      → `downsampling_covering.py` → `downsampling_run.py` →
+      `bundle.py` → `merge_japan_bundles.py` (`TMPDIR` pointed at
+      `/Volumes/Migrate-2025-04/tmp`, per the earlier `tempfile`-bug
+      fix) → `rsync` the result to `stars` (`/home/stars/data/`, not
+      Source Cooperative — see D13). This is still against the
+      Kyushu-range `jpnational1` scope, not national yet.
+- [ ] `jpnational5`: keep letting it download; once done, its own
+      `source_bounds.py`/`source_polygonize.py` (D15 code, real
+      378,618-file scale-test) → fold into a future aggregation run
+      alongside `jpnational1`/`jpnational10`/`jpnationalsea`.
+- [ ] `jpnational1`'s own **national-scope expansion** (unfiltered
+      `file_list.csv`, matching what `jpnational5`/`jpnational10`
+      already did) is gated on `japan-geotiff-dem` finishing its
+      national 1m publish on `aalto` — check that repo's own
+      `HANDOVER.md`; as of this same checkpoint round, only 中部
+      (Chubu) remains there, nearly done.
+- [ ] Once `jpnational1` national-scope expansion happens, disk usage
+      on `/Volumes/Migrate-2025-04` is worth re-checking (was 987GB
+      free / 1.8TB at this checkpoint, comfortable for now — see
+      Hidenori's own storage question this session) — national-scope
+      `jpnational1` (~279k tiles vs current 75,818) plus a real
+      national-scope `aggregation_run.py` for the first time this
+      project has attempted that scale could use meaningfully more
+      than anything run so far.
+
+## Resume prompt
+
+Paste this after `/clear` to pick up exactly here:
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` on `slate`. Read
+> this file's last 4 entries (D14 CSV+aria2c, D15 polygonize rewrite,
+> the jpnational10-verified checkpoint, this one) and `DECISIONS.md`
+> D13/D14/D15 before touching anything.
+>
+> **First**: check whether `jpnational1`'s `source_polygonize.py`
+> (D15 code, resumed ~19:12 JST) has finished —
+> `ls -la polygon-store/jpnational1.gpkg` (fresh mtime, not
+> `Aug 12 13:28`) and `ogrinfo -so polygon-store/jpnational1.gpkg
+> union` (`Feature Count: 1`). If done, continue to
+> `aggregation_covering.py` → `aggregation_run.py` →
+> `downsampling_covering.py` → `downsampling_run.py` → `bundle.py` →
+> `merge_japan_bundles.py` (remember `TMPDIR=/Volumes/Migrate-2025-04/tmp`)
+> → `rsync` the resulting `japan.pmtiles` to `stars`
+> (`/home/stars/data/`, **not** Source Cooperative — SC's multipart
+> upload kept failing on this file, D13). If still running, just wait
+> — it's the real thing this time (D15 already proven on
+> `jpnational10`), not stuck.
+>
+> **`jpnationalsea`** is already fully done through polygonize
+> (verified) — fold it into the same aggregation run once you get
+> there.
+>
+> **`jpnational5`** (378,618 tiles) is still downloading in the
+> background (~48% at last check) — the real scale-test for D15's
+> rewrite once it reaches its own polygonize stage. Don't block on it.
+>
+> **The GitHub Pages viewer** (`https://hfu.github.io/mapterhorn-
+> japan-bridge/`) now correctly points at `depot.optgeo.org/
+> japan.pmtiles` (the current `stars`-hosted build) instead of the
+> stale Source Cooperative object — already verified live, nothing to
+> redo there.
+>
+> `jpnational1`'s own **national-scope expansion** (like `jpnational5`/
+> `jpnational10` already got) is still gated on `japan-geotiff-dem`
+> finishing its national 1m publish on `aalto` — check that repo's own
+> `HANDOVER.md` for whether it's done yet before assuming you can
+> start that.
