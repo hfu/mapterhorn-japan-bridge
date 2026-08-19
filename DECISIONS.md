@@ -1019,3 +1019,103 @@ before touching it.
   any future documentation pointing at a `japan.pmtiles` URL should
   prefer `https://depot.optgeo.org/japan.pmtiles` going forward, not the
   SC URL, until/unless SC hosting is restored.
+
+## D14: CSV manifest with size+MD5 (from S3 ETag) + aria2c replaces the one-wget-per-URL download loop; `jpnational5`/`jpnational10` expanded to national scope
+
+**Status**: Decided and implemented 2026-08-19, in effect immediately.
+
+**Context**: `jpnational1`'s download (`source_download.py`, one `wget
+--continue` subprocess per URL in `file_list.txt`) had become the
+practical bottleneck for this whole effort. With 75,724+ URLs and most
+of them already downloaded from earlier sessions, the loop still spent
+real wall-clock time re-verifying every already-complete file one
+subprocess launch at a time — observed directly: two controlled
+60-second/48-second windows showed the file count not moving at all
+mid-run despite the process actively working, because it was working
+through a long stretch of already-present files. Root cause: per-file
+subprocess/connection overhead, not bandwidth — `wget --continue`
+still opens a fresh connection and does at least a size check per URL,
+with no way to batch or parallelize across files.
+
+**Decision, part 1 — CSV manifest with size+MD5**: `japan-geotiff-dem`'s
+own `build_filelists.py` (that repo's D13 mechanism) was rewritten to
+query `aws s3api list-objects-v2` instead of `aws s3 ls`, which returns
+`Size` and `ETag` per object in the same paginated bucket listing —
+**zero extra requests**. Verified directly (2026-08-19) that this
+bucket's ETags equal true MD5 for these files (single-part uploads):
+fetched one real object, compared its S3 `ETag` header against a
+locally-computed `md5` of the downloaded bytes — exact match. Output
+format changed from `{res}/latest_file_list.txt.gz` /
+`obsolete_file_list.txt.gz` (plain URL-per-line) to
+`{res}/latest_file_list.csv.gz` / `obsolete_file_list.csv.gz` (header
+`url,size,md5`) — old `.txt.gz` objects deleted from the bucket on
+republish so the two formats don't coexist indefinitely.
+`skip_already_published.py` (D14 of `japan-geotiff-dem`, unrelated
+number collision) updated to parse the new CSV. Public docs
+(`source-coop/README.md`) updated with the new format/URLs.
+
+This trick does **not** generalize to every source: `jpnationalsea`'s
+GLO-30 data has two real-world mirrors with different behavior —
+`opentopography.s3.sdsc.edu` (MinIO) returns placeholder ETags
+(`"00000000000000000000000000000000-1"`, verified across multiple
+files, not real hashes) and doesn't support bucket listing at all
+(`ListObjectsV2` returns 503); `copernicus-dem-30m.s3.amazonaws.com`
+(real AWS S3, confirmed via `aws s3api list-objects-v2
+--no-sign-request`) **does** give real, usable ETags. `jpnationalsea`'s
+275-tile manifest was built by targeting the AWS mirror specifically
+(one `head-object --no-sign-request` per URL, parallelized — a
+one-time manifest-build cost, not a per-run cost) rather than the MinIO
+one. Any future source needs this same check before assuming ETag=MD5.
+
+**Decision, part 2 — `source_download.py` rewritten around aria2c**:
+replaces the wget loop with a single `aria2c -i <input-file>`
+invocation per source. When the manifest has real MD5s, the whole
+manifest (not just missing files) is handed to aria2c with
+`checksum=md5=...` per URL and `--check-integrity=true` — aria2c
+itself decides what to skip (matching local file, verified by hash —
+no network request) versus what to fetch, natively parallelized
+(`-j 8`). When a source's manifest has no trustworthy MD5 (the
+MinIO-mirror case), the script falls back to a local size-only
+pre-filter in Python before invoking aria2c on just the missing/
+mismatched subset, since there's no server-side hash to lean on.
+Verified end to end on `jpnational1`: full run (75,818-entry manifest,
+mix of hash-verifying already-present files and downloading genuinely
+new ones) completed in **2h16m4s** with every file reported `OK`
+(checksum-verified) by aria2c.
+
+**Decision, part 3 — `jpnational5`/`jpnational10` expanded to national
+scope**: with the CSV-manifest infrastructure in place, expanding these
+two (previously range-filtered to the same 3900-5199 mesh range as the
+old `jpkyushutest*` scope, untouched since 2026-08-11) to full national
+coverage became cheap: regenerate `japan-geotiff-dem`'s national
+`latest_file_list.csv.gz` for res 5 and 10, copy it into
+`source-catalog/jpnational{5,10}/file_list.csv` **unfiltered** (no
+range filter this time — this *is* the national expansion). Result:
+`jpnational10` 1,364 → **4,981** tiles, `jpnational5` 91,595 →
+**378,618** tiles. Both downloads started immediately (aria2c, same
+mechanism as `jpnational1`). `jpnational1`'s own national expansion
+stays deliberately gated on `japan-geotiff-dem` finishing its national
+1m publish (per D13's sibling decision in that repo's own docs) — 5m
+and 10m have no such dependency, which is exactly why Hidenori chose to
+let them go first.
+
+**New tool**: `check_download_progress.py` — file-count-only progress
+report (local `source-store/{source}/*.tif` count vs.
+`file_list.csv` row count) for every source-catalog entry with a
+manifest, or just the ones named on the command line. Complements the
+existing `check_progress.py` (which covers aggregation/downsampling,
+not the download stage).
+
+**Consequences**:
+- `jpnationalsea`'s download continues under the same aria2c mechanism,
+  now correctly checksum-verified against the real AWS mirror.
+- Any future source-catalog entry should default to checking whether
+  its host's ETags are trustworthy MD5s (S3-compatible bucket listing,
+  `head-object`, and a spot-check against a locally-computed hash)
+  before assuming this trick applies — MinIO and other S3-compatible
+  servers are not guaranteed to expose real content hashes via ETag.
+- `jpnational5`'s 378,618-tile national manifest is far larger than
+  anything downloaded under this pipeline before; expect this download
+  to take substantially longer than `jpnational1`'s did, purely from
+  genuinely-new-file volume (not a repeat of the old per-file-overhead
+  problem, which this whole decision was written to fix).

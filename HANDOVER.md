@@ -2185,3 +2185,70 @@ DEM upload work takes precedence over anything here.
       history (`ffcd665^`) if the old small-scale pilot data is ever
       wanted again for comparison — the raw GLO-30 tif data itself was
       not preserved, only the source-catalog config.
+
+## 2026-08-19 (continued): CSV manifests + aria2c (D14), `jpnational5`/`jpnational10` go national
+
+Full detail in D14. Summary of what changed and current state:
+
+- `japan-geotiff-dem`'s `build_filelists.py` now emits
+  `latest_file_list.csv.gz`/`obsolete_file_list.csv.gz` (columns
+  `url,size,md5`) instead of plain-text URL lists, getting size+MD5 for
+  free from a single `aws s3api list-objects-v2` call (S3 ETag = true
+  MD5 for these single-part-uploaded files, verified directly). Old
+  `.txt.gz` manifests removed from the bucket on republish.
+- `source_download.py` rewritten around `aria2c`: one invocation per
+  source instead of one `wget` subprocess per URL. Uses the manifest's
+  MD5 (`--checksum=` + `--check-integrity=true`) to let aria2c itself
+  skip already-correct local files with zero network requests, when a
+  trustworthy MD5 is available. Falls back to a local size-only
+  pre-filter when it isn't (GLO-30's `opentopography.s3.sdsc.edu`
+  mirror hands out placeholder ETags and doesn't support bucket
+  listing at all — had to retarget `jpnationalsea` at the real
+  `copernicus-dem-30m.s3.amazonaws.com` AWS mirror instead, which does
+  have real ETags).
+- `jpnational1`: full CSV+aria2c run completed in 2h16m4s (75,818
+  entries, mostly already-present + verified, some genuinely new),
+  every file checksum-OK. Then `source_bounds.py` started (not yet
+  finished as of this entry — this repo's `default` Justfile recipe
+  chains download→bounds→polygonize automatically, but this run was
+  invoked as a standalone timed test, so bounds had to be kicked off
+  by hand afterward).
+- `jpnational5`/`jpnational10` expanded from the old 3900-5199
+  mesh-range filter to **full national scope**: `jpnational10` 1,364 →
+  4,981 tiles, `jpnational5` 91,595 → 378,618 tiles. Both downloading
+  now. `jpnational1`'s own national expansion stays gated on
+  `japan-geotiff-dem` finishing its national 1m publish (unrelated —
+  5m/10m have no such dependency, which is why they went first, per
+  Hidenori).
+- New `check_download_progress.py`: file-count-only progress report
+  (local `.tif` count vs. manifest row count) per source, or all
+  sources at once. Snapshot at the time of this entry:
+  ```
+  jpnational1     75,818 /  75,818  (100.0%)
+  jpnational10     1,720 /   4,981  ( 34.5%)
+  jpnational5     92,203 / 378,618  ( 24.4%)
+  jpnationalsea      187 /     275  ( 68.0%)
+  ```
+
+### Next steps
+
+- [ ] Let `jpnational5`/`jpnational10`/`jpnationalsea` downloads run to
+      completion (`jpnational5` in particular is far larger than
+      anything downloaded under this pipeline before — expect it to
+      take a while purely from genuinely-new-file volume, not a repeat
+      of the old per-file-overhead problem).
+- [ ] `jpnational1`: check on `source_bounds.py`'s progress, then run
+      `source_polygonize.py jpnational1 4` once it's done.
+- [ ] Once `jpnational5`/`10` finish downloading, run their own
+      `source_bounds.py`/`source_polygonize.py` too.
+- [ ] `aalto`'s `japan-geotiff-dem` JCI 2026-09 work is still in
+      progress in parallel (Kanto-3 tail, Kanto-1, Chubu tail — see
+      that repo's own `HANDOVER.md`) — `jpnational1`'s eventual
+      national-scope expansion is gated on that finishing.
+- [ ] `jpnationalsea` was briefly slowed by what looked like
+      throttling/an outage on the `copernicus-dem-30m.s3.amazonaws.com`
+      path specifically (a single `curl` HEAD took 10+ minutes, vs.
+      ~7s to `data.source.coop` from the same machine at the same
+      time) — resolved on its own within the session, but worth
+      knowing this specific external dependency can degrade
+      independently of everything else.
