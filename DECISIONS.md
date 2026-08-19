@@ -955,3 +955,67 @@ Username`/stale-keychain errors on push).
   This is the second repo in this same incident where multi-day
   uncommitted local work sat on a single point of failure — a habit
   worth changing, not just a one-time close call.
+
+## D13: `japan.pmtiles` fails to upload to Source Cooperative on large multipart PUTs; host on `stars`/`martin` for daily use instead, keep SC as a lower-frequency archive
+
+**Status**: Decided 2026-08-19, in effect immediately.
+
+**Context**: The freshly-rebuilt `japan.pmtiles` (789,984 tiles, ~70.7GB,
+75,939,452,941 bytes, see the `tempfile`-directory-bug fix entry in
+`HANDOVER.md`) failed to upload to `s3://smartmaps/mapterhorn-japan-bridge/
+japan.pmtiles` via `aws s3 cp --profile source-coop` **twice**, both times
+with `An error occurred (520) when calling the UploadPart operation`
+partway through a multipart upload — once at 1.4GB, once at 2.9GB, on
+separate attempts with fresh credentials each time. Both failures left the
+previously-published (much smaller, 2026-08-09, ~2GB) object on SC intact;
+nothing was corrupted, the upload just never completed. `source-coop
+login`'s ~1hr credential TTL was not the cause (credentials were
+re-verified live on `slate` immediately before and after each failure).
+
+**Decision**: Rather than debug SC's multipart-upload path further (a
+different tool with better chunking/resume, e.g. `rclone`/`s5cmd`, is a
+plausible future fix but out of scope for this decision), host large
+`.pmtiles` files for day-to-day/live use on `stars` (the same box already
+serving `z18.pmtiles`, `seamlessphoto512.pmtiles`, etc. for other
+`optgeo`-family projects) instead, and treat Source Cooperative as a
+lower-frequency **durable archive**, not the live-serving path. Hidenori's
+framing: SC = low-frequency official archive, stars/martin = daily-use
+hosting, run both.
+
+`japan.pmtiles` now lives at `/home/stars/data/japan.pmtiles`, transferred
+there directly from `slate` over the local LAN via `rsync` (~11MB/s
+sustained, no retries needed — markedly more reliable for a single huge
+file than SC's chunked multipart PUT). It's served two ways from the same
+directory: `martin` auto-discovers it (`pmtiles.paths` directory scan) as
+an XYZ/TileJSON source at `https://stars.optgeo.org/japan`; `Caddy`
+(already serving `/home/stars/data` as static files with CORS +
+`Accept-Ranges: bytes`) serves the raw file directly at
+`https://depot.optgeo.org/japan.pmtiles` — this second URL is the one that
+matters for the official Mapterhorn viewer
+(`https://mapterhorn.com/viewer/#url=<pmtiles-url>`), since its `pmtiles`
+JS library range-requests the raw file itself rather than going through
+martin's XYZ abstraction.
+
+**Operational gotcha worth recording**: `martin` on `stars` is a proper
+`systemctl --user` service (enabled, survives reboots) — **not** a bare
+background process — and it **hot-reloads `pmtiles.paths` automatically**.
+It picked up the freshly-`rsync`'d `japan.pmtiles` and logged
+`Added source source.id=japan` within seconds of the transfer completing,
+with no restart needed at all. `pkill`-ing it (assuming it needed a manual
+restart) breaks the systemd-managed unit state even though a bare relaunch
+can paper over the symptom — the correct move, if a restart is ever
+genuinely needed, is `systemctl --user restart martin`, not `pkill` +
+manual relaunch. Default to **not** restarting it at all; check
+`systemctl --user status martin` for evidence the hot-reload didn't work
+before touching it.
+
+**Consequences**:
+- SC upload of `japan.pmtiles` was not reattempted this session; the
+  2026-08-09 (~2GB) object there is now stale relative to the local/
+  `stars`-hosted 70.7GB rebuild. A future session should either retry the
+  SC upload with a more resilient tool, or make an explicit fresh decision
+  that SC no longer needs to track `japan.pmtiles` at all.
+- This repo's own viewer (`hfu.github.io/mapterhorn-japan-bridge/`) and
+  any future documentation pointing at a `japan.pmtiles` URL should
+  prefer `https://depot.optgeo.org/japan.pmtiles` going forward, not the
+  SC URL, until/unless SC hosting is restored.

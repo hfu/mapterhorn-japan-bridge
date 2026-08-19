@@ -2043,3 +2043,45 @@ Paste this after `/clear` to pick up exactly here:
 > needs a large intermediate file and disk space on `/` gets tight,
 > point `TMPDIR` (or equivalent) at `/Volumes/Migrate-2025-04` first —
 > proven pattern from this session, likely to recur.
+
+## 2026-08-19 (continued): `japan.pmtiles` hosted on `stars` instead of Source Cooperative (D13)
+
+Two SC upload attempts for the freshly-rebuilt `japan.pmtiles` (789,984
+tiles, ~70.7GB) both failed mid-transfer with HTTP 520 on `UploadPart`
+(see D13 for full detail and the operational gotcha about `martin` being
+a hot-reloading `systemctl --user` service — don't `pkill` it). Pivoted to
+hosting on `stars` instead: `rsync`'d directly from `slate` over LAN,
+served at `https://depot.optgeo.org/japan.pmtiles` (raw, range-capable —
+the URL to use with the official Mapterhorn viewer) and
+`https://stars.optgeo.org/japan` (via `martin`, XYZ/TileJSON). Verified
+both endpoints return the file with matching `Content-Length` and
+`Accept-Ranges: bytes`. Direction going forward, per Hidenori: SC stays
+the low-frequency durable archive, `stars`/`martin` is the daily-use host;
+run both, not one instead of the other.
+
+`jpkyushutest1`'s `source_download.py` (Kyushu/Okinawa-range, 3900-5199)
+was left running throughout, unaffected — it reads its own
+`source-store/`, not `bundle-store/`, so nothing about the `japan.pmtiles`
+work touched it.
+
+### Next steps
+
+- [ ] **Deliberately deferred until `japan-geotiff-dem` finishes
+      publishing full national 1m coverage** (see that repo's own
+      `HANDOVER.md` for progress — Hokuriku just completed, Kanto-1/2/3
+      and Chubu remain as of this entry): expand `jpkyushutest1`'s scope
+      from the 3900-5199 mesh range to all of Japan, **in place** (same
+      entry/name — chosen specifically to avoid re-downloading the
+      ~75k files already fetched under this name), by regenerating
+      `file_list.txt` from `s3://smartmaps/japan-geotiff-dem/1/
+      latest_file_list.txt.gz` **unfiltered** (279,005 entries as of
+      2026-08-19, vs. current ~75,724) instead of range-filtered. Update
+      `metadata.json`'s description away from "九州沖縄 1m（速度検証用・
+      部分）" to reflect national scope once this happens.
+- [ ] Hidenori floated renaming `jpkyushutest1` to a clearer name once a
+      good opportunity comes up (not mid-pipeline-run) — bundle this with
+      the scope-expansion work above rather than doing it separately.
+- [ ] SC upload of `japan.pmtiles` not reattempted this session (see D13)
+      — the 2026-08-09 (~2GB) object there is now stale. Revisit with a
+      more resilient upload tool, or make an explicit decision to stop
+      tracking `japan.pmtiles` on SC at all.
