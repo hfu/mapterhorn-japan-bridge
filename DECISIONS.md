@@ -34,6 +34,7 @@ This file is the *why*, kept stable. Session narrative lives in
 | [D16](#d16-jpnational1-stays-at-its-current-regional-scope-for-now-build-japanpmtiles-with-510sea-national--1-regional-to-stress-test-the-downstream-pipeline-before-the-largest-jump) | `jpnational1` stays at its current regional scope for now; build `japan.pmtiles` with 5/10/sea national + 1 regional, to stress-test the downstream pipeline before the largest jump | Accepted | 2026-08-20 |
 | [D17](#d17-upstream-fidelity-as-a-standing-practice-and-where-fusi-fits) | Upstream fidelity as a standing practice, and where `fusi` fits | Accepted | 2026-08-20 |
 | [D18](#d18-within-source-product-type-priority-abc-was-purely-alphabetical-not-accuracy-based-lower-accuracy-data-was-silently-winning-over-higher-accuracy-data) | Within-source product-type priority (A/B/C) was purely alphabetical, not accuracy-based — lower-accuracy data was silently winning over higher-accuracy data | Accepted, fixed | 2026-08-20 |
+| [D19](#d19-nothing-pruned-local-files-superseded-by-an-upstream-japan-geotiff-dem-refresh--added-source_prune_obsoletepy) | Nothing pruned local files superseded by an upstream `japan-geotiff-dem` refresh — added `source_prune_obsolete.py` | Accepted, tool verified | 2026-08-20 |
 
 ---
 
@@ -1514,3 +1515,82 @@ unaffected.
   multi-product-type split (e.g. if 1m ever gains a photogrammetry
   fallback), `get_product_type_rank()`'s pattern/rank table needs
   extending — it currently only recognizes `A`/`B`/`C` suffixes.
+
+## D19: Nothing pruned local files superseded by an upstream `japan-geotiff-dem` refresh — added `source_prune_obsolete.py`
+
+**Status**: Accepted, tool built and verified against real data 2026-08-20;
+not yet applied to any source (see Consequences).
+
+**Context**: Hidenori asked directly whether this pipeline has any
+logic to remove local `source-store/{source}/*.tif` files that have
+become obsolete since they were downloaded — i.e., a mesh cell whose
+file was superseded by a newer survey on `japan-geotiff-dem`'s own
+bucket after the local copy was fetched. It didn't: `source_download.py`
+is purely additive (only ever adds files present in the *current*
+`file_list.csv`, never removes ones that fell out of it on a refresh),
+and `source_bounds.py` globs `source-store/{source}/*.tif`
+unconditionally — an orphaned old file gets included in `bounds.csv`,
+and from there `source_polygonize.py`/`aggregation_covering.py`, with
+nothing to distinguish it from genuinely current data.
+
+**Demonstrated on real data, not hypothetically**: compared
+`jpnational1`'s own `file_list.csv` (75,818 files, last regenerated
+2026-08-19) against a fresh pull of `japan-geotiff-dem`'s live
+`1/latest_file_list.csv.gz`/`obsolete_file_list.csv.gz`, filtered to
+`jpnational1`'s own mesh range (3900-5199): **81 of the 75,818 locally-
+downloaded files are now obsolete** (superseded by a newer survey for
+the same cell, most visibly a batch of `-DEM1A-20251208.tif` files
+themselves superseded by even-newer 2026 dates) and **402 genuinely
+new files exist upstream that a refresh would need to fetch**. This
+is real drift, not a contrived example — `japan-geotiff-dem`'s own
+1m tier kept accumulating updates (17,076 obsolete nationally) across
+zones including `jpnational1`'s own Kyushu/Okinawa/Shikoku/western-
+Chugoku range, after `jpnational1`'s manifest snapshot was taken.
+
+**Decision**: Added `pipelines/source_prune_obsolete.py <source>
+[--apply]`. Compares the current `source-catalog/{source}/file_list.csv`
+against what's actually present in `source-store/{source}/*.tif`;
+anything local but no longer in the manifest is "orphaned." Defaults
+to a dry-run (report only); `--apply` moves orphaned files to
+`source-store/{source}-stale/` — **moved, not deleted**, matching this
+project's established "reversible by default" convention (same
+pattern as `japan-geotiff-dem`'s own `skip_already_published.py`
+moving zips to `{res}-skip/` rather than deleting them). Verified
+against real `jpnational1` data: correctly identified exactly the same
+81 files independently found via direct manifest comparison, with zero
+false positives/negatives, before being trusted with `--apply`.
+
+**Where this fits in the update workflow, going forward**: whenever a
+source's `file_list.csv` is regenerated from a fresher upstream
+manifest (the recipe already used for `jpnational5`/`jpnational10`'s
+national expansion, D14) — `source_prune_obsolete.py {source} --apply`
+→ `source_download.py {source}` (picks up genuinely new files) →
+`source_bounds.py {source}` (regenerates `bounds.csv` without the
+pruned entries) → `source_polygonize.py {source} {processes}`. Skipping
+the prune step doesn't break anything outright, but silently keeps
+using stale survey data for any cell that was superseded, indefinitely
+— the D18 bug's same failure shape (lower-quality data winning by
+default because nothing tells the pipeline better data exists), just
+triggered by time instead of by a product-type mix-up.
+
+**Consequences**:
+- **Not yet applied to `jpnational1`'s real 81 orphans** — pruning
+  requires first refreshing `file_list.csv` from the live manifest
+  (currently 2026-08-19-dated), which is a real, if small, change to
+  a source that D16 deliberately left untouched this round. Whether to
+  do this now (a same-scope "keep current" refresh, distinct from the
+  national-scope-expansion question D16 already deferred) or wait
+  until `jpnational1`'s eventual full national refresh (which would
+  need this same prune step anyway) is Hidenori's call, not decided
+  in this entry.
+- `jpnational5`'s own `file_list.csv` was captured fresh (2026-08-19,
+  the same session as this national expansion) and has had no local
+  drift yet — it's the *download in progress* that will eventually
+  need this tool, not today's already-downloaded portion, per
+  Hidenori's own framing that the ongoing 5m JCI cycle is a good
+  real-world scenario to exercise this against once japan-geotiff-dem
+  starts publishing updates that overlap `jpnational5`'s already-
+  downloaded coverage.
+- Should be run for any source before its next `source_bounds.py` +
+  `source_polygonize.py`, not just once — this is now a standing step
+  in the refresh recipe above, not a one-time cleanup.
