@@ -2252,3 +2252,139 @@ Full detail in D14. Summary of what changed and current state:
       time) — resolved on its own within the session, but worth
       knowing this specific external dependency can degrade
       independently of everything else.
+
+## 2026-08-19 (continued): `source_polygonize.py` rewritten (D15) — test in progress on `jpnational10`
+
+Full detail in D15. Summary: `merge_source()`'s old one-`ogr2ogr`-
+subprocess-per-mesh loop (the real cost behind `jpnational1`'s earlier
+~4h17m full-run time, confirmed by a prior investigation to be
+subprocess/driver-init overhead, not disk speed) replaced with a
+two-level batched `gdal vector concat` (GDAL 3.13's new unified CLI) —
+parallel `BATCH_SIZE=3000`-file batches, then one final concat over
+the batch outputs. Measured **~16x** speedup on a real 500-file sample
+(216.68s → 13.5s), with **exact feature-count agreement** (494/500
+both ways) confirming no data loss. `BATCH_SIZE=3000` chosen because a
+single-invocation call over all ~18k then-available files hit macOS's
+1,048,576-byte `ARG_MAX`; 3000 files (~180KB of argv) has real margin.
+
+### Current state (mid-test, this is a checkpoint before an expected `/clear`)
+
+- **`jpnational10`** (4,981 tiles, national scope): **confirmed working
+  end to end under the new D15 code.** `source_bounds.py` re-run to
+  cover the newly-expanded scope (old `bounds.csv` was stale, from the
+  pre-expansion 1,364-tile era). `source_polygonize.py jpnational10 4`
+  completed cleanly (2 batches of ~2,500 each, 12s + 19s in parallel,
+  then one final concat + union). Verified output
+  `polygon-store/jpnational10.gpkg`: `Feature Count: 1` (correctly a
+  single unioned multipolygon), `Extent: (122.93, 20.42) -
+  (153.99, 45.56)` — matches the expected national EEZ-bounding-box
+  extent exactly. This was the deliberately chosen first real target
+  (small, safe) before trusting the new code on anything larger — it
+  passed.
+- **`jpnational1`** (75,818 tiles, still Kyushu-range): its own
+  `source_polygonize.py` run under the **old** code was interrupted
+  ~40 minutes in (only in the parallel `gdal_footprint`-extraction
+  phase, `polygonize_source()` — never reached the slow
+  `merge_source()` part) specifically to do this investigation. ~18k
+  per-mesh GPKGs from that partial run are still on disk in
+  `polygon-store/jpnational1/` and reusable (`polygonize_source()` is
+  idempotent, `gdal_footprint -overwrite` skips nothing extra but
+  doesn't corrupt anything either) — **not yet resumed under the new
+  code**, waiting on `jpnational10` confirming clean first.
+- **`jpnational5`** (378,618 tiles, national scope): still downloading
+  (was ~25-26% by file count a short while before this entry). Its own
+  `source_bounds.py`/`source_polygonize.py` haven't started. This is
+  the real stress test for D15's rewrite once it gets there.
+- **`jpnationalsea`** (275 tiles, GLO-30, national scope): download
+  **complete** (2h29m54s under the new aria2c mechanism, D14, all
+  checksum-verified). Bounds/polygonize not yet started.
+- Download-progress snapshot at write time (`check_download_progress.py`,
+  D14's companion tool):
+  ```
+  jpnational1     75,818 /  75,818  (100.0%)
+  jpnational10     4,981 /   4,981  (100.0%)
+  jpnational5     ~97,000-100,000 / 378,618  (~26%, still climbing)
+  jpnationalsea      275 /     275  (100.0%)
+  ```
+
+### Also this session (before the D14/D15 work above)
+
+- `jpkyushutest1`/`jpkyushutest5m`/`jpkyushutest10m` renamed to
+  `jpnational1`/`jpnational5`/`jpnational10` (dropped the "m" suffix on
+  the latter two once their old `...5m`/`...10m`-convention sibling
+  entries were deleted as superseded test data — `jphakodatecity*`,
+  `jphakodatetrial*`, `jpsapporo*`, `jpshakotan*`, ~3.5GB reclaimed;
+  `jphokkaidodem1` deliberately left alone, frozen per D12, not a test
+  entry).
+- `jpnational5`/`jpnational10` expanded from the old 3900-5199
+  mesh-range filter to full national scope (unfiltered
+  `latest_file_list.csv.gz`). `jpnational1`'s own national expansion
+  stays gated on `japan-geotiff-dem` finishing its national 1m publish
+  — unrelated dependency, which is why 5m/10m went first.
+- Added `jpnationalsea`: 275 GLO-30 tiles covering a bounding box (lat
+  20-46N, lon 122-154E) around Japan's claimed EEZ extent, verified to
+  have real tile coverage at the box's extremes — kept deliberately
+  free of named-territory specifics in this repo's docs (Hidenori's
+  request, practical EEZ-coverage requirement not a sovereignty
+  statement).
+- `japan.pmtiles` (D13, prior session) still lives on `stars`
+  (`https://depot.optgeo.org/japan.pmtiles`), not re-touched this
+  session.
+
+### Next steps, in order
+
+- [x] Confirm `jpnational10`'s `source_polygonize.py` run (new code)
+      finishes clean — **done**, verified sane single-feature union
+      matching the expected national extent.
+- [ ] Resume `jpnational1`'s polygonize under the new code
+      (`source_polygonize.py jpnational1 4`) — its `polygonize_source()`
+      output is already ~18k/75,818 files in from the interrupted run,
+      idempotent to continue.
+- [ ] Once `jpnational1` polygonize is done: `aggregation_covering.py`
+      → `aggregation_run.py` → `downsampling_covering.py` →
+      `downsampling_run.py` → `bundle.py` → `merge_japan_bundles.py`
+      (`TMPDIR` pointed at `/Volumes/Migrate-2025-04/tmp`, proven
+      pattern from the earlier `tempfile`-bug fix) → re-upload
+      `japan.pmtiles` to `stars` via `rsync` (not Source Cooperative,
+      per D13).
+- [ ] `jpnational5`/`jpnational10`/`jpnationalsea`: once each finishes
+      downloading (5m still has a long way to go), run their own
+      `source_bounds.py`/`source_polygonize.py` (now under the fast
+      D15 code) and fold into a future aggregation run.
+- [ ] `aalto`'s `japan-geotiff-dem` JCI 2026-09 work continues in
+      parallel (Kanto-1 in progress, Chubu still has a tail — see that
+      repo's own `HANDOVER.md`) — gates `jpnational1`'s eventual
+      national-scope expansion.
+
+## Resume prompt
+
+Paste this after `/clear` to pick up exactly here:
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` work on `slate`.
+> Read this file's last ~3 entries (D14: CSV manifests + aria2c
+> downloader; D15: `source_polygonize.py` batched-concat rewrite; this
+> closing entry) and `DECISIONS.md` D14/D15 for full technical detail
+> before touching anything.
+>
+> **First**: `jpnational10` already confirmed D15's rewrite works end
+> to end (single-feature union, correct national extent) — check
+> whether `jpnational1`'s own polygonize (resumed under the new code
+> right after this checkpoint was written) has finished
+> (`ls polygon-store/jpnational1.gpkg`). If it hasn't been started yet
+> for some reason, run `source_polygonize.py jpnational1 4` from
+> `pipelines/` — its partial `polygon-store/jpnational1/*.gpkg` output
+> from an earlier interrupted run should still be there and is safe to
+> build on.
+>
+> **Then**: once `jpnational1`'s polygonize is done, continue to
+> `aggregation_covering.py` → `aggregation_run.py` → downsampling →
+> `bundle.py` → `merge_japan_bundles.py` (remember: `TMPDIR` pointed at
+> `/Volumes/Migrate-2025-04/tmp`, not the internal SSD) → `rsync` the
+> resulting `japan.pmtiles` to `stars` (`/home/stars/data/`, NOT
+> Source Cooperative — SC's multipart upload kept failing on this file,
+> see D13).
+>
+> `jpnational5` (378,618 tiles) is still downloading in the background
+> and is the real scale-test for D15's rewrite once it gets to its own
+> polygonize stage — don't wait on it before proceeding with
+> `jpnational1`'s own pipeline above.

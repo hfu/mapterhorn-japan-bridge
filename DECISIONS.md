@@ -1119,3 +1119,111 @@ not the download stage).
   to take substantially longer than `jpnational1`'s did, purely from
   genuinely-new-file volume (not a repeat of the old per-file-overhead
   problem, which this whole decision was written to fix).
+
+## D15: `source_polygonize.py`'s `merge_source()` rewritten around the new unified `gdal vector concat` CLI — ~16x measured speedup, batched to work around macOS ARG_MAX
+
+**Status**: Decided and implemented 2026-08-19; correctness-verified at
+500-file scale, end-to-end tested on `jpnational10` (4,981 files) as
+this entry is being written — see "Status at write time" below for
+exactly how far that test had gotten.
+
+**Context**: `merge_source()` (called by `source_polygonize.py`, itself
+chained after `source_download.py`/`source_bounds.py`) builds one
+merged GPKG of per-mesh coverage-footprint polygons by running
+`ogr2ogr -update -append` **once per mesh, sequentially, as a separate
+subprocess**. A prior investigation (this file's own entry a few hundred
+lines up, "`polygon-store` fast-storage relocation investigated") had
+already established: (a) disk speed is *not* the bottleneck (internal
+vs. external SSD differed by only ~10% on the real workload pattern);
+(b) per-invocation overhead (~90-430ms/file, measured two ways in two
+sessions) *is* the bottleneck — subprocess launch + GDAL driver/SQLite
+init, paid once per mesh regardless of storage; (c) the fix direction
+is fewer, batched invocations, not a storage-tier change — flagged but
+not implemented at the time.
+
+This stopped being a someday-topic once `jpnational1`'s national-scope
+work made the real cost concrete: a full run at the *old* Kyushu-range
+scope (~75,724 meshes) took observed **~4h17m** end to end per an
+earlier session's own note. Hidenori: "スケールする方法の実装を目指
+そう" (let's aim for an implementation that actually scales) — with
+`jpnational5` about to need this at **378,618** meshes (~5x), a naive
+linear extrapolation of the old method put that alone at 20+ hours,
+purely from subprocess overhead, not genuine per-byte work. Hidenori's
+framing: fix this now, while still working at the smaller (soon-to-be-
+superseded) Kyushu-scoped `jpnational1`, rather than after national
+expansion makes iteration even more expensive — also noted this scale
+of merge is plausibly beyond what upstream Mapterhorn (Oliver) has
+exercised, so there's no existing "just copy their approach" shortcut.
+
+**Investigation, in order**:
+1. Checked for a newer GDAL CLI: GDAL 3.13.3 (already installed) ships
+   a provisional unified `gdal` command (`gdal vector concat`, `gdal
+   vector dissolve`, etc.) alongside the classic per-utility binaries.
+   `gdal vector concat <inputs...> <output> --mode single
+   --output-layer out` takes **many inputs in one process** — the
+   direct fix for "one subprocess per file."
+2. Benchmarked old vs. new on a real 500-file sample (actual
+   `jpnational1` per-mesh GPKGs already on disk from a since-interrupted
+   run, not synthetic data): **old 3m36.68s (216.68s) vs. new 13.5s —
+   ~16x**.
+3. Correctness check: both methods independently produced **494
+   features from the same 500 input files** (6 presumably-empty/
+   invalid footprints excluded identically by both) — exact agreement,
+   no `gdal vector concat`-specific data loss.
+4. Scale-tested for the ARG_MAX wall: macOS `ARG_MAX` = 1,048,576
+   bytes. A single `gdal vector concat` call over all 18,384
+   then-available real files failed immediately (`argument list too
+   long`, both via plain `ls`-glob *and* via an explicit file list
+   substituted into the command line — the OS limit applies to the
+   assembled argv regardless of how it's built). A 3,000-file batch
+   succeeded (92.3s, ~31ms/file, no error) — chosen as `BATCH_SIZE`
+   with real headroom under the ~1MB ceiling for ~60-80-byte paths.
+
+**Decision — two-level batched concat**: `merge_source()` rewritten to
+(a) split the mesh list into `BATCH_SIZE`-sized (3,000) chunks, (b) run
+one `gdal vector concat` per chunk **in parallel** via the same
+`multiprocessing.Pool` pattern `polygonize_source()` already uses
+(`processes` argument, same as today's CLI usage — no new argument
+added), producing `polygon-store/{source}-batches/batch-NNNNN.gpkg`
+files, then (c) one final `gdal vector concat` over those (far fewer —
+tens, not tens-of-thousands) batch outputs into the same
+`polygon-store/{source}/merged.gpkg` as before. The final union step
+(`ogr2ogr ... ST_Union(ST_MakeValid(geom))` into `polygon-store/
+{source}.gpkg`) is unchanged — it was already a single invocation, not
+part of the bottleneck. Public interface unchanged:
+`source_polygonize.py <source> <processes>` — the rewrite is entirely
+inside `merge_source()`; `polygonize_source()` (the parallel
+`gdal_footprint` extraction stage) is untouched.
+
+**Status at write time**: deployed and running end-to-end against
+`jpnational10` (4,981 tiles — chosen as the safe first real target per
+Hidenori's own call, "止めて差し替えるのは賛成", small enough to
+validate quickly) via `source_polygonize.py jpnational10 4`. Not yet
+confirmed complete as this entry is written. `jpnational1`'s own
+polygonize run (old code, started ~6:25pm, interrupted ~40 minutes in
+for this investigation — no data lost, `polygonize_source()`'s
+per-mesh GPKGs are on disk and reusable) has **not yet been resumed
+under the new code** — that's the next step once `jpnational10`
+confirms clean end to end.
+
+**Consequences**:
+- Once `jpnational10` confirms correct, resume `jpnational1` under the
+  new `merge_source()` (its ~18k already-polygonized per-mesh GPKGs
+  from the interrupted run can likely be reused directly — `polygonize_
+  source()` is idempotent per file, matching `gdal_footprint -overwrite`
+  semantics already in place).
+- `jpnational5` (378,618 meshes) is the real stress test for this
+  rewrite — at the measured ~31ms/file batch rate that's roughly
+  ~3.3 hours for the concat phase alone (down from a naive 20+-hour
+  extrapolation of the old method), though this hasn't been directly
+  measured at that scale yet.
+- The new `gdal` unified CLI is explicitly marked provisional upstream
+  ("The project reserves the right to modify, rename, reorganize, and
+  change the behavior... until frozen in a future release") — worth
+  re-checking this dependency on any future GDAL upgrade, the same way
+  the GDAL-3.13.3 duplicate-`-append` regression (this file's own
+  earlier entry) was caught by a routine Homebrew auto-upgrade.
+- `BATCH_SIZE=3000` was chosen empirically for this specific workload
+  (short mesh-code-based filenames); a source with much longer file
+  paths would need a smaller batch size to stay under the same
+  1,048,576-byte `ARG_MAX` ceiling.
