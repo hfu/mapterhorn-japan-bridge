@@ -33,6 +33,7 @@ This file is the *why*, kept stable. Session narrative lives in
 | [D15](#d15-source_polygonizepys-merge_source-rewritten-around-the-new-unified-gdal-vector-concat-cli--16x-measured-speedup-batched-to-work-around-macos-arg_max) | `source_polygonize.py`'s `merge_source()` rewritten around the new unified `gdal vector concat` CLI — ~16x measured speedup, batched to work around macOS ARG_MAX | Accepted, verified at production scale | 2026-08-19 |
 | [D16](#d16-jpnational1-stays-at-its-current-regional-scope-for-now-build-japanpmtiles-with-510sea-national--1-regional-to-stress-test-the-downstream-pipeline-before-the-largest-jump) | `jpnational1` stays at its current regional scope for now; build `japan.pmtiles` with 5/10/sea national + 1 regional, to stress-test the downstream pipeline before the largest jump | Accepted | 2026-08-20 |
 | [D17](#d17-upstream-fidelity-as-a-standing-practice-and-where-fusi-fits) | Upstream fidelity as a standing practice, and where `fusi` fits | Accepted | 2026-08-20 |
+| [D18](#d18-within-source-product-type-priority-abc-was-purely-alphabetical-not-accuracy-based-lower-accuracy-data-was-silently-winning-over-higher-accuracy-data) | Within-source product-type priority (A/B/C) was purely alphabetical, not accuracy-based — lower-accuracy data was silently winning over higher-accuracy data | Accepted, fixed | 2026-08-20 |
 
 ---
 
@@ -1392,3 +1393,124 @@ formally archived.
   family docs — including `japan-geotiff-dem`'s and this repo's own
   `CLAUDE.md`/`README.md` — is worth doing once Hidenori decides,
   not preemptively.
+
+## D18: Within-source product-type priority (A/B/C) was purely alphabetical, not accuracy-based — lower-accuracy data was silently winning over higher-accuracy data
+
+**Status**: Accepted, fixed 2026-08-20, verified against real production
+data before deployment.
+
+**Context**: Hidenori's own mental model of this pipeline's merge
+priority is seven tiers: `1, 5a, 5b, 5c, 10a, 10b, sea` — 1m highest
+(DEM1A, laser survey only), then 5m split into DEM5A (airborne laser)
+> DEM5B (20cm-GSD photogrammetry) > DEM5C (40cm-GSD photogrammetry),
+then 10m similarly DEM10A > DEM10B, then `sea` (Copernicus GLO-30) as
+the universal fallback. D8 already verified the *cross-tier* part of
+this (1m > 5m > 10m > sea) by reading `aggregation_covering.py`'s
+`-maxzoom`-first sort, which is genuinely data-driven (each file's own
+native resolution) and correct. **Nobody had verified the *within-tier*
+part** — whether DEM5A actually beats DEM5B/5C (and DEM10A beats
+DEM10B) when both cover the same mesh cell, which does happen for real:
+`jpnational5`'s `file_list.csv` is a straight, unfiltered copy of
+`japan-geotiff-dem`'s `5/latest_file_list.csv.gz` (by design — see that
+repo's own D13, which tracks A/B/C as independent products, not
+versions of each other, on purpose), so a cell whose old
+photogrammetry file (5B/5C) was never marked obsolete when a newer 5A
+LiDAR survey later covered the same area ends up with **both** files
+live in `jpnational5` simultaneously.
+
+**Grounding for the order, from `hfu/fusi`**: this exact seven-tier
+priority isn't a fresh guess — it matches what Hidenori's earlier,
+independent `fusi` toolchain ([[D17]], the non-fork predecessor this
+project has since mostly superseded) already used in real production.
+`fusi`'s own `README.md` documents its production invocation verbatim:
+`just aggregate-split-lineage dem1a dem5a dem5b dem5c dem10a dem10b -o
+output/fusi.pmtiles ...` — and `pipelines/aggregate_pmtiles.py`'s
+`build_records_from_sources()` docstring states explicitly: "The order
+of `sources` defines priority: earlier entries have higher priority."
+`fusi` predates this project's `jpnationalsea`/GLO-30 addition, so it
+never had a `sea` tier to place — appending it last (lowest priority,
+universal fallback) is this project's own extension, not a deviation
+from `fusi`'s precedent, and is already correct here via the
+data-driven `-maxzoom` sort (GLO-30 is coarser than any GSI product).
+Separately confirmed `fusi`'s own merge implementation
+(`compute_tile_provenance()`) does an explicit per-pixel "first
+non-nodata source by priority wins" composite — a different mechanism
+than this fork's `gdalbuildvrt`-based approach, but the same intended
+semantic (`fusi`'s own docs: "低優先度ソースが上位ソースのnodataを埋
+めていることを確認します" — verify the low-priority source only fills
+the high-priority source's nodata gaps). This fix reproduces that same
+semantic through `gdalbuildvrt`'s confirmed last-wins-on-overlap
+behavior instead of reimplementing per-pixel provenance logic.
+
+**Investigation**: `aggregation_reproject.py`'s `create_virtual_raster()`
+builds one `gdalbuildvrt -input_file_list` call per group (from
+`utils.get_grouped_source_items()`). Empirically verified `gdalbuildvrt`'s
+actual overlap behavior with two tiny synthetic 4x4 rasters of known
+value, listed in both orders: **the last-listed file wins wherever
+inputs overlap** (confirmed both directions, not assumed from
+half-remembered docs). `get_grouped_source_items()` grouped items by
+`(-maxzoom, source)` only, with `filename` as the sole tiebreaker within
+a group — sorted alphabetically ascending, meaning `...DEM5A...` sorts
+*before* `...DEM5B...`/`...DEM5C...`, so for the same cell, **the
+lower-accuracy product was always listed last and therefore always
+won** — exactly backwards from the intended priority, and confirmed
+via `source-store/jpnational5/bounds.csv`: a same-mesh-cell 5A/5B pair
+has byte-identical `bounds`/`width`/`height` (225x150), so they fall
+into the *same* group (same maxzoom, same source name — `jpnational5`
+doesn't distinguish product type at the source-catalog level at all)
+and get merged in one `gdalbuildvrt` call, not routed through the
+cross-source "try highest priority, fall through only on nodata" logic
+in `aggregation_reproject.py`'s `reproject()` (that logic only fires
+*across* distinct groups, e.g. `jpnational1` vs `jpnational5`).
+
+**Scale, checked against the live `5/latest_file_list.csv.gz`
+nationally** (378,618 files): 25,522 mesh cells (~6.7%) currently carry
+more than one product type — 12,750 A+B, 12,474 A+C, 281 A+B+C, 17 B+C.
+Every one of those cells was silently using its lower-accuracy file
+instead of the higher-accuracy one available for the exact same
+location. 10m (`jpnational10`) has the identical code-level risk but
+no cells currently overlap in practice (checked `source-store/
+jpnational10/bounds.csv`: 7 DEM10A + 196 DEM10B, zero shared mesh
+cells at today's scope) — latent, not yet manifesting.
+
+**Caught before it mattered**: `jpnational5`'s D15 polygonize hadn't
+finished and `aggregation_run.py` hadn't started when this was found —
+this build (D16) would otherwise have baked the wrong priority into a
+multi-day production run, only discoverable after the fact by noticing
+visibly lower-quality terrain in areas with known LiDAR coverage.
+
+**Decision**: Added `get_product_type_rank()` to `utils.py` — parses
+the `-DEM<digits><letter>-` suffix GSI's own filenames already carry
+(`A`→0, `B`→1, `C`→2, lower = higher accuracy = should win), defaulting
+to rank 0 for any filename without that suffix (e.g. `jpnationalsea`'s
+Copernicus GLO-30 names, which never have more than one product per
+cell anyway, so the default is inert there). `get_grouped_source_items()`'s
+sort key gained `-get_product_type_rank(filename)` between `source` and
+`filename`, so within a group, items are now ordered worst-accuracy-first,
+best-accuracy-last — which, combined with `gdalbuildvrt`'s confirmed
+last-wins behavior, makes the highest-accuracy product win. Verified
+with a synthetic 5-row aggregation CSV (mixed `jpnational5`/`jpnational10`/
+`jpnationalsea` rows, including a real same-cell A/B/C triple) before
+deploying: the fix produces `[..C, ..B, ..A]` order → `A` is last →
+`A` wins, exactly as intended; the single-file groups (10m, sea) are
+unaffected.
+
+**Consequences**:
+- Every subsequent `aggregation_run.py`/`aggregation_covering.py` run
+  now uses accuracy-correct within-tier priority — this must land
+  *before* D16's build starts using real aggregation data (it does;
+  `aggregation_run.py` hasn't been invoked yet as of this fix).
+- This bug's root cause — a source-catalog entry (`jpnational5`)
+  bundling multiple genuinely-different-accuracy products under one
+  name with no source-level product-type distinction — is a
+  fork-specific consequence of how `japan-geotiff-dem`'s manifest was
+  copied wholesale into `file_list.csv` (D14), not necessarily an
+  upstream `mapterhorn/mapterhorn` issue; worth checking whether
+  upstream's own `jpdem5a-c` source-catalog entries (if they exist, or
+  whenever Oliver builds a 5m ingestion) have the same code path and
+  the same latent risk, per D17's "diff against upstream, contribute
+  fixes back" practice — not yet checked as of this entry.
+- If a future resolution tier or source ever introduces its own
+  multi-product-type split (e.g. if 1m ever gains a photogrammetry
+  fallback), `get_product_type_rank()`'s pattern/rank table needs
+  extending — it currently only recognizes `A`/`B`/`C` suffixes.

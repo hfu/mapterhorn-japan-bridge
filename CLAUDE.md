@@ -39,6 +39,42 @@ largest scale first (D16). Hokkaido was un-frozen and fully redone as
 part of `japan-geotiff-dem`'s own JCI 2026-09 (see that repo's own
 docs) — the D12-era Hokkaido freeze below is historical, not current.
 
+## Source priority order (read before touching aggregation code)
+
+Production merges seven tiers, highest accuracy first: **`1` (DEM1A) >
+`5a` (DEM5A) > `5b` (DEM5B) > `5c` (DEM5C) > `10a` (DEM10A) > `10b`
+(DEM10B) > `sea` (Copernicus GLO-30)**. `A` = airborne laser survey
+(1m/5m) or finer 1:10,000-contour derivation (10m); `B`/`C` = coarser
+photogrammetry or 1:25,000-contour fallbacks used where no better
+survey exists yet — lower letter/tier always means higher trustworthy
+accuracy, and should win wherever two tiers cover the same cell.
+
+**Where this is actually enforced, in code** (not just convention):
+- *Across* resolution tiers (`1` > `5` > `10` > `sea`): `aggregation_
+  covering.py`'s macrotile grouping sorts by each file's own real
+  native resolution (`-maxzoom`, computed from `bounds.csv`, not a
+  hardcoded per-source constant) — verified by reading the code, D8.
+- *Within* the 5m/10m tiers (`5a`>`5b`>`5c`, `10a`>`10b`): `utils.
+  get_grouped_source_items()`'s sort key includes `-get_product_type_
+  rank(filename)`, which parses GSI's own `-DEM<digits><letter>-`
+  filename suffix. This did **not exist** until D18 (2026-08-20) —
+  before that fix, same-cell A/B/C files sorted purely alphabetically
+  by filename, and combined with `gdalbuildvrt`'s confirmed
+  last-file-wins overlap behavior (`aggregation_reproject.py`'s
+  `create_virtual_raster()`), the *lower*-accuracy product was
+  silently winning wherever it existed for the same cell as a
+  higher-accuracy one — see D18 for the full investigation, the
+  national scale (25,522 affected 5m cells), and the fix.
+- This exact tier order isn't a fresh guess — it matches Hidenori's
+  earlier, independent `fusi` toolchain's own real production command
+  (`dem1a dem5a dem5b dem5c dem10a dem10b`, `fusi`'s `README.md`) and
+  its explicit "earlier entries have higher priority" convention — see
+  D18's "Grounding for the order" for the full citation.
+
+If a new resolution tier or product-type split is ever added, extend
+`get_product_type_rank()`'s pattern/rank table (`utils.py`) — it only
+recognizes `A`/`B`/`C` suffixes today.
+
 This repo itself contains **no data-processing pipeline**. It's the
 documentation home for the bridge effort as a whole, plus a GitHub
 Pages preview viewer. The actual pipeline lives in `hfu/mapterhorn`
