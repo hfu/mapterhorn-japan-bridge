@@ -21,14 +21,23 @@ for Japan, as an **interim bridge** until upstream
 2026-07-31 GSI DEM1A survey update for Hokkaido. Once upstream catches
 up, this whole effort — this repo, the `hfu/mapterhorn` source-catalog
 entries it depends on, the `smartmaps/mapterhorn-japan-bridge` Source
-Cooperative product — should be considered retirable.
+Cooperative product — should be considered retirable. Being a real
+`git` fork (not an independent reimplementation) is deliberate and
+load-bearing for this mission — see DECISIONS.md D17 for why upstream
+fidelity is treated as a standing practice here, not a one-time setup
+step, and how this differs from `hfu/fusi` (an earlier, unrelated,
+non-fork DEM→PMTiles toolchain whose role this project has since
+mostly absorbed).
 
-**Scope, as of 2026-08-11 (DECISIONS.md D12): Kyushu/Okinawa only,
-best-effort, no deadline.** Hokkaido is deliberately frozen after
-`aalto`'s external HDD failed outright and took all 46 of its
-raw region-pack downloads with it — do not resume Hokkaido work
-without an explicit fresh decision from Hidenori. See `HANDOVER.md`'s
-2026-08-11 entry for the full incident.
+**Scope, updated 2026-08-20 (DECISIONS.md D16) — this paragraph moves
+fast, verify against `HANDOVER.md`/`DECISIONS.md` before trusting it**:
+`jpnational5`/`jpnational10`/`jpnationalsea` are national scope.
+`jpnational1` (1m) is deliberately still Kyushu/Okinawa/Shikoku/
+western-Chugoku only — not frozen, just sequenced after the other
+three so the downstream pipeline gets stress-tested at a large-but-not-
+largest scale first (D16). Hokkaido was un-frozen and fully redone as
+part of `japan-geotiff-dem`'s own JCI 2026-09 (see that repo's own
+docs) — the D12-era Hokkaido freeze below is historical, not current.
 
 This repo itself contains **no data-processing pipeline**. It's the
 documentation home for the bridge effort as a whole, plus a GitHub

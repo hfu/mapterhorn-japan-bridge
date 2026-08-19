@@ -26,6 +26,13 @@ This file is the *why*, kept stable. Session narrative lives in
 | [D8](#d8-verified-the-1m5m10m-priority-merge-by-reading-the-code) | Verified the 1m/5m/10m priority-merge by reading the code | Accepted | 2026-08-08 |
 | [D9](#d9-added-5m10m-fallback-trial-sources-after-confirming-real-1m-gaps) | Added 5m/10m fallback trial sources after confirming real 1m gaps | Accepted | 2026-08-08 |
 | [D10](#d10-custom-preview-viewer-not-rendering-bvmaphillshade) | Custom preview viewer not rendering bvmap/hillshade | Open | 2026-08-08 |
+| [D11](#d11-japanpmtiles-was-encoded-through-the-forks-orthophoto-path-not-terrarium) | `japan.pmtiles` was encoded through the fork's orthophoto path, not Terrarium | Accepted | 2026-08-09 |
+| [D12](#d12-aaltos-external-hdd-failed-outright-hokkaido-frozen-kyushuokinawa-only-slate-is-now-this-repos-sole-machine-too) | `aalto`'s external HDD failed outright; Hokkaido frozen, Kyushu/Okinawa-only, `slate` is now this repo's sole machine too | Decided | 2026-08-11 |
+| [D13](#d13-japanpmtiles-fails-to-upload-to-source-cooperative-on-large-multipart-puts-host-on-starsmartin-for-daily-use-instead-keep-sc-as-a-lower-frequency-archive) | `japan.pmtiles` fails to upload to Source Cooperative on large multipart PUTs; host on `stars`/`martin` for daily use instead, keep SC as a lower-frequency archive | Accepted | 2026-08-19 |
+| [D14](#d14-csv-manifest-with-sizemd5-from-s3-etag--aria2c-replaces-the-one-wget-per-url-download-loop-jpnational5jpnational10-expanded-to-national-scope) | CSV manifest with size+MD5 (from S3 ETag) + aria2c replaces the one-wget-per-URL download loop; `jpnational5`/`jpnational10` expanded to national scope | Accepted | 2026-08-19 |
+| [D15](#d15-source_polygonizepys-merge_source-rewritten-around-the-new-unified-gdal-vector-concat-cli--16x-measured-speedup-batched-to-work-around-macos-arg_max) | `source_polygonize.py`'s `merge_source()` rewritten around the new unified `gdal vector concat` CLI — ~16x measured speedup, batched to work around macOS ARG_MAX | Accepted, verified at production scale | 2026-08-19 |
+| [D16](#d16-jpnational1-stays-at-its-current-regional-scope-for-now-build-japanpmtiles-with-510sea-national--1-regional-to-stress-test-the-downstream-pipeline-before-the-largest-jump) | `jpnational1` stays at its current regional scope for now; build `japan.pmtiles` with 5/10/sea national + 1 regional, to stress-test the downstream pipeline before the largest jump | Accepted | 2026-08-20 |
+| [D17](#d17-upstream-fidelity-as-a-standing-practice-and-where-fusi-fits) | Upstream fidelity as a standing practice, and where `fusi` fits | Accepted | 2026-08-20 |
 
 ---
 
@@ -1227,3 +1234,161 @@ confirms clean end to end.
   (short mesh-code-based filenames); a source with much longer file
   paths would need a smaller batch size to stay under the same
   1,048,576-byte `ARG_MAX` ceiling.
+
+## D16: `jpnational1` stays at its current regional scope for now; build `japan.pmtiles` with 5/10/sea national + 1 regional, to stress-test the downstream pipeline before the largest jump
+
+**Status**: Accepted, 2026-08-20.
+
+**Context**: `japan-geotiff-dem` finishing its own JCI 2026-09 (all 11
+zones, national 1m coverage) removed the technical gate on
+`jpnational1`'s own national-scope expansion (D14's sibling decision
+already took `jpnational5`/`jpnational10` national; `jpnationalsea` is
+national by construction). `jpnational1` going national would be a
+~3.85x jump (75,818 → ~291,779 files) on top of `jpnational5` already
+being the largest single stress-test this pipeline has run (378,618
+files, D15's real scale-test, still mid-`source_polygonize.py` as this
+entry is written). Hidenori was asked twice whether to proceed with
+`jpnational1`'s expansion (once right before a `/clear`, once again
+this session) and both times deferred the decision rather than saying
+yes immediately.
+
+**Decision**: Leave `jpnational1` at its current scope (Kyushu/
+Okinawa/Shikoku/western Chugoku, mesh range 3900-5199) for this round.
+Once `jpnational5`'s D15 polygonize is confirmed correct
+(`Feature Count: 1`, national-extent bounding box), proceed through
+the full downstream pipeline — `aggregation_covering.py` →
+`aggregation_run.py` → `downsampling_covering.py` →
+`downsampling_run.py` → `bundle.py` → `merge_japan_bundles.py` →
+`rsync` to `stars` — with the sources as they stand: `jpnational1`
+regional (1m, highest priority), `jpnational5`/`jpnational10`/
+`jpnationalsea` national. This is already **the first genuinely
+national-scope `japan.pmtiles` this project has built** (a prior
+789,984-tile/70.7GB build, D13, predates any of the sources going
+national) — `aggregation_covering.py`'s macrotile grid is built from
+the *union* of every source's coverage, and that union is already
+national once 5m/10m/sea are, regardless of what 1m covers on top of
+it.
+
+**Why not just expand `jpnational1` first and do one final national
+build**: the point of building now, at this intermediate scope, is
+deliberately to **exercise and tune the downstream stages
+(aggregation → downsampling → bundle → merge) at a size that's already
+large but not yet the largest possible**, before committing to the
+biggest jump. `aggregation_run.py`/`downsampling_run.py` have only
+ever been run once at real scale (1,119/2,697 items, ~33h total
+end-to-end, back when every source was still regional-only — see
+D13's own build) — genuinely unknown at today's much larger union
+extent. Running it now, with `jpnational1` still regional, produces a
+real `japan.pmtiles` update (better national high-res-where-available
+coverage than what's live today) *and* real timing/memory/failure-mode
+data for these stages at a new order of magnitude, without yet paying
+the added `1`m-sourced reprojection cost that `jpnational1` going
+national would add on top. If a bug or scaling wall shows up, it's
+cheaper to diagnose and fix at this scale than after also expanding
+`jpnational1`.
+
+**Consequences**:
+- The resulting `japan.pmtiles` update will already be the best
+  version of this dataset ever published (national 5m/10m/sea
+  fallback coverage everywhere, on top of unchanged 1m-precision
+  coverage in the Kyushu/Okinawa/Shikoku/western-Chugoku region) —
+  worth shipping on its own merits, not just as a test run.
+- `jpnational1`'s own national expansion is **not abandoned, just
+  sequenced after this build** — once `aggregation_run.py`/
+  `downsampling_run.py` are proven stable at this new scale (timing
+  measured, no unexpected failure modes), re-ask Hidenori and proceed
+  with the same recipe D14 already used for `jpnational5`/
+  `jpnational10` (regenerate `jpnational1/file_list.csv` unfiltered
+  from `japan-geotiff-dem`'s national `1/latest_file_list.csv.gz`,
+  re-download via aria2c, re-run bounds/polygonize via D15), then a
+  second, final `japan.pmtiles` rebuild.
+- `slate` should be kept continuously busy through this whole
+  sequence rather than left idle between stages — each stage advances
+  automatically into the next per the existing pipeline chaining, so
+  the main risk is a human/agent forgetting to check back in, not the
+  pipeline itself stalling.
+
+## D17: Upstream fidelity as a standing practice, and where `fusi` fits
+
+**Status**: Accepted, 2026-08-20.
+
+**Context**: This repo (`hfu/mapterhorn-japan-bridge`) exists as an
+**interim bridge** (CLAUDE.md's own Mission section) until upstream
+`mapterhorn/mapterhorn`'s own `jpdem1a` source catches up with GSI's
+latest surveys — the whole effort is explicitly meant to be retirable
+once that happens. That framing only makes sense if this project
+stays genuinely close to upstream in the meantime, not just in intent
+but in mechanism: `hfu/mapterhorn` (the pipeline half of this bridge)
+is a real `git` fork with an `upstream` remote, not an independent
+reimplementation. That distinction turned out to matter concretely,
+not just philosophically — D11's investigation (this file, way above)
+found and fixed two real correctness bugs
+(`downsampling_run.py`'s requantization not matching upstream's exact
+digit-extraction formula, and a conflated `macrotile_z` constant that
+silently forced this fork's genuinely-native z16 elevation data up to
+a fake, oversampled z17) **specifically by running `git diff
+upstream/main` and reading upstream's actual code side by side** —
+neither bug would have been findable, let alone fixable with
+confidence, without a real upstream reference to diff against.
+`FORK_NOTES.md`'s own "Status" section records this fork having
+already merged upstream's subsequent Manager/Worker + checkpoint-
+refactor commits — tracking upstream isn't just a one-time diff, it's
+an ongoing practice that has already paid off more than once.
+
+**Where `fusi` fits**: `hfu/fusi` (Hidenori's earlier, independent
+GeoTIFF→Terrarium-PMTiles toolchain, predating this bridge project)
+was built "based on the approach Mapterhorn showed" but is **not a
+fork** — no `git` relationship to `mapterhorn/mapterhorn` at all, so
+it structurally cannot benefit from the mechanism D11 exercised: there
+is no upstream to diff against, no upstream fixes to merge, no way to
+catch a `fusi`-side bug the way the `macrotile_z`/requantization ones
+were caught here. `fusi` originally produced the `jpdem1a`/`jpdem5a-c`/
+`jpdem10a-b` source-catalog entries this fork's own `CLAUDE.md`
+explicitly instructs never to combine with (D6) or fall back to
+(`japan-geotiff-dem`'s own `HANDOVER.md`: "alphabetical tie-break
+would let their stale data win over this project's fresher data") —
+those entries are already treated as superseded-in-practice by this
+project's own `jpnational*` sources, not a hypothetical concern.
+`fusi`'s own repo has had no commits since 2025-12-19 (confirmed via
+`gh api repos/hfu/fusi/commits`, 2026-08-20) — 8 months dormant, not
+formally archived.
+
+**Decision**:
+1. Treat close upstream tracking (`git fetch upstream`, periodic
+   `git diff upstream/main` on any pipeline stage that behaves
+   unexpectedly, merging upstream's own fixes promptly) as a standing
+   practice for `hfu/mapterhorn`, not a one-time D11 exercise — it is
+   this fork's main structural quality advantage over an independent
+   reimplementation like `fusi`, and the value compounds the longer
+   the fork stays current.
+2. Treat contributing generic bug fixes back upstream as the ideal
+   outcome when this fork finds one that isn't specific to Japan/DEM
+   data — `FORK_NOTES.md`'s own "Category A" list already identifies
+   several candidates from the Freetown/orthophoto period. Not
+   obligatory or urgent, but the default instinct when a fix is
+   clearly generic (see the draft outreach to Oliver Wipfli prepared
+   2026-08-20, offering the D15 `gdal vector concat` batching pattern
+   as a possibly-useful technique for upstream's own aggregation
+   stage, at whatever scale it might matter there).
+3. **Recommend to Hidenori** that `hfu/fusi` be considered for public
+   archival on GitHub — not a Claude-executed action (archiving is an
+   account-level, "modifying public content"-class action requiring
+   explicit permission each time), just a recommendation grounded in:
+   8 months of dormancy, and its original role (Japan DEM →
+   Terrarium PMTiles, feeding `jpdem1a`-style upstream entries) now
+   substantially covered by this bridge project's own, better-
+   upstream-tracked pipeline. Hidenori's call, not assumed.
+
+**Consequences**:
+- No code changes follow from this entry directly — it's a policy
+  statement, recorded here (rather than only in `HANDOVER.md`, which
+  is session narrative) because it's meant to outlive any single
+  session and shape default behavior (diff-before-guessing when
+  something looks wrong, default toward upstream contribution when a
+  fix is generic) going forward.
+- If `fusi` is archived, update any doc that still references it as
+  an active project (this file's own D6 already treats its output as
+  stale, but a broader sweep for "fusi" mentions across `optgeo`/`hfu`
+  family docs — including `japan-geotiff-dem`'s and this repo's own
+  `CLAUDE.md`/`README.md` — is worth doing once Hidenori decides,
+  not preemptively.

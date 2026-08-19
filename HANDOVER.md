@@ -2588,49 +2588,133 @@ this entry** — don't start it without checking first.
       further change needed there once a fresh build is uploaded, it
       just needs the file at that same path/name to update.
 
+## 2026-08-20: `jpnational1`'s national expansion decided — sequenced after this build, not before (D16); upstream-relationship policy recorded (D17); ETA estimated
+
+**The "ask Hidenori again" from the last checkpoint is resolved.**
+Asked a third time this session; his answer this time was explicit and
+final for now: **build `japan.pmtiles` with `jpnational1` still
+regional (Kyushu/Okinawa/Shikoku/western Chugoku) and `jpnational5`/
+`jpnational10`/`jpnationalsea` national, once `jpnational5`'s D15
+polygonize is confirmed correct** — don't wait to also expand
+`jpnational1` first. Recorded as DECISIONS.md D16, including the
+rationale: this is deliberately a chance to stress-test/tune
+`aggregation_run.py`/`downsampling_run.py` at a large-but-not-largest
+scale (these stages have only ever run once at real scale, back when
+every source was still regional, D13) before also paying the added
+cost of `jpnational1` going national too. **Don't re-propose expanding
+`jpnational1` before this build — it's explicitly sequenced after, not
+instead of.**
+
+**`jpnational5` progress, as of this entry**: still in
+`source_polygonize.py`'s footprint-extraction phase (screen session
+`jpnational5_polygonize`, started 2026-08-20 06:13 JST), observed
+throughput ~530-930 files/min across two spot-checks — several hours
+left for this phase alone before the batched-concat phase even starts.
+Not a failure, this is D15's real stress-test at 378,618 files (~5x
+`jpnational1`'s own 75,818-file production run, which itself took
+~4h17m under the *old* per-file method this rewrite replaced).
+
+**ETA estimate for the D16 build** (reasoned, not yet measured —
+`aggregation_covering.py` is a lightweight pure-Python planning step,
+cheap to run for real once `slate` isn't busy with `jpnational5`, and
+should replace this estimate with real numbers before trusting it for
+scheduling): the prior real run (D13, 1,119 aggregation items / 2,697
+downsampling items, ~33h total: ~25h22m aggregation + ~6h53m
+downsampling + bundle.py's own ~16min) predates any source going
+national, so its item counts don't transfer directly. Since
+`aggregation_covering.py`'s macrotile grid comes from the *union* of
+every source's coverage, and `jpnational10`/`jpnationalsea` already
+make that union national on their own, **the D16 build's aggregation
+item count should already be close to what a fully-national build
+(`jpnational1` included) would need** — `jpnational1` going national
+later mainly changes which macrotiles get upgraded to a 1m-priority
+source (heavier per-item reprojection, same item count), not how many
+macrotiles exist. Rough planning-level range: **low-single-digit days**
+for the D16 build's `aggregation_run.py` + `downsampling_run.py`
+combined, with a further **20-50%** on top for `aggregation_run.py`
+specifically once `jpnational1` also goes national (more macrotiles
+using the heavier 1m source, same total macrotile count). Treat this
+as an order-of-magnitude placeholder, not a commitment — get a real
+`aggregation_covering.py` item count first.
+
+**DECISIONS.md D17 recorded**: upstream-tracking fidelity (real `git`
+fork, periodic `git diff upstream/main`, merging upstream's fixes) is
+now an explicit standing practice for this project, not just a
+one-time thing D11 happened to do — D11's own investigation (finding
+the `macrotile_z`/requantization bugs by diffing against upstream)
+is the concrete evidence this pays off. Also records where `hfu/fusi`
+(Hidenori's earlier, independent, non-fork DEM→PMTiles toolchain)
+fits: structurally unable to benefit from the same upstream-diffing
+mechanism (no `git` relationship to `mapterhorn/mapterhorn` at all),
+dormant since 2025-12-19 (no commits, confirmed via `gh api`), and its
+original role (feeding `jpdem1a`-style entries) now substantially
+covered by this project's own `jpnational*` pipeline. **Recommends**
+(does not decide) that Hidenori consider archiving `hfu/fusi` on
+GitHub. Two outreach drafts (a factual `mapterhorn/mapterhorn#142`
+comment reporting the 1m completion + csv.gz manifest format, and a
+more personal note to Oliver Wipfli offering the D15 `gdal vector
+concat` batching technique as a possibly-useful generic pattern for
+Mapterhorn's own aggregation stage) were prepared this session for
+Hidenori to review/post himself — not sent by Claude.
+
+**Next steps, in order**:
+- [ ] Confirm `jpnational5`'s polygonize finishes cleanly (`ls -la
+      polygon-store/jpnational5.gpkg` fresh mtime, `ogrinfo -so ...
+      union` `Feature Count: 1`, national-extent bbox).
+- [ ] Run `aggregation_covering.py` for a real item count (cheap,
+      doesn't need GDAL) — use it to replace the ETA estimate above
+      with a measured one before committing to the full
+      `aggregation_run.py`.
+- [ ] `aggregation_run.py` → `downsampling_run.py` → `bundle.py` →
+      `merge_japan_bundles.py` (`TMPDIR=/Volumes/Migrate-2025-04/tmp`)
+      → `rsync` to `stars` (`/home/stars/data/`, not Source
+      Cooperative — D13). Keep `slate` continuously working through
+      this chain rather than checking in only at the very end.
+- [ ] Once this build is live and confirmed stable, re-raise
+      `jpnational1`'s national expansion with Hidenori (D16 sequences
+      it after, not instead of, this build) — same recipe as
+      `jpnational5`/`jpnational10` (D14).
+
 ## Resume prompt
 
 Paste this after `/clear` to pick up exactly here:
 
 > Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` on `slate`. Read
-> this file's last few entries (D14, D15, and this one) plus
-> `DECISIONS.md` D13/D14/D15 before touching anything.
->
-> **Big context change**: `japan-geotiff-dem` (on `aalto`) finished
-> its JCI 2026-09 work — all 11 Zones done, fully national 1m/5m/10m
-> coverage now published. This removes the gate that was blocking
-> `jpnational1`'s own national-scope expansion.
+> this file's 2026-08-20 entries plus `DECISIONS.md` D16/D17 before
+> touching anything — the "should `jpnational1` go national" question
+> is **resolved**: no, not yet, deliberately sequenced after the
+> current build (D16). Don't re-ask it.
 >
 > **First**: check whether `jpnational5`'s `source_polygonize.py`
 > (D15 code, real ~378,618-file scale test) has finished —
 > `ls -la polygon-store/jpnational5.gpkg` (fresh mtime, not
 > `Aug 13 04:07`) and `ogrinfo -so polygon-store/jpnational5.gpkg
 > union` (`Feature Count: 1`, national-extent bounding box). If not
-> done yet, it's fine to just wait — D15 is proven correct at this
-> point (verified on both `jpnational10` and the full `jpnational1`,
-> 75,818 files), this is a scale question not a correctness one.
+> done yet, just wait and check back — D15 is proven correct
+> (verified on `jpnational10` and the full 75,818-file `jpnational1`
+> run already), this is purely a "how long" question at this scale.
 >
-> **Then, ask Hidenori** (don't assume — he was asked this exact
-> question right before the `/clear` and may not have answered yet):
-> proceed with `jpnational1`'s own national-scope expansion now that
-> `japan-geotiff-dem` is fully national? `jpnational5`/`jpnational10`
-> already did this (regenerate `file_list.csv` unfiltered from
-> `smartmaps/japan-geotiff-dem/1/latest_file_list.csv.gz`, update
-> `metadata.json`, re-download via aria2c, re-run bounds/polygonize
-> via D15) — same recipe would apply to `jpnational1` if he says yes.
->
-> **`jpnational10`** and **`jpnationalsea`** are both already fully
-> done through polygonize (national scope) — nothing more needed
-> there until the aggregation stage.
->
-> **Once all four sources are ready at their final scope**: continue
-> to `aggregation_covering.py` → `aggregation_run.py` →
-> `downsampling_covering.py` → `downsampling_run.py` → `bundle.py` →
-> `merge_japan_bundles.py` (`TMPDIR=/Volumes/Migrate-2025-04/tmp`) →
-> `rsync` the result to `stars` (`/home/stars/data/`, **not** Source
-> Cooperative — SC's multipart upload kept failing on this file, D13).
-> If `jpnational1` does go national, this would be the first genuinely
+> **Once confirmed**: run `aggregation_covering.py` first (cheap,
+> no GDAL) to get a real macrotile item count — this file's own
+> 2026-08-20 entry has a reasoned-but-unmeasured ETA estimate,
+> replace it with the real number. Then `aggregation_run.py` →
+> `downsampling_run.py` → `bundle.py` → `merge_japan_bundles.py`
+> (`TMPDIR=/Volumes/Migrate-2025-04/tmp`) → `rsync` to `stars`
+> (`/home/stars/data/`, **not** Source Cooperative — D13). Sources at
+> their current scope: `jpnational1` regional (Kyushu/Okinawa/
+> Shikoku/western Chugoku), `jpnational5`/`jpnational10`/
+> `jpnationalsea` national. This is already the first genuinely
 > national-scope `japan.pmtiles` this project has built — worth
-> re-checking disk usage on `/Volumes/Migrate-2025-04` before/during
-> (was 987GB free at the last checkpoint, comfortable but untested at
-> this scale).
+> rechecking disk usage on `/Volumes/Migrate-2025-04` before/during
+> (was 987GB free at the last checkpoint).
+>
+> **After that build is live and stable**: re-raise `jpnational1`'s
+> own national expansion with Hidenori (D16's own next-step) — same
+> recipe as `jpnational5`/`jpnational10` (D14) — then a second, final
+> `japan.pmtiles` rebuild.
+>
+> Also check on two things prepared but not acted on this session:
+> whether Hidenori has decided on archiving `hfu/fusi` (D17,
+> recommendation only) and whether the two outreach drafts (to
+> `mapterhorn/mapterhorn#142` and to Oliver Wipfli personally) were
+> posted.
