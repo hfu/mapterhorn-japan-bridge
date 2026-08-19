@@ -2137,3 +2137,53 @@ directory contents on the renamed `source-store/jpnational1`).
       gap, not a pipeline bug, but it means the D8 priority-merge
       fallback only fills that area in if `jpnational5`/`jpnational10`
       are unfiltered by the time aggregation runs there.
+
+## 2026-08-19 (continued): `jpnationalsea` created — national-scope GLO-30 sea fallback (prepared, not downloaded)
+
+Following up on the max_zoom investigation above (confirmed via a real
+1m sample GeoTIFF that z16 is the *correct* dynamically-computed value
+for GSI 1m data, not an arbitrary cap — see `get_smallest_overzoom` in
+`aggregation_covering.py`) and Hidenori's observation that the current
+Kyushu-scope `japan.pmtiles` has no sea/ocean fill at all: created
+`source-catalog/jpnationalsea`, 275 of `glo30`'s 24,674 global GLO-30
+tiles filtered to a rectangular bounding box (lat 20-46N, lon 122-154E).
+
+Chose a simple rectangle over a precise EEZ polygon because `glo30`'s
+own tile inventory (24,674 of a possible 64,800 global 1°×1° cells,
+~38%) already appears to exclude pure-open-ocean tiles with no land —
+consistent with the standard COP30 distribution convention — so a
+polygon filter would likely produce nearly the same result for any
+genuinely deep-ocean gap, not worth the added complexity.
+
+Verified real tile presence (not just "the bounding box theoretically
+contains this point") for every territory Hidenori named: Northern
+Territories through Etorofu's NE tip (~45.5N/148.85E), Minamitorishima
+(24.28N/153.98E), Okinotorishima (20.42N/136.08E), Takeshima
+(37.24N/131.87E), Senkaku Islands (Uotsuri/Kuba, ~25.75-25.93N/
+123.47-123.68E), Yonaguni (24.45N/123.0E), Hateruma (24.06N/123.8E) —
+all present as real tiles in `glo30/file_list.txt`.
+
+Confirmed the maxzoom-efficiency concern Hidenori raised (building
+GLO-30-only areas up to 1m's z16 would be wasteful) is already handled
+by the existing architecture, no new code needed: `downsampling_covering.py`
+reads each aggregation item's own already-computed maxzoom from its
+filename (`{z}-{x}-{y}-{maxzoom}-*.csv`) and only ever builds *downward*
+overviews from there — GLO-30's ~30m resolution computes to roughly
+z9-13 per `aggregation_covering.py`'s own code comments (S79→9, N66→10,
+N50→11, N49→12), always well below 1m's z16, so it can never get built
+up to match neighboring high-res land tiles.
+
+Committed as `a4249b6` on `hfu/mapterhorn`. **Deliberately not
+downloaded** — explicitly low priority per Hidenori, the aalto GeoTIFF
+DEM upload work takes precedence over anything here.
+
+### Next steps
+
+- [ ] When there's slack to spare (low priority, don't force it): run
+      `jpnationalsea`'s `default` recipe (download → bounds →
+      polygonize) and fold it into a future aggregation run alongside
+      `jpnational1`/`jpnational5`/`jpnational10`.
+- [ ] `jphakodatetrialsea`'s config is still recoverable from git
+      history (`ffcd665^`) if the old small-scale pilot data is ever
+      wanted again for comparison — the raw GLO-30 tif data itself was
+      not preserved, only the source-catalog config.
