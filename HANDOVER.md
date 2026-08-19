@@ -2085,3 +2085,55 @@ work touched it.
       — the 2026-08-09 (~2GB) object there is now stale. Revisit with a
       more resilient upload tool, or make an explicit decision to stop
       tracking `japan.pmtiles` on SC at all.
+
+## 2026-08-19 (continued): `jpkyushutest*` renamed to `jpnational*`, test entries cleaned up
+
+Renamed `jpkyushutest1`/`jpkyushutest5m`/`jpkyushutest10m` →
+`jpnational1`/`jpnational5`/`jpnational10` (note: dropped the "m" suffix
+on the 5/10 variants, a deliberate one-off deviation from the
+`jp<place><res>m` convention every other regional entry uses — see
+below for why). Done at a natural pause point (download paused, renamed,
+resumed) rather than mid-run, per Hidenori's own preference about
+timing. Covered every location: `source-catalog/`, `pipelines/
+source-store/`, `pipelines/polygon-store/*.gpkg`, each entry's own
+`Justfile`, and `jpnational1/metadata.json`'s description (dropped the
+stale "速度検証用" framing). `jpnational1` is git-tracked (`git mv`);
+`jpnational5`/`jpnational10` stay untracked, same as before.
+
+Same session: deleted `jphakodatecity1/5m/10m`, `jphakodatetrial1/5m/
+10m/sea`, `jpsapporo1/5m/10m/sea`, `jpshakotan1/5m/10m` — superseded
+pipeline-validation/test entries, per Hidenori's explicit call once
+`jpnational*` existed to replace them. Reclaimed ~3.5GB of `source-store`
+data plus a stray `sapporo-sea-raw-tiles` `tmp-store` leftover (63MB).
+This is *why* dropping the "m" suffix for `jpnational5`/`jpnational10`
+was safe to do without creating inconsistency: the sibling entries that
+established the old `...5m`/`...10m` convention no longer exist.
+`jphokkaidodem1` deliberately left untouched — frozen per D12, a real
+(if paused) entry, not a test one, not part of this cleanup.
+
+Download resumed cleanly under `jpnational1` after the rename, continuing
+from where it left off (no re-fetch — `wget --continue` plus preserved
+directory contents on the renamed `source-store/jpnational1`).
+
+### Next steps
+
+- [ ] Continue `jpnational1`'s Kyushu-scope download to completion, then
+      `source_bounds.py` → `source_polygonize.py`.
+- [ ] Once that's done: expand `jpnational10` first, then `jpnational5`,
+      to full national scope (drop the mesh-range filter, use
+      `latest_file_list.txt.gz` unfiltered) — **not** `jpnational1` yet,
+      which stays gated on `japan-geotiff-dem` finishing national 1m
+      publishing (see that repo's own `HANDOVER.md`). This ordering is
+      explicitly low priority per Hidenori — don't force it or take
+      risks with it; the core aalto DEM upload work takes precedence
+      over anything here.
+- [ ] When `jpnational1` does eventually expand to national scope, make
+      sure `jpnational5`/`jpnational10` (by then hopefully already
+      unfiltered) actually cover the gaps `jpnational1` can't reach —
+      concretely verified this session: Yonaguni/Hateruma (mesh
+      ~3622-3624) has no 1m DEM1A data published anywhere in the
+      national listing at all (1m's national floor is mesh 3927; 5m's
+      is 3624; 10m's is 3622) — almost certainly an upstream GSI survey
+      gap, not a pipeline bug, but it means the D8 priority-merge
+      fallback only fills that area in if `jpnational5`/`jpnational10`
+      are unfiltered by the time aggregation runs there.
