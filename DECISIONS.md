@@ -35,6 +35,7 @@ This file is the *why*, kept stable. Session narrative lives in
 | [D17](#d17-upstream-fidelity-as-a-standing-practice-and-where-fusi-fits) | Upstream fidelity as a standing practice, and where `fusi` fits | Accepted | 2026-08-20 |
 | [D18](#d18-within-source-product-type-priority-abc-was-purely-alphabetical-not-accuracy-based-lower-accuracy-data-was-silently-winning-over-higher-accuracy-data) | Within-source product-type priority (A/B/C) was purely alphabetical, not accuracy-based — lower-accuracy data was silently winning over higher-accuracy data | Accepted, fixed | 2026-08-20 |
 | [D19](#d19-nothing-pruned-local-files-superseded-by-an-upstream-japan-geotiff-dem-refresh--added-source_prune_obsoletepy) | Nothing pruned local files superseded by an upstream `japan-geotiff-dem` refresh — added `source_prune_obsolete.py` | Accepted, tool verified | 2026-08-20 |
+| [D20](#d20-escalate-d18s-fix-from-within-group-last-wins-to-true-seven-tier-pixel-level-priority-merge-reusing-aggregation_mergepy-unchanged) | Escalate D18's fix from within-group last-wins to true seven-tier pixel-level priority merge, reusing `aggregation_merge.py` unchanged | Accepted, unit-tested | 2026-08-20 |
 
 ---
 
@@ -1594,3 +1595,92 @@ triggered by time instead of by a product-type mix-up.
 - Should be run for any source before its next `source_bounds.py` +
   `source_polygonize.py`, not just once — this is now a standing step
   in the refresh recipe above, not a one-time cleanup.
+
+## D20: Escalate D18's fix from within-group last-wins to true seven-tier pixel-level priority merge, reusing `aggregation_merge.py` unchanged
+
+**Status**: Accepted, implemented and unit-tested 2026-08-20; full
+live end-to-end test still pending real `aggregation_covering.py`
+output (see Consequences).
+
+**Context**: Hidenori reviewed D18's fix and identified it as
+insufficient, not wrong: D18 made the *within-group* `gdalbuildvrt`
+call pick the right winner when 5A/5B/5C (or 10A/10B) files overlap,
+but that's a coarse, all-or-nothing overwrite per pixel — no seam
+blending. Meanwhile `aggregation_merge.py`'s cross-*group* compositing
+(the mechanism that already handles 1m vs 5m vs 10m vs `sea`) does
+genuine per-pixel nodata-fill *plus* an erosion + Gaussian-blurred
+boundary blend at the seam between filled regions — visibly more
+correct. His point: since a single macrotile can contain a genuine
+spatial mix of 5A/5B/5C coverage (not just one file entirely
+superseding another at the exact same footprint, which was D18's
+tested case), that mix deserves the *same* seam-aware treatment the
+four resolution tiers already get — i.e. treat the priority stack as
+seven groups (`1, 5a, 5b, 5c, 10a, 10b, sea`), not four.
+
+**Investigation confirmed this is a cheap, safe change**: neither
+`aggregation_reproject.py`'s `reproject()` (the per-group warp loop)
+nor `aggregation_merge.py`'s `merge()` (the cross-group nodata-fill +
+blend) hardcode a group count anywhere — both already operate on
+`len(grouped_source_items)`/`num_tiff_files` generically. The entire
+fix is contained in `utils.get_grouped_source_items()`: its group
+*signature* changed from `(maxzoom, source)` to `(maxzoom, source,
+product_type_rank)`, and the rank component of the sort key flipped
+from negated (needed for D18's last-wins-within-group trick) to plain
+ascending (needed so *groups* — not files within one group — come out
+in `A, B, C` priority order). Verified with a synthetic aggregation
+CSV covering a same-cell A/B/C triple plus a 10A/10B pair: produced
+exactly 6 groups in the order `[5a, 5b, 5c, 10a, 10b, sea]` (would be
+7 with a `jpnational1` row too) — matches the intended structure
+exactly, confirmed by inspection, not just assumed.
+
+**Consequence for D18's own fix**: no longer load-bearing, but
+harmless to leave in place — since every group is now guaranteed a
+single product type, the `-rank` component of the *within-group*
+`gdalbuildvrt` file-list sort never has more than one possible value
+per group and does nothing. Not reverted; D18's own writeup stands as
+the historical record of how the bug was first found and understood.
+
+**Lineage/provenance tooling — deliberately the light half, not the
+full half**: Hidenori asked whether reviving `fusi`'s old lineage
+(provenance-visualization) capability was now back in scope, with an
+explicit budget: "if it's about one extra script, worth doing; if it
+complicates the codebase or increases distance from upstream, leave it
+for later." Added `pipelines/lineage_inspect.py` — a standalone,
+on-demand tool (given an existing `*-aggregation.csv` item, reuses
+`aggregation_reproject.reproject()` unchanged, re-derives a provenance
+mask with the same nodata-fill walk `aggregation_merge.merge()` uses,
+renders it as a PNG via a fixed 7-tier-plus-nodata palette) that
+touches **zero** production pipeline files (`aggregation_reproject.py`/
+`aggregation_merge.py`/`aggregation_tile.py`/`aggregation_run.py` all
+unmodified) and adds **zero** I/O cost to real production runs — it's
+never imported by anything in the main flow. This deliberately stops
+short of `fusi`'s *other* lineage mechanism, its always-on
+`--emit-lineage` flag that computes and writes a full companion
+`-lineage` PMTiles archive on every production run — that would need
+to touch `aggregation_merge.py`/`aggregation_tile.py`/`bundle.py` and
+add ongoing I/O cost, matching Hidenori's own "leave for later"
+threshold. If full production-lineage output is ever wanted, this
+tool's `compute_provenance()` is the reusable core logic to build it
+from — not thrown away, just not wired in yet.
+
+**Consequences**:
+- `utils.py`'s `get_grouped_source_items()` change is the only
+  production-code change; verified via a synthetic multi-tier CSV, not
+  yet exercised against a real `aggregation_covering.py`-produced item
+  (none exist yet referencing current `jpnational*` sources — the only
+  aggregation-store items on disk predate the `jpkyushutest*` →
+  `jpnational*` rename and reference sources already deleted in that
+  cleanup). Re-verify against a real item once D16's build reaches
+  `aggregation_covering.py` — cheap to do (`lineage_inspect.py` itself
+  is one of the best tools for that spot-check).
+- Worst-case per-tile cost goes up slightly (up to 7 warp attempts
+  instead of 4 before the `reproject()` loop can break early) — only
+  matters for tiles genuinely needing to fall through several tiers;
+  most tiles resolve within the first one or two groups.
+- Per D17's "diff against upstream, contribute back if generic":
+  `get_grouped_source_items()`/`aggregation_merge.py`'s N-way nodata-
+  fill design is itself a good candidate to check against upstream
+  `mapterhorn/mapterhorn` at some point — worth confirming whether
+  upstream's own multi-product-type sources (if any exist there) hit
+  the same class of issue D18/D20 fixed here. Not checked as of this
+  entry.

@@ -50,21 +50,43 @@ survey exists yet — lower letter/tier always means higher trustworthy
 accuracy, and should win wherever two tiers cover the same cell.
 
 **Where this is actually enforced, in code** (not just convention):
-- *Across* resolution tiers (`1` > `5` > `10` > `sea`): `aggregation_
-  covering.py`'s macrotile grouping sorts by each file's own real
-  native resolution (`-maxzoom`, computed from `bounds.csv`, not a
-  hardcoded per-source constant) — verified by reading the code, D8.
-- *Within* the 5m/10m tiers (`5a`>`5b`>`5c`, `10a`>`10b`): `utils.
-  get_grouped_source_items()`'s sort key includes `-get_product_type_
-  rank(filename)`, which parses GSI's own `-DEM<digits><letter>-`
-  filename suffix. This did **not exist** until D18 (2026-08-20) —
-  before that fix, same-cell A/B/C files sorted purely alphabetically
-  by filename, and combined with `gdalbuildvrt`'s confirmed
-  last-file-wins overlap behavior (`aggregation_reproject.py`'s
-  `create_virtual_raster()`), the *lower*-accuracy product was
-  silently winning wherever it existed for the same cell as a
-  higher-accuracy one — see D18 for the full investigation, the
-  national scale (25,522 affected 5m cells), and the fix.
+- All seven tiers are genuinely separate priority *groups* at the
+  pixel level — `utils.get_grouped_source_items()` groups by `(maxzoom,
+  source, product_type_rank)`, so `1`, `5a`, `5b`, `5c`, `10a`, `10b`,
+  `sea` each become their own group when present for a tile. Ordering
+  across groups: `-maxzoom` first (each file's own real native
+  resolution, computed from `bounds.csv`, not a hardcoded per-source
+  constant — D8), then product-type rank ascending (`A`=0, `B`=1,
+  `C`=2) as the tiebreaker within a resolution tier.
+- `aggregation_reproject.py`'s `reproject()` warps each group in
+  priority order, stopping early once one group has no `nodata`
+  pixels left. `aggregation_merge.py`'s `merge()` then composites
+  *across* however many groups got warped: per-pixel nodata-fill from
+  the next-priority group, with an erosion + Gaussian-blurred seam
+  blend at the boundary — genuinely pixel-level, not "one whole file
+  wins over another." Both functions are generic over group count, so
+  going from four groups to seven (D20, 2026-08-20) needed **no
+  changes to either function** — only to how `get_grouped_source_items()`
+  partitions its input.
+- This wasn't always pixel-level *within* a resolution tier: D18
+  (2026-08-20) first found that same-cell `5a`/`5b`/`5c` (and
+  `10a`/`10b`) files sorted purely alphabetically by filename and got
+  merged via a single `gdalbuildvrt` call per tier, where
+  `gdalbuildvrt`'s confirmed last-file-wins overlap behavior made the
+  *lower*-accuracy product silently win (25,522 affected 5m cells
+  nationally). D18's first fix reordered files *within* one
+  `gdalbuildvrt` call to get the winner right; D20 replaced that with
+  the proper seven-group split above, once Hidenori pointed out a
+  tile can contain a genuine spatial *mix* of product types that
+  deserves the same seam-aware blending the four coarser tiers
+  already got, not just a binary overwrite. Read D18 then D20 in that
+  order for the full story — D18 isn't wrong, just superseded.
+- `pipelines/lineage_inspect.py` (D20) is a standalone, on-demand tool
+  for spot-checking which group actually won each pixel of a given
+  aggregation item — not wired into production, reuses `aggregation_
+  reproject.reproject()` and mirrors `aggregation_merge.py`'s own
+  nodata-fill walk to build a colorized provenance PNG. Use it to
+  sanity-check this whole mechanism against a real tile.
 - This exact tier order isn't a fresh guess — it matches Hidenori's
   earlier, independent `fusi` toolchain's own real production command
   (`dem1a dem5a dem5b dem5c dem10a dem10b`, `fusi`'s `README.md`) and
