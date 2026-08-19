@@ -1821,3 +1821,133 @@ remains Hidenori's own step in a browser, as always.
 - [ ] If `source-coop login` is needed on `slate` again, try the new
       ProxyJump route for the port-forward instead of the old
       direct-LAN tunnel.
+
+## 2026-08-19 10:01 JST (same session, continued): `japan.pmtiles` merge finally succeeds -- root cause was `tempfile`'s default directory, not memory/swap
+
+Continuing directly from the two entries above. Root cause of the
+repeated ENOSPC crashes, found by reading the actual `pmtiles` Python
+library source
+(`pipelines/.venv/lib/python3.13/site-packages/pmtiles/writer.py`):
+
+```python
+class Writer:
+    def __init__(self, f):
+        ...
+        self.tile_f = tempfile.TemporaryFile()
+```
+
+`Writer.write_tile()` streams every tile's bytes into this
+`tempfile.TemporaryFile()` as it goes, only assembling the real header
+and directory at `finalize()` time (then it concatenates
+header+directory+the whole temp file into the final output). Python's
+`tempfile.TemporaryFile()` defaults to `TMPDIR` (or `/tmp` if unset)
+-- on this machine that's the small internal boot volume, **not**
+wherever the script's own output path happens to live. For this
+merge, that meant the *entire* ~70GB of tile data got written twice in
+effect: once into an anonymous (unlinked) file on the tight internal
+SSD, and again at `finalize()` when copied into the real
+`bundle-store/japan.pmtiles` on the external volume.
+
+This resolves the "memory vs storage speed" question from the
+Consequences of the second entry above: **it was neither.** The
+process's climbing RSS was largely page-cache pages backing that
+temp file (real, but not the constraint that mattered), and the
+repeated ENOSPC was disk space on `/`, not swap. My earlier working
+theory ("swap growth under memory pressure") was directionally right
+about *what* was filling `/` but wrong about *why* -- it's an
+unlinked regular file from `tempfile`, not swap. Confirmed by watching
+`df -h /` and `df -h /Volumes/Migrate-2025-04` live during a 4th
+attempt: `/` sat rock-stable at 85GB free the entire run while
+`/Volumes/Migrate-2025-04` absorbed all ~70GB of growth, exactly as
+predicted once the fix was in place.
+
+**Fix**: no code change needed anywhere. Just point `TMPDIR` at the
+external volume before running the script:
+
+```sh
+mkdir -p /Volumes/Migrate-2025-04/tmp
+TMPDIR=/Volumes/Migrate-2025-04/tmp python3 merge_japan_bundles.py
+```
+
+Python's `tempfile` module respects `TMPDIR` automatically -- this
+generalizes to *any* script on this machine that uses `tempfile`
+internally (GDAL/OGR tools sometimes do too) and produces
+large-relative-to-`/` intermediate files.
+
+**Result, verified**: `bundle-store/japan.pmtiles` -- **789,984
+addressed tiles** (512,255 tile entries, 484,827 distinct tile
+contents after content-dedup), zoom 0-16, ~70.7GB
+(75,939,452,941 bytes). Verified non-corrupt by reading the header
+with `pmtiles.reader.Reader` and confirming `tile_data_offset +
+tile_data_length` exactly equals the file's actual size on disk
+(earlier failed attempts showed a large mismatch here -- that
+comparison is the right sanity check for any future PMTiles output
+before trusting it). This is a genuinely complete regeneration of
+`japan.pmtiles` reflecting the full 2026-08-14 trial (Hokkaido +
+Kyushu/Okinawa-region coverage via `jpkyushutest1`, plus `planet.pmtiles`
+as the global base layer) -- **not yet published/uploaded anywhere**,
+per the standing rule that requires Hidenori's explicit go-ahead for
+that step separately.
+
+### Also this session (same continued block)
+
+- Killed 3 long-orphaned `colima start -f` zombie processes dated
+  2026-08-10 (0% CPU, harmless but unexplained clutter -- part of the
+  general "60-day uptime accumulates cruft" pattern flagged earlier).
+- Confirmed `hfu/mapterhorn`'s `jpkyushutest5m`/`jpkyushutest10m`
+  source-catalog entries use the *same* mesh-code-range scope as
+  `jpkyushutest1` (3900-5199, i.e. Kyushu/Okinawa **plus** all of
+  Shikoku and western Chugoku -- confirmed by direct JIS-mesh-code
+  computation for representative prefecture capitals, not just
+  boundary-adjacent spot-checks like the earlier Kinki check). This
+  is **intentional per Hidenori** ("日本を一つの広域ソースとして扱い、
+  6-x-y.pmtiles には全ての地方のソースが入っている" -- Japan is being
+  treated as one broad-area source on purpose, not per-prefecture) --
+  not a bug, no fix needed. Left `jpkyushutest5m`/`10m` **uncommitted**
+  in `hfu/mapterhorn` per Hidenori's own call: since they're
+  Kyushu-scoped (not national) they're inherently test/throwaway
+  artifacts, same spirit as the `jpkyushutest*` naming itself.
+- Internal SSD capacity check (Hidenori asked directly): 228GB total,
+  110GB used, 85GB free as of this entry. Already reclaimed 31GB this
+  session (see the polygon-store investigation entry above). Further
+  low-risk headroom is limited (~10-15GB at most, mostly GUI-app
+  container data with real usability tradeoffs -- Slack/Teams
+  containers, Application Support). **Conclusion: buying a faster
+  external SSD is not the actionable lever here** -- the existing
+  external volume's *capacity* (1.1TB free) already solves the real
+  constraint, and its *speed* has not been a bottleneck for anything
+  actually run this session (the D14-era storage-speed benchmark
+  already showed only a ~10% gap for the real GDAL workload pattern,
+  and this merge itself ran to completion on the existing external
+  drive without issue once TMPDIR was pointed there). The generalizable
+  lesson is routing (send big intermediates to the roomy volume via
+  `TMPDIR`/equivalent), not hardware spend.
+- Verified `6-x-y.pmtiles` regional bundle count while investigating:
+  **11** currently in `bundle-store/` (unchanged by this merge, which
+  only reads them). Whether Hidenori's planned re-run of `jpkyushutest1`'s
+  aggregation (after `source_bounds.py`/`source_polygonize.py`/
+  `aggregation_covering.py` finish, still in progress at end of this
+  entry) adds new ones or just densifies the existing 11 is not yet
+  known -- the geographic extent (mesh-code range 3900-5199) doesn't
+  change, only mesh density within it, so 11 staying constant is the
+  working expectation, not yet confirmed.
+
+### Next steps
+
+- [ ] `jpkyushutest1` pipeline (download → `source_bounds.py` →
+      `source_polygonize.py`) still in progress as of this entry --
+      once done, check `aggregation_covering.py`'s item count before
+      running the real `aggregation_run.py`, per the project's own
+      standing practice for any coverage-scale change.
+- [ ] Once a fresh aggregation/downsampling/bundle cycle lands new or
+      updated `6-x-y.pmtiles` files, re-run `merge_japan_bundles.py`
+      (with `TMPDIR` pointed externally, now proven) to fold them into
+      an updated `japan.pmtiles`.
+- [ ] `japan.pmtiles` is regenerated locally but **not published** --
+      needs Hidenori's explicit go-ahead before any upload/publish
+      step, as always.
+- [ ] Consider documenting the `TMPDIR` external-volume pattern
+      somewhere more prominent (e.g. this repo's own README or
+      CLAUDE.md-equivalent) so it isn't rediscovered from scratch next
+      time a large intermediate-file script runs low on root space --
+      not done yet, this HANDOVER entry is the only record so far.
