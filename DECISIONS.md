@@ -36,6 +36,7 @@ This file is the *why*, kept stable. Session narrative lives in
 | [D18](#d18-within-source-product-type-priority-abc-was-purely-alphabetical-not-accuracy-based-lower-accuracy-data-was-silently-winning-over-higher-accuracy-data) | Within-source product-type priority (A/B/C) was purely alphabetical, not accuracy-based — lower-accuracy data was silently winning over higher-accuracy data | Accepted, fixed | 2026-08-20 |
 | [D19](#d19-nothing-pruned-local-files-superseded-by-an-upstream-japan-geotiff-dem-refresh--added-source_prune_obsoletepy) | Nothing pruned local files superseded by an upstream `japan-geotiff-dem` refresh — added `source_prune_obsolete.py` | Accepted, tool verified | 2026-08-20 |
 | [D20](#d20-escalate-d18s-fix-from-within-group-last-wins-to-true-seven-tier-pixel-level-priority-merge-reusing-aggregation_mergepy-unchanged) | Escalate D18's fix from within-group last-wins to true seven-tier pixel-level priority merge, reusing `aggregation_merge.py` unchanged | Accepted, unit-tested | 2026-08-20 |
+| [D21](#d21-shuffle-aggregation_runpys-work-queue--geographically-sorted-todo-order-clustered-expensive-tiles-onto-the-same-workers) | Shuffle `aggregation_run.py`'s work queue — geographically-sorted `.todo` order clustered expensive tiles onto the same workers | Accepted, verified live | 2026-08-21 |
 
 ---
 
@@ -1683,4 +1684,75 @@ from — not thrown away, just not wired in yet.
   `mapterhorn/mapterhorn` at some point — worth confirming whether
   upstream's own multi-product-type sources (if any exist there) hit
   the same class of issue D18/D20 fixed here. Not checked as of this
+  entry.
+
+## D21: Shuffle `aggregation_run.py`'s work queue — geographically-sorted `.todo` order clustered expensive tiles onto the same workers
+
+**Status**: Accepted, implemented and verified live 2026-08-21.
+
+**Context**: A few hours into the D16 build's `aggregation_run.py` run,
+progress stalled hard — 45 items completed over 5.5 hours (vs. 60 items
+in the first ~7 minutes). Diagnosed live rather than guessed: `ps aux`
+showed only 1-2 of the 4 `AGGREGATION_WORKERS` actually busy, each
+pinned at 100% CPU on a single `gdal_translate`, while overall system
+CPU was 66-92% idle — not I/O-bound (`iostat` showed modest throughput,
+nowhere near saturating the SSD) and not memory-thrashing in any
+obvious way, just genuinely idle capacity. Inspected the actual stuck
+items: `10-890-410-16-aggregation.csv` alone listed 1,073 `jpnational1`
+files and 1,073 `jpnational5` files — a single aggregation tile needing
+`gdalbuildvrt`+`gdalwarp`+`gdal_translate` over 1000+ small source
+rasters per group, genuinely expensive work, not a hang (fresh PIDs
+appeared as it moved through its per-item priority-group fallback
+loop). Multiple adjacent tiles in that same area (`883` through `890`
+in x) were *all* similarly expensive and landed on workers back to
+back.
+
+Root cause: `write_aggregation_todos()` (`aggregation_covering.py`)
+creates `.todo` marker files from `sorted(glob(...))` — geographically
+ordered (the sort key is `{z}-{x}-{y}-{child_z}-aggregation.csv`, so it
+sorts primarily by x-coordinate). `aggregation_run.py`'s own `main()`
+then reads that directory back with a plain `glob()` (no re-sort) to
+build the work queue — and APFS directory listings tend to preserve
+creation order closely enough that the geographic ordering survived
+into actual worker assignment. Terrain/coverage complexity is
+spatially correlated (a region with dense overlapping 1m+5m mesh
+coverage stays dense across many adjacent tiles), so a purely
+sequential queue means a handful of genuinely expensive regions can
+occupy the *entire* worker pool simultaneously while thousands of cheap
+tiles elsewhere sit untouched — the exact opposite of what parallelism
+is for.
+
+**Decision**: Added `random.shuffle(dirty_filepaths)` in
+`aggregation_run.py`'s `main()`, right after building the work-item
+list and before handing it to the `Pool`. No other change — `.done`
+markers already make every item idempotent and independently
+resumable, so shuffling the *order* items get picked up in is free and
+safe to apply mid-run (killed and restarted the in-progress run to pick
+it up; the 110 already-`.done` items were correctly skipped, confirming
+no work was lost).
+
+**Verified immediately, live**: restarted run's first two active items
+were `12-3522-1643-16` and `12-3600-1628-16` — completely different
+part of the coordinate space than the stuck `883`-`890` cluster.
+`.done` count went 110 → 115 within ~15 seconds of restart (several
+cheap items nearby in the new shuffled order cleared almost instantly)
+— direct, immediate confirmation the fix does what it's supposed to,
+not just a plausible-sounding theory.
+
+**Consequences**:
+- This doesn't make any single expensive tile faster — a
+  1000-file-per-group tile still costs what it costs. It makes the
+  *pool* avoid getting collectively stuck on a cluster of expensive
+  tiles at the same time, which is what was actually costing wall-clock
+  time.
+- The original ETA estimate (low-single-digit days, extrapolated
+  linearly from the old 1,119-item/25h build) undercounted how *uneven*
+  item cost is at this scale — some tiles need 1000+ file merges,
+  others resolve trivially. No revised estimate is offered here;
+  collect real throughput data over a longer window with the shuffle
+  in effect before trying again.
+- If this pattern (geographically-sorted `.todo` creation feeding an
+  order-preserving `glob()` read) recurs in `downsampling_run.py` or
+  any other stage that reads a similarly-created work queue, check
+  whether it needs the same shuffle — not audited as part of this
   entry.
