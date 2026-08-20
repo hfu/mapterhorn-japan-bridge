@@ -29,7 +29,7 @@ step, and how this differs from `hfu/fusi` (an earlier, unrelated,
 non-fork DEM→PMTiles toolchain whose role this project has since
 mostly absorbed).
 
-**Scope, updated 2026-08-20 (DECISIONS.md D16) — this paragraph moves
+**Scope, updated 2026-08-21 (DECISIONS.md D16) — this paragraph moves
 fast, verify against `HANDOVER.md`/`DECISIONS.md` before trusting it**:
 `jpnational5`/`jpnational10`/`jpnationalsea` are national scope.
 `jpnational1` (1m) is deliberately still Kyushu/Okinawa/Shikoku/
@@ -38,6 +38,38 @@ three so the downstream pipeline gets stress-tested at a large-but-not-
 largest scale first (D16). Hokkaido was un-frozen and fully redone as
 part of `japan-geotiff-dem`'s own JCI 2026-09 (see that repo's own
 docs) — the D12-era Hokkaido freeze below is historical, not current.
+`aggregation_run.py` for this D16 build is **in progress** (started
+2026-08-20 22:26, D21's queue-shuffle fix applied mid-run 2026-08-21
+~05:22) — check `find aggregation-store/*/ -name '*.done' | wc -l`
+against the real item count from `aggregation_covering.py`'s own
+output before assuming it's done or estimating an ETA; item cost is
+highly uneven (D21), don't trust a linear extrapolation.
+
+**`japan-geotiff-dem`'s own JCI 2026-09 finished 5m too, not just 1m**
+(2026-08-21, that repo's own `HANDOVER.md`) — meaning `jpnational5`'s
+local snapshot here (downloaded before that 5m refresh completed) is
+now somewhat stale relative to the live bucket, the same class of drift
+D19's `source_prune_obsolete.py` was built to handle for `jpnational1`,
+potentially at much larger scale (~92k files changed nationally this
+cycle). Not yet refreshed — a real decision point once the current D16
+build settles, not decided here.
+
+**Next major initiative after the current build settles: a careful,
+analysis-first sync of `hfu/mapterhorn` against its `upstream` remote**
+(`mapterhorn/mapterhorn`), explicitly requested by Hidenori. As of
+2026-08-21, `hfu/mapterhorn` is 9 commits behind `upstream/main`
+(`fdd6adc..ef97ada`) — mostly new source-catalog additions for other
+countries (low-risk, additive) plus `57f8481` ("Update worker, reduce
+memory usage"), which is directly relevant given real memory pressure
+already observed on `slate` during this build (D21's investigation:
+~244MB free system memory while running 4 parallel workers). Do this
+**carefully**: read and understand each upstream commit before merging
+(not a blind `git merge`/diff-apply), check for conflicts with this
+fork's own Japan-specific changes (D11's requantization/`macrotile_z`
+fixes, D18/D20's priority-merge logic, D21's shuffle), and absorb *why*
+upstream changed what it changed, not just *what*. This has not started
+as of this checkpoint — see `HANDOVER.md`'s own entry for the current
+plan.
 
 ## Source priority order (read before touching aggregation code)
 

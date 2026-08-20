@@ -2675,46 +2675,165 @@ Hidenori to review/post himself — not sent by Claude.
       it after, not instead of, this build) — same recipe as
       `jpnational5`/`jpnational10` (D14).
 
+## 2026-08-20/21: jpnational5 D15 confirmed complete at full national scale; D18-D21 found and fixed while building the first national `japan.pmtiles`; both repos' public docs cleaned up and pushed; upstream-sync planned next (D22)
+
+**`jpnational5`'s D15 polygonize finished clean**, ~16 hours wall time
+(started 06:13, done ~22:18): `Feature Count: 1`, extent
+`(124.07, 24.31)-(145.82, 45.53)` — genuinely matches Japan's real
+national bounding box (Yonaguni to Hokkaido). This is the real
+scale-test D15 was written for (378,618 files, ~5x `jpnational1`'s own
+75,818), now proven correct end to end, not just on the smaller
+`jpnational10` validation run.
+
+**`aggregation_covering.py` ran clean**: 5,875 real aggregation items
+for the D16 build (`jpnational1` regional + `jpnational5`/
+`jpnational10`/`jpnationalsea` national) — no code errors, first real
+measurement replacing the earlier reasoned-but-unmeasured ETA guess.
+`aggregation_run.py` started immediately after (`AGGREGATION_WORKERS=4`,
+screen session `aggregation_run`) and is **still running** as of this
+checkpoint — see D21 below for why its early throughput was
+misleading, and why no confident ETA is offered here.
+
+**Three real bugs found and fixed while this build ran, in escalating
+depth** (D18 → D20 → D21, all committed and pushed to `origin`):
+- **D18**: within-tier product-type priority (5a/5b/5c, 10a/10b) was
+  purely alphabetical, not accuracy-based — `gdalbuildvrt`'s
+  last-file-wins overlap behavior let lower-accuracy photogrammetry
+  silently beat LiDAR wherever both existed for the same cell (25,522
+  affected 5m cells nationally, confirmed against the live manifest).
+  First fix: reorder files within one `gdalbuildvrt` group.
+- **D20**: Hidenori correctly identified D18's fix as incomplete — a
+  tile can contain a genuine spatial *mix* of product types, which
+  deserves the same seam-aware nodata-fill/blend treatment the four
+  coarser tiers (1/5/10/sea) already get via `aggregation_merge.py`,
+  not a binary `gdalbuildvrt` overwrite. Fix: split the group key
+  itself by product type too (7 groups instead of 4), reusing
+  `aggregation_reproject.py`/`aggregation_merge.py` completely
+  unchanged since both already handle an arbitrary group count. Also
+  added `pipelines/lineage_inspect.py`, a standalone on-demand
+  provenance-visualization tool (not wired into production), grounded
+  the whole 7-tier order in `hfu/fusi`'s own real production command
+  and design (`fusi` predates this fork, see D17).
+- **D21**: `aggregation_run.py` stalled hard a few hours in — 45 items
+  in 5.5 hours, `ps aux` showing only 1-2 of 4 workers busy while
+  system CPU sat 66-92% idle. Root cause: `.todo` files are created in
+  geographically-sorted order and `aggregation_run.py` reads them back
+  with a plain (order-preserving) `glob()`, so spatially-clustered
+  expensive tiles (one tile alone needed 1000+ source files merged)
+  landed on the whole worker pool at once. Fix: `random.shuffle()`
+  before handing the queue to the `Pool`. Verified live — killed and
+  restarted the in-progress run (safe, `.done` markers preserved all
+  110 completed items), immediately picked up completely different
+  coordinates and cleared several items within 15 seconds.
+- Also fixed: `source_prune_obsolete.py` (D19) — nothing had ever
+  detected/cleaned local `source-store` files superseded by an
+  upstream `japan-geotiff-dem` manifest refresh; built and verified
+  against `jpnational1`'s real 81 orphaned files, not yet applied
+  (`jpnational1` stays untouched this round per D16).
+
+**Both repos' public-facing docs cleaned up, independently verified,
+committed, and pushed to `origin`** (all confirmed live, not just
+committed locally):
+- This repo: added `README.md` + CC0 `LICENSE` (didn't exist before).
+  GitHub Pages preview (`hfu.github.io/mapterhorn-japan-bridge/`)
+  confirmed serving `200 OK`.
+- `hfu/mapterhorn`: fixed a stale "Fork Note" that claimed this fork
+  exists *only* for orthophoto/RGB workflows — contradicted by the
+  Japan elevation pipeline that's been running here since D11. Now
+  describes both purposes and cross-links this repo. Also removed two
+  unused imports (`Path`, `json`) from the newly-added
+  `lineage_inspect.py`.
+- `japan-geotiff-dem` (on `aalto`): caught its own `source-coop/
+  README.md` Changelog still showing the pre-refresh 5m count
+  (378,618, all-latest) after the full 5m JCI cycle actually completed
+  — fixed and re-synced via `just docs`, verified live before any
+  external party (Oliver) could see stale data.
+
+**`japan-geotiff-dem`'s own JCI 2026-09 finished 5m too, not just 1m**
+(all 11 zones, executed via the same `process_pack.py` orchestrator
+already proven for 1m — see that repo's own `HANDOVER.md` for the full
+batch-processing narrative, including a recurring-but-fully-recoverable
+`HTTP 520`/credential-expiry failure pattern). Final counts: 471,062
+total (422,119 latest / 48,943 obsolete), ~47% genuinely new coverage
+/ ~53% resurveys of this cycle's ~92,444 touched files.
+
+**Reported publicly, both live**: `UNopenGIS/7#978` (5m completion,
+zone table) and `mapterhorn/mapterhorn#142` (`@wipfli`, 1m+5m combined,
+`.csv.gz` manifest format, multi-product-type note). A separate,
+shorter personal note to Oliver (repo links, no overclaimed technical
+details from the still-mid-flight build) was drafted collaboratively
+with Hidenori and is his to post himself — check whether that
+happened, it's outside this repo's own tracking.
+
+**Next initiative, explicitly planned but not started: analysis-first
+sync of `hfu/mapterhorn` against `upstream/main`** (D22) — 9 commits
+behind as of this checkpoint, including a memory-reduction commit
+directly relevant to the resource pressure observed during D21's
+investigation. Sequenced *after* the current D16 build settles, not
+concurrently — see D22 for the full commit-by-commit plan and the
+explicit reasoning for going slow here.
+
+### Status snapshot at this checkpoint
+
+- `jpnational5` D15 polygonize: **done**, verified.
+- `aggregation_covering.py`: **done**, 5,875 items.
+- `aggregation_run.py`: **running** (D21 shuffle applied ~05:22
+  2026-08-21; check `find aggregation-store/*/  -name '*.done' | wc -l`
+  — was 149/5,875 at this checkpoint, throughput still being
+  re-measured post-shuffle, no confident ETA yet).
+- `jpnational1` national expansion: still deliberately deferred (D16).
+- Upstream sync: planned (D22), not started.
+- Both repos pushed to `origin`, confirmed via `git status -sb`.
+
 ## Resume prompt
 
 Paste this after `/clear` to pick up exactly here:
 
 > Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` on `slate`. Read
-> this file's 2026-08-20 entries plus `DECISIONS.md` D16/D17 before
-> touching anything — the "should `jpnational1` go national" question
-> is **resolved**: no, not yet, deliberately sequenced after the
-> current build (D16). Don't re-ask it.
+> this file's 2026-08-20/21 entries plus `DECISIONS.md` D16-D22 before
+> touching anything.
 >
-> **First**: check whether `jpnational5`'s `source_polygonize.py`
-> (D15 code, real ~378,618-file scale test) has finished —
-> `ls -la polygon-store/jpnational5.gpkg` (fresh mtime, not
-> `Aug 13 04:07`) and `ogrinfo -so polygon-store/jpnational5.gpkg
-> union` (`Feature Count: 1`, national-extent bounding box). If not
-> done yet, just wait and check back — D15 is proven correct
-> (verified on `jpnational10` and the full 75,818-file `jpnational1`
-> run already), this is purely a "how long" question at this scale.
+> **First, check what's actually running**: `screen -ls` and
+> `find aggregation-store/*/  -name '*.done' | wc -l` (out of 5,875
+> total items) to see how far `aggregation_run.py` has gotten. Item
+> cost is highly uneven (D21) — don't linearly extrapolate an ETA from
+> a short observation window, and don't assume it's stalled just
+> because progress looks slow over a few minutes; check `ps aux` for
+> active `gdal_translate`/`gdalwarp` processes and fresh PIDs/CPU time
+> before concluding anything is actually stuck.
 >
-> **Once confirmed**: run `aggregation_covering.py` first (cheap,
-> no GDAL) to get a real macrotile item count — this file's own
-> 2026-08-20 entry has a reasoned-but-unmeasured ETA estimate,
-> replace it with the real number. Then `aggregation_run.py` →
-> `downsampling_run.py` → `bundle.py` → `merge_japan_bundles.py`
+> **If `aggregation_run.py` has finished** (todo count reaches 0, or
+> the screen session has exited with `time` output in
+> `/tmp/aggregation_run.log`): continue to `downsampling_covering.py`
+> → `downsampling_run.py` → `bundle.py` → `merge_japan_bundles.py`
 > (`TMPDIR=/Volumes/Migrate-2025-04/tmp`) → `rsync` to `stars`
-> (`/home/stars/data/`, **not** Source Cooperative — D13). Sources at
-> their current scope: `jpnational1` regional (Kyushu/Okinawa/
-> Shikoku/western Chugoku), `jpnational5`/`jpnational10`/
-> `jpnationalsea` national. This is already the first genuinely
-> national-scope `japan.pmtiles` this project has built — worth
-> rechecking disk usage on `/Volumes/Migrate-2025-04` before/during
-> (was 987GB free at the last checkpoint).
+> (`/home/stars/data/`, **not** Source Cooperative — D13). This would
+> be the first genuinely national-scope `japan.pmtiles` this project
+> has built — recheck disk usage on `/Volumes/Migrate-2025-04` before
+> the downsampling stage (was 977GB free at the last checkpoint).
 >
-> **After that build is live and stable**: re-raise `jpnational1`'s
-> own national expansion with Hidenori (D16's own next-step) — same
-> recipe as `jpnational5`/`jpnational10` (D14) — then a second, final
-> `japan.pmtiles` rebuild.
+> **If it's still running**: just let it continue (D13's own
+> precedent — this pipeline is designed to run unattended for many
+> hours). Check in periodically rather than intervening.
 >
-> Also check on two things prepared but not acted on this session:
-> whether Hidenori has decided on archiving `hfu/fusi` (D17,
-> recommendation only) and whether the two outreach drafts (to
-> `mapterhorn/mapterhorn#142` and to Oliver Wipfli personally) were
-> posted.
+> **Once the build is live and stable, two things are queued, in this
+> order**:
+> 1. Re-raise `jpnational1`'s own national expansion with Hidenori
+>    (D16's own next-step, same recipe as `jpnational5`/`jpnational10`,
+>    D14) — deliberately held off until now.
+> 2. **The bigger one**: start the analysis-first upstream sync (D22)
+>    — `git fetch upstream` on `hfu/mapterhorn`, re-check how far
+>    behind it is now (9 commits as of 2026-08-21, will have grown),
+>    and go through D22's commit-by-commit plan starting with the
+>    memory-reduction commit (`57f8481` as of this checkpoint's SHA,
+>    re-verify the actual commit hash after fetching since upstream
+>    moves). Read D22's full reasoning before starting — this is meant
+>    to be careful and unhurried, not a bulk merge.
+>
+> Also worth a quick check: whether Hidenori's personal outreach note
+> to Oliver Wipfli (repo links, drafted but not tracked in this repo)
+> was actually posted, and whether he's decided anything about
+> archiving `hfu/fusi` (D17, a recommendation only, never acted on).
+>
+> `japan-geotiff-dem` (on `aalto`) has no further queued work of its
+> own — both 1m and 5m JCI 2026-09 cycles are complete and reported.

@@ -37,6 +37,7 @@ This file is the *why*, kept stable. Session narrative lives in
 | [D19](#d19-nothing-pruned-local-files-superseded-by-an-upstream-japan-geotiff-dem-refresh--added-source_prune_obsoletepy) | Nothing pruned local files superseded by an upstream `japan-geotiff-dem` refresh — added `source_prune_obsolete.py` | Accepted, tool verified | 2026-08-20 |
 | [D20](#d20-escalate-d18s-fix-from-within-group-last-wins-to-true-seven-tier-pixel-level-priority-merge-reusing-aggregation_mergepy-unchanged) | Escalate D18's fix from within-group last-wins to true seven-tier pixel-level priority merge, reusing `aggregation_merge.py` unchanged | Accepted, unit-tested | 2026-08-20 |
 | [D21](#d21-shuffle-aggregation_runpys-work-queue--geographically-sorted-todo-order-clustered-expensive-tiles-onto-the-same-workers) | Shuffle `aggregation_run.py`'s work queue — geographically-sorted `.todo` order clustered expensive tiles onto the same workers | Accepted, verified live | 2026-08-21 |
+| [D22](#d22-plan-not-yet-executed--analysis-first-sync-of-hfumapterhorn-against-upstreammain) | Plan (not yet executed) — analysis-first sync of `hfu/mapterhorn` against `upstream/main` | Open | 2026-08-21 |
 
 ---
 
@@ -1756,3 +1757,87 @@ not just a plausible-sounding theory.
   any other stage that reads a similarly-created work queue, check
   whether it needs the same shuffle — not audited as part of this
   entry.
+
+## D22: Plan (not yet executed) — analysis-first sync of `hfu/mapterhorn` against `upstream/main`
+
+**Status**: Open — planning only, recorded 2026-08-21 ahead of the
+actual work so the intent and constraints survive a context reset.
+
+**Context**: D17 already established upstream-tracking fidelity as a
+standing practice, evidenced by D11's bug-catching diff session. This
+entry is Hidenori's explicit follow-through: once the current D16
+`japan.pmtiles` build and its associated bug-fix round (D18-D21) settle
+enough to not be actively mid-flight, do a real sync against
+`upstream/main` rather than letting the gap keep growing. As of
+2026-08-21, `git fetch upstream && git log --oneline HEAD..upstream/main`
+shows **9 commits** (`fdd6adc..ef97ada`):
+
+```
+ef97ada Fix source_create_tarball.py (#299)
+9cfbfab Update website and changelog for v0.0.12 (#298)
+048e7fc Add source autas: Australia, Tasmania 2 m (#297)
+f81c706 Add source esmdt50*: Spain, partial 50 cm (#293)
+30d18d7 Add source aatw: Taiwan, 20m (#292)
+b029dd8 Add source debw025: Germany, Baden-Württemberg 25 cm (#290)
+a0ae374 Add source frhd* and update multi-host pipeline (#289)
+fdd6adc Add tar-store to source-store scripts (#286)
+57f8481 Update worker, reduce memory usage (#285)
+```
+
+A raw `git diff HEAD upstream/main --stat` also shows ~93 files /
+~475k lines of *deletions* — this is **not** real: it's the diff
+mechanically noticing that upstream never had this fork's own
+`jpnational*`/`jphokkaidodem1` source-catalog entries (75,819-line
+`file_list.csv`s etc.), which is expected and must not be read as "the
+merge will delete these." A real `git merge upstream/main` (three-way,
+common-ancestor-based) will not touch files this fork added that
+upstream never had — confirmed by reasoning about the mechanism, not
+yet by actually running the merge.
+
+**Decision (the *policy*, not yet the execution)**: When this work
+starts, go commit by commit, not as one bulk merge:
+
+1. **`57f8481` "Update worker, reduce memory usage" first, on its own,
+   read closely before merging.** This is the highest-value commit —
+   real memory pressure was directly observed on `slate` during the
+   D16 build (D21: ~244MB free system memory with 4 parallel
+   `AGGREGATION_WORKERS`, plausibly contributing to the throughput
+   problems D21's shuffle fix addressed from a different angle). A
+   prior session (2026-08-14, `japan-geotiff-dem`-adjacent memory) had
+   already flagged this exact commit as needing a companion
+   `downloader.py` process not yet set up — check whether that's still
+   true and what it actually requires before merging.
+2. The five `Add source <country>` commits (`048e7fc`/`f81c706`/
+   `30d18d7`/`b029dd8`/`a0ae374`) are additive, non-Japan source-catalog
+   entries — low collision risk with this fork's own Japan-specific
+   work, but `a0ae374` also touches "multi-host pipeline" per its own
+   title, which needs reading before assuming it's purely additive.
+3. `fdd6adc`/`9cfbfab`/`ef97ada` are infra/docs/small-fix commits —
+   check each individually for relevance, no assumption either way.
+4. For every commit: read the actual diff and commit message first,
+   understand *why* upstream made the change (not just what changed),
+   check it against this fork's own Japan-specific modifications
+   (D11's requantization/`macrotile_z` fixes, D18/D20's priority-merge
+   groupby logic, D21's queue shuffle) for real conflicts vs. just
+   textual overlap, and only then merge — one commit or one logical
+   group at a time, testing after each, not as a single giant merge
+   commit that's hard to bisect if something breaks.
+
+**Explicitly not decided yet**: whether to `git merge upstream/main`
+wholesale after the commit-by-commit review, cherry-pick individual
+commits, or some mix — that's a call to make once the actual diffs are
+read, not before.
+
+**Consequences**:
+- This is deliberately sequenced *after* the current build settles
+  (not concurrently) — merging upstream changes into a fork whose
+  aggregation code is mid-execution (and was just modified three times
+  this session, D18/D20/D21) is exactly the kind of avoidable risk
+  Hidenori asked to guard against ("技術的な事故を避けるために慎重に").
+- `57f8481`'s memory-reduction work, if it changes `aggregation_run.py`'s
+  own architecture (Manager/Worker model per earlier session notes),
+  may interact with D21's `random.shuffle()` fix — re-verify D21 still
+  holds (or reapply its intent in whatever new form the code takes)
+  after merging, don't assume it survives untouched.
+- No code has been touched for this entry — it is pure planning,
+  meant to be picked up fresh next session with full context intact.
