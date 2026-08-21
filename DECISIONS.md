@@ -1841,3 +1841,1007 @@ read, not before.
   after merging, don't assume it survives untouched.
 - No code has been touched for this entry — it is pure planning,
   meant to be picked up fresh next session with full context intact.
+
+## D23: Two-week strategy — finish upstream sync, pivot from "one giant national build" to incremental build-and-publish, gated on a fresh jpnational1
+
+**Status**: Accepted (strategy), 2026-08-21. Execution spans roughly the
+next two weeks; this entry records the shape of the plan, not a
+session-by-session log (see `HANDOVER.md` for that as each phase
+happens).
+
+**Context**: The D16 build (`jpnational5`/`10`/`sea` national + `jpnational1`
+still regional) has made it obvious, mid-run, that a genuinely
+national-scope build is a much bigger undertaking than any prior run —
+5,765 aggregation items at this intermediate scope alone, multi-day
+wall-clock even with 4 parallel workers, and (per this same session's
+own findings) capable of silently accumulating **139GB across 1,431
+uncleaned `tmp-store` directories** from repeated interruptions before
+anyone noticed (cleaned up this session, see below). The original plan —
+finish this Kyushu-region-plus-national-fallback build, then separately
+expand `jpnational1` to national scope, then do a *second*, final,
+even-larger national build from scratch — front-loads a lot of risk and
+wall-clock into a single terminal event. Hidenori's own framing:
+finish the upstream-tracking work first (D22, in progress this same
+session), then restructure the build itself around **incremental
+publish** rather than one final monolithic one.
+
+**Decision — the new sequence**:
+
+1. **Finish D22's upstream-tracking work to a reasonable stopping
+   point** before touching build strategy further. This session
+   already: cherry-picked `57f8481`'s memory-reduction GDAL flags and
+   LERC compression into `aggregation_reproject.py`/`aggregation_merge.py`
+   (paused the D16 build to do it live, per Hidenori's explicit
+   "テストビルドだから" permission — D16's build is genuinely a test/
+   staging build at this scope, not the terminal artifact), and is
+   mid-benchmark on whether LERC's decode cost on slate's storage is
+   worth its space savings. Remaining upstream work (deferred until
+   this benchmark lands and, per Hidenori, until the build settles
+   again): the five `Add source <country>` commits, the two small
+   infra/doc commits, and — the big one — properly integrating
+   `57f8481`'s multi-host `worker.py`/`downloader.py`/queue-and-ready
+   mechanism into this fork's own `aggregation_id`-scoped `tmp_folder`
+   layout (D12), not skipping it, per Hidenori's explicit instruction
+   that `hfu/mapterhorn` should stay a faithful soft-fork of
+   `mapterhorn/mapterhorn` — mirroring the historical relationship
+   between GNU Emacs and Mule (a Japanese/multilingual-enhancement
+   fork out of ETL Tsukuba that stayed close enough to upstream to
+   merge back in, rather than drifting into a permanent separate
+   fork). Any fix found along the way that isn't Japan/DEM-specific is
+   a mainstream-PR candidate (D17's own standing policy) — evaluate
+   this honestly per-commit, not as a blanket goal.
+
+2. **Pause the current Kyushu-region-scope test build at a convenient
+   point** (not mid-item, not urgently — "適当なタイミングで" per
+   Hidenori) once the LERC benchmark verdict is in and the immediate
+   upstream-sync work above reaches a stopping point.
+
+3. **Run `jpnational1`'s national expansion** (D14's proven recipe:
+   regenerate `source-catalog/jpnational1/file_list.csv` unfiltered
+   from `japan-geotiff-dem`'s national `1/latest_file_list.csv.gz`,
+   `aria2c` download, D15's `gdal vector concat` bounds/polygonize).
+   This was already sequenced to come after D16's test build proved
+   the downstream stages stable at the current union extent (D16's own
+   reasoning) — that condition is being treated as satisfied once (1)
+   and (2) above are done, not deferred further.
+
+4. **Before the real national-scope build starts, clean any
+   intermediate data whose freshness relative to a national
+   `jpnational1` is in doubt.** Hidenori's own framing: once
+   `jpnational1` genuinely reflects the latest national 1m coverage,
+   that freshness is high-value and shouldn't sit next to stale
+   partial-region intermediate artifacts from the old regional-scope
+   `jpnational1`. Concretely, before `aggregation_covering.py` runs
+   again for the national-scope pass: clear `tmp-store` (already
+   proven safe to do the same way this session did — verify zero
+   `.done` correlation before deleting, never delete anything with a
+   matching `.done`), and re-examine whether `pmtiles-store`/
+   `bundle-store`/`meta-store` content built against the old regional
+   `jpnational1` extent needs invalidating rather than silently
+   reused. **Not yet fully specified — this needs its own short design
+   pass when the moment actually arrives**, informed by whatever
+   `aggregation_covering.py`'s own dirty-tile mechanism
+   (`get_dirty_aggregation_filenames`, already used by
+   `downsampling_run.py`/`bundle.py` for cross-generation diffing, see
+   below) turns out to handle automatically versus not.
+
+5. **Restructure the national build itself around incremental
+   build-and-publish, not one terminal run.** Hidenori's proposal:
+   roughly every time aggregation's `.done` count advances by some
+   chunk (his own example unit: "100 done" — not a hard commitment,
+   the real unit should be chosen once real throughput is known post-
+   ①②), pause fresh aggregation work, run the downstream chain
+   (`downsampling_run.py` → `bundle.py` → `merge_japan_bundles.py` →
+   `rsync` to `stars`) over whatever's ready, publish that
+   `japan.pmtiles` update, and only then resume aggregating the next
+   chunk. This trades a single enormous multi-day run with one
+   all-or-nothing payoff for a series of smaller, independently
+   verifiable, independently valuable publishes — consistent with
+   this project's broader pattern of treating incremental progress as
+   real, shippable value (`japan-geotiff-dem`'s own per-Zone publish
+   cadence is the same instinct).
+
+   **Real technical wrinkle, found this session, not yet resolved —
+   flag before committing to a chunk size**: `downsampling_run.py`'s
+   `create_tile()` silently treats a missing child PMTiles file as "no
+   data there" rather than "not ready yet," and marks the parent
+   `-downsampling.done` regardless (the function's own inline comment
+   already warns about this: "create_tile() silently skips missing
+   inputs and marks the item .done anyway — producing a permanently
+   incomplete tile with no retry"). Given the incremental-publish
+   pattern will *routinely* call downsampling while aggregation is
+   still incomplete for some parent tiles' children (that's the whole
+   point), this isn't a rare edge case here — it's the normal mode.
+   `downsampling_run.py` already ships a `--regenerate PATTERN` flag
+   (removes a specific `-downsampling.done` marker to force
+   reprocessing) built for exactly this kind of repair, and
+   `bundle.py`/`downsampling_run.py` already have a "dirty" mechanism
+   keyed on comparing `aggregation_ids[-1]` against `aggregation_ids[-2]`
+   (`get_dirty_aggregation_filenames`) — but that mechanism is built
+   for diffing between two *complete* aggregation generations (e.g.
+   before/after `jpnational1` goes national), not for "the same
+   generation, just further along than last time." **Before locking in
+   a chunk size or an automation script for step 5, spend a short,
+   explicit design/verification pass on**: whether each incremental
+   downsampling/bundle pass should track and re-`--regenerate` any
+   macrotile whose child set changed since its own last pass (not just
+   since the last aggregation generation), and whether `bundle.py`'s
+   archive output is safely re-buildable from partial+later-completed
+   downsampling output without hand-holding. Don't assume either way
+   without checking `merge_japan_bundles.py` and a real dry run first.
+
+**Consequences**:
+- This sequencing means `jpnational1`'s national expansion — sitting
+  ready since D16 deliberately deferred it — starts noticeably sooner
+  than the original "finish this whole test build first" plan implied,
+  once the upstream-sync and LERC-benchmark work in front of it
+  actually wraps.
+- The eventual national build becomes a *series* of publishes to
+  `stars`, not one. `stars`/`martin`+Caddy hosting (D13) already serves
+  `japan.pmtiles` for daily use outside the slower Source Cooperative
+  path — this incremental cadence fits that hosting choice better than
+  it would fit a Source-Cooperative-primary publish model.
+- The tmp-store cleanup performed this session (1,682 directories,
+  96.1GB freed, zero of them carrying a `.done` marker — verified
+  before deletion, not assumed) is itself the first concrete instance
+  of the "clean suspect intermediate data" instinct in point 4 above,
+  done opportunistically once Hidenori confirmed it was safe to do
+  proactively at this stage ("この段階まで来ているので、古い中間ファ
+  イルのクリーンアップは積極的に実施していい").
+- Point 5's open technical wrinkle is a real risk to the whole
+  incremental-publish idea if left unresolved — a chunk boundary that
+  lands mid-macrotile could otherwise bake a permanent hole into
+  published output with no automatic self-heal. Treat resolving this
+  as a prerequisite design task early in week 1, not a detail to
+  discover the hard way mid-build.
+
+### D23 addendum (2026-08-21, same session): parallel download-and-build during the 3-day unattended window; storage estimate; a benchmarking methodology bug found and fixed
+
+**Parallel execution during the 3-day unattended `slate` window**:
+Hidenori will leave `slate` unattended for roughly 3 days. `jpnational1`'s
+national-scope expansion (D14's recipe) splits into two phases with very
+different resource profiles: **download** (`source_download.py`, aria2c)
+is network-bound — the previous regional-scope run (75,818 entries)
+measured **2h16m4s**, dominated by parallel-connection wait time, not
+local CPU/disk; **polygonize/bounds** (`source_polygonize.py`, D15's
+`gdal vector concat` rewrite) is CPU/subprocess-bound — the same
+regional scope measured **~4h17m under the old per-file method**, and
+D15's rewrite target is ~31ms/file for the concat phase specifically
+(~2.5h projected at national scale, concat phase only). These two
+phases don't meaningfully compete with the currently-running D16
+aggregation build (also CPU/disk-bound, and now lighter per-worker
+after this session's GDAL memory-reduction cherry-pick) for the same
+resource during the download phase.
+
+**Decision**: don't wait for the Kyushu-scope test build to reach a
+convenient pause point before starting `jpnational1`'s download step —
+start the aria2c download **now, concurrently** with the ongoing
+aggregation build, since it's network-bound and the build is
+CPU/disk-bound. Revisit only when the download completes and the
+CPU-bound polygonize phase is ready to start — *that* phase genuinely
+competes with the aggregation build for CPU, and should either wait
+for a natural pause point in the build or run with reduced worker
+counts on both sides, decided when that moment actually arrives rather
+than pre-committed now.
+
+**Storage estimate for the download phase**: `jpnational1`'s current
+regional-scope `source-store` measures **86GB across 75,820 files**
+(~1.13MB/file average, measured directly on `slate`, not estimated).
+Scaling linearly to the national manifest (~291,779 files, D16's own
+figure) projects a **total of ~330GB**, of which **~244GB is net-new
+download** (the regional subset already present doesn't need
+re-fetching — `aria2c`'s checksum-based skip, D14). Against the
+**944GB free** on `/Volumes/Migrate-2025-04` (measured after this
+session's `tmp-store` cleanup, up from 842GB before it), this is a
+**low but non-zero risk** — comfortable headroom for the download
+alone, but the aggregation build's own `tmp-store` usage can regrow
+during unattended operation (it only shrinks via successful
+per-item cleanup or an explicit sweep like this session's; repeated
+unattended interruptions, e.g. a network drop mid-run, would leave more
+orphaned partial directories, the same failure mode just cleaned up).
+**Recommendation**: a disk-space check partway through the 3-day
+window (not just at the end) is worth building into whatever
+unattended-operation script or reminder covers this period — this
+wasn't a scheduled check before this session surfaced the 139GB/1,431-
+directory accumulation by accident.
+
+**A benchmarking methodology bug, found and corrected this same
+session**: the ①② throughput comparison above was initially computed
+by counting `.done` files across the *entire* `aggregation-store`
+directory tree with a single recursive `find`. This silently summed
+across **four different `aggregation_id` generations** (`01KZK5Q1XWP5N0YBEPBSB1DX3R`,
+`01KZM87D6PEKWM2B2ZEDSNFSQW`, `01KZVPVTAM9V0QP8SRR42XRYKW`, and the
+actually-active `01M0FNHYXSAMNVTV430XD3XB5T`) — only the last of which
+`aggregation_run.py main()` ever touches (it always operates on
+`utils.get_aggregation_ids()[-1]`). The other three are static
+leftovers from earlier build generations and never change during a
+run, so raw deltas over a short window happened to still be
+attributable to the active generation (the static offset cancels out
+in a delta) — but the absolute counts reported (e.g. "4405/4406") were
+meaningless on their own, and this was not caught until a deeper
+per-item mtime cross-check surfaced the inconsistency. **Corrected
+throughput, scoped correctly to `01M0FNHYXSAMNVTV430XD3XB5T`
+(csv=5875 total)**: pre-patch baseline **62 items in ~29 min**
+(≈2.14/min); post-patch, **1 item in ~24 min** (≈0.042/min) as of this
+addendum — a ~50x apparent slowdown on a single-item sample, well past
+Hidenori's "2x slower → drop LERC" threshold if it holds up, but not
+yet trustworthy given D21's own established item-cost variance and a
+sample size of one. Benchmarking continues with the corrected,
+generation-scoped counting method. **Lesson for future benchmarking in
+this pipeline**: always scope progress-counting to
+`aggregation-store/{utils.get_aggregation_ids()[-1]}/`, never the
+whole tree, once more than one generation exists on disk.
+
+### D22 follow-up (2026-08-21, same session): LERC on ephemeral aggregation intermediates dropped after real-benchmark verdict; GDAL memory-reduction flags kept
+
+**Status**: Decided, acted on. Supersedes the "mid-benchmark" framing in
+the D23 addendum above for this specific piece of `57f8481`.
+
+**Context**: The D23 addendum above recorded an initial, low-confidence
+signal (n=1, ~50x apparent slowdown) from cherry-picking both halves of
+`57f8481`'s aggregation changes — GDAL memory-reduction flags
+(`GDAL_CACHEMAX=64`, `GDAL_NUM_THREADS=1`, `GDAL_MAX_DATASET_POOL_SIZE=1`)
+and LERC compression (`COMPRESS=LERC -co MAX_Z_ERROR=0.001`) on
+`aggregation_reproject.py`'s `translate()` output and
+`aggregation_merge.py`'s merged-tile profile — together into the live
+D16 test build. Hidenori's own standing threshold, stated in advance:
+"計測の結果、例えば２倍以上遅いということであれば、LERCを外すという
+判断をせざるを得ないだろう" (if measurement shows e.g. 2x+ slower,
+we'll have no choice but to drop LERC).
+
+**A second, independent data point confirmed the first wasn't a fluke**:
+item 1 (post-patch) took ~17 min; item 2 took ~35 min. Both are
+15-35x slower than the pre-patch, generation-correctly-scoped baseline
+of 62 items in 29 min (≈2.14/min, ≈28s/item average). Cross-checked
+against worker CPU-time accounting at the moment of the second
+completion: two of the four `multiprocessing.Pool` worker processes
+had accumulated 45:16 and 42:42 of actual CPU time against ~53 minutes
+of wall-clock since the patched run started — i.e., those workers were
+pegged at or near 100% CPU for nearly the entire window, not idle or
+I/O-waiting. This is consistent with the hypothesis floated earlier
+this session: `aggregation_merge.py`'s `merge()` does **repeated
+windowed reads across every grouped-source tiff** (once per
+non-overlapping tile-window, and again per candidate tiff within a
+window when filling gaps) — for LERC-compressed inputs, every one of
+those windowed reads pays a real LERC-block decode cost, and items
+with several grouped source items (6-8+, not unusual per this
+session's own `tmp-store` inspection) multiply that cost. This is a
+categorically different access pattern than the one upstream's own
+`mapterhorn/mapterhorn#186` "TIF compression" issue actually validated
+LERC against — that discussion (Oliver Wipfli, with input from LINZ's
+published elevation-data compression research and community
+benchmarking) is about **source tarball compression for storage/
+transfer efficiency**, a write-once/read-rarely access pattern. It
+never covers LERC applied to short-lived intermediate files inside a
+tight per-window read loop. The two use cases share a codec, not a
+cost-benefit profile — conflating them was the actual mistake here,
+not a flaw in upstream's own reasoning (see this session's answer to
+Hidenori's "LERC採用基準" question for the fuller writeup, not
+re-duplicated here).
+
+**Decision**: Paused the D16 test build a second time (per Hidenori's
+own "テストビルドだから" / pause-merge-resume precedent, and his
+explicit pre-authorization of the 2x threshold), reverted only the
+`COMPRESS=LERC -co MAX_Z_ERROR=0.001` additions in
+`aggregation_reproject.py`'s `translate()` and reverted
+`aggregation_merge.py`'s profile back to no explicit `compress` key
+(matching pre-session behavior, effectively uncompressed intermediate
+tiffs). **Kept**: the GDAL memory-reduction flags
+(`GDAL_CACHEMAX=64`/`GDAL_NUM_THREADS=1`/`GDAL_MAX_DATASET_POOL_SIZE=1`)
+— independently verified earlier this session to cut per-`gdal_translate`
+RSS from ~800MB to ~10-12MB with no observed throughput cost, a clean
+win on its own. Also kept the `'heterogeneous projection' in err`
+exception check added to `create_virtual_raster()` — unrelated to
+LERC, a real correctness improvement, zero measured cost. Resumed the
+build under this reduced patch; a fresh generation-scoped monitor is
+running to confirm throughput recovers toward the ~2/min baseline.
+
+**Consequences**:
+- This specific piece of `57f8481` (LERC on aggregation intermediates)
+  is **not** being adopted into `hfu/mapterhorn`, at least not as
+  upstream wrote it. If LERC's smaller intermediate file size is ever
+  wanted here again (e.g. if disk footprint becomes the binding
+  constraint rather than CPU), revisit with a targeted fix instead of
+  upstream's blanket approach — e.g. compress only the *final*
+  written-once `{num_tiff_files}-3857.tiff` merge output (which
+  `aggregation_tile.py` reads only once per item, not in a tight
+  per-window loop across multiple files) while leaving the
+  intermediate per-group `{i}-3857.tiff` reproject outputs (the ones
+  `merge()` re-reads repeatedly) uncompressed. Not attempted this
+  session — a real next-step candidate if disk pressure reappears
+  rather than memory pressure.
+- The GDAL memory-reduction flags stand as a genuine, adoptable piece
+  of `57f8481` on their own merits — this doesn't change D22's overall
+  per-commit, not-a-blanket-merge discipline; it's exactly what that
+  discipline was for.
+- `mapterhorn/mapterhorn#186` is worth a second look if/when this
+  fork ever revisits `source_to_cog.py` (D5) — the same LERC+ZSTD
+  combination Oliver and `lseelenbinder` discussed there (marginal
+  gain observed: 412MB vs 425MB on one Canada tile) is a genuinely
+  separate, still-open question from what got resolved here.
+
+**Verification, post-revert (2026-08-21)**: resumed at 06:45 with 244
+items done in the active generation; reached 290 by 07:09 — **46 items
+in ~24 minutes, ≈1.9/min**, back in line with the original pre-any-
+patch baseline (62 items in 29 min, ≈2.14/min) and consistent with
+D21's own known item-cost variance rather than any residual slowdown.
+A short initial burst right after resume (244→283 in the first ~12
+min, ≈3.3/min) is attributable to several items whose `reproject()`
+stage had already completed and cached (`reprojection.json` present)
+before the pause, letting them skip straight to `merge()`/`tile()` —
+not representative of steady-state throughput, hence the fuller
+24-minute window above as the real number. **LERC on aggregation
+intermediates is confirmed dropped, final**; GDAL memory-reduction
+flags confirmed adopted, final.
+
+### D22 follow-up, continued: ③ (multi-host `worker.py`/`downloader.py`/queue mechanism) also dropped, same session
+
+**Status**: Decided, 2026-08-21, same session as the LERC verdict
+above. Revises this entry's own earlier framing (which treated ③ as
+"integrate carefully into D12's `tmp_folder` layout, don't skip, for
+upstream fidelity") and D23's point 1.
+
+**Context**: Hidenori's own follow-through, immediately after the LERC
+verdict landed: "②を未採用にするということは、なおさら③は未採用だね。
+現実的な時間で作れることが重要だよ" (dropping ② makes dropping ③ even
+more clearly right — building this in a realistic timeframe is what
+matters). ③ exists upstream to solve a problem this fork doesn't
+have: staging source data with a size-capped, LRU-evicted local cache
+(`downloader.py`'s `MAX_TMP_SOURCE_SIZE`, default 100GB) so that
+aggregation workers on a host without a full local copy of
+`source-store` can still process items, coordinating across multiple
+physical hosts via `worker.py`'s hostname-scoped task files. This
+fork runs single-host (`slate`), with `source-store` already fully
+present locally (D14's aria2c download populates it directly, no
+staging needed), and — as of this session — comfortably provisioned on
+disk (943GB+ free after cleanup, national `jpnational1` fully sized at
+~330GB, well within budget). ③ would add real, ongoing complexity (a
+background `downloader.py` process, `tmp-store/queue`/`tmp-store/ready`
+file-based handshaking, reconciling with D12's own `aggregation_id`-
+scoped `tmp_folder` layout which conflicts with upstream's flat one)
+to solve a problem that doesn't exist here, for a fork whose priority
+this session shifted decisively toward shipping the national build in
+a practical timeframe (D23) rather than maximizing upstream mechanism
+parity for its own sake.
+
+**Decision**: Do not integrate ③. Upstream sync for the remaining
+`57f8481` pieces (`manager.py`'s two small fixes, `find_aggregation.py`'s
+debug-target change) and the rest of the D22 commit queue (five
+`Add source <country>` commits, three infra/docs commits) continues
+per D22's original per-commit discipline — but ③ specifically is now
+explicitly out of scope, not just deferred. If a genuine multi-host
+need arises later (e.g. this fork's own scale eventually outgrows one
+Mac mini), revisit as a fresh design informed by whatever this fork's
+actual bottleneck turns out to be at that point, not by importing
+upstream's mechanism wholesale.
+
+**Consequences**:
+- `hfu/mapterhorn`'s "faithful soft-fork" aspiration (this session's
+  own Mule/Emacs framing, D22/D17) is qualified, not abandoned: fidelity
+  to upstream's *correctness fixes and genuinely-applicable
+  optimizations* remains the standing practice; fidelity to upstream's
+  *architecture* for problems this fork doesn't share is explicitly
+  not the goal. `hfu/mapterhorn` diverging from `worker.py`/`downloader.py`
+  going forward is an accepted, deliberate gap, not a fork drifting
+  by neglect.
+- Any future mainstream-PR contribution candidate (D17) from this
+  fork's own work is unaffected by this decision — it's about what
+  this fork *pulls in* from upstream, not what it might contribute
+  back.
+
+### jpnational1 download: slow CPU-bound verification phase, accepted as-is
+
+Around 45 minutes into the national-scope `aria2c` run, `jpnational1`
+still showed zero new files (`75,818/291,779`, unchanged) — the
+`--check-integrity=true` re-hash of the 75,818 already-present files
+(~86GB) is taking longer than a naive disk-bandwidth estimate would
+suggest, most likely from genuine 3-way CPU contention with the
+concurrently-running aggregation build and `jpnational5`'s own
+`aria2c` hash-and-download pass (confirmed alive throughout: 34.9%
+CPU, 16:33 accumulated CPU time, not stalled). Hidenori's call:
+"1が動かないのは許容可能" (jpnational1 not moving is acceptable) — no
+intervention, let it work through the verification phase at whatever
+pace the shared CPU allows.
+
+## D24: "rational for Oliver's environment, not rational for ours" — a first pipeline-wide audit
+
+**Status**: Accepted (as a standing lens), partial audit done
+2026-08-21; not exhaustive, flagged below.
+
+**Context**: This session's LERC verdict (D22 follow-up above) produced
+a generalizable lesson, in Hidenori's own words: "oliverの環境では合
+理的な実装でも、私たちの環境では合理的ではない場合があり得る" (an
+implementation that's rational in Oliver's environment can be
+irrational in ours). Oliver's environment, inferred from `57f8481`'s
+shape alone (multi-host `worker.py`, size-capped LRU `downloader.py`
+cache, `NUM_WORKERS` defaulting to 32, aggressive per-call GDAL memory
+caps), looks like distributed/many-small-workers processing against
+network/cloud-adjacent storage, at genuinely global multi-source
+scale. This fork runs single-host (`slate`, one M4 Mac mini), with
+abundant local SSD, Japan-only source data, and (per D23) a hard
+practical-timeframe constraint. Worth a deliberate pass through the
+pipeline with this lens, not just reactively per-commit during D22.
+
+**Findings — already correctly adapted (positive precedent, no action needed)**:
+- **D5 (skip `source_to_cog.py`)**: upstream's blanket "re-encode every
+  source to LERC" step, skipped because `japan-geotiff-dem`'s source is
+  already tiled/well-compressed and re-encoding would force local
+  downloads incompatible with this fork's URL-streaming design (D3).
+  This is, in hindsight, the *same* environment-mismatch pattern
+  identified this session, applied correctly a session earlier.
+- **Worker-count defaults**: `aggregation_run.py`'s `get_worker_count()`
+  defaults to 4 ("half of typical 8-core hardware"), `downsampling_run.py`
+  defaults to 5 — both explicitly hardware-tuned for this Mac mini, not
+  inherited from upstream's `worker.py` 32-worker default.
+- **`merge_japan_bundles.py`**: generalizes upstream/shared
+  `merge_bundles.py` (hardcoded to two specific Freetown filenames) into
+  a glob over every `bundle-store/*.pmtiles`, and its own output metadata
+  correctly centers on Japan (140.9°E, 41.85°N), not Freetown. Kept
+  fork-local (not merged into `hfu/mapterhorn` proper) by design, per
+  `FORK_NOTES.md`'s generic-fix-vs-Freetown-specific split.
+- **D13's `TMPDIR=/Volumes/Migrate-2025-04/tmp` redirection** for
+  `merge_japan_bundles.py`: already a real instance of adapting an
+  upstream-shaped step to this machine's actual disk layout.
+
+**Findings — dropped this session (see D22 follow-up entries above)**:
+② LERC on aggregation intermediates, ③ the multi-host `worker.py`/
+`downloader.py`/queue mechanism.
+
+**New finding — not yet fixed**: `downsampling_run.py`'s `CENTER_LAT`/
+`CENTER_LON` still default to **Freetown, Sierra Leone** (8.465,
+-13.234) — a leftover from this fork's earlier Freetown/orthophoto
+project. `grep` across `Justfile`, `manager.py`, and
+`mapterhorn-japan-bridge/HANDOVER.md` found **zero evidence these were
+ever overridden** for any Japan `downsampling_run.py` invocation to
+date, including D13's own 789,984-tile build. This doesn't corrupt
+output — `sort_files_by_proximity()` only affects **processing order**,
+not correctness, and D13's build ran to full completion regardless of
+order — but it matters more now: D23's incremental/staged publish
+strategy explicitly depends on processing order to decide what's
+"done enough to publish first."
+
+**A sharper point than just "wrong default"**: the whole "sort by
+distance from one center point" model was designed for Sierra Leone —
+a geographically compact country, where radial distance from a single
+point is a sensible proxy for "processing this next is broadly useful
+soon." Japan is a ~3,000km north-south archipelago; radial distance
+from any single center point is a poor fit for that shape (e.g.
+Hokkaido and Kyushu are both "far" from a naive center, but
+geographically unrelated to each other). This directly connects to
+this same session's earlier `quadrans`-style mesh-code quadrant
+discussion (`japan-geotiff-dem/scripts/quadrans_script.rb`'s
+North/East/West/South split, purely from the mesh code's own digits,
+no external reference needed) — that framing isn't just a workaround
+for GSI-Zone-boundary-undeterminability (this session's earlier
+finding), it's plausibly a **better-fitting prioritization model for
+Japan's actual geography** than upstream's Freetown-shaped default,
+independent of the publish-batching question it was originally raised
+for.
+
+**Not yet acted on** — this needs a decision, not just a note:
+1. At minimum, set `CENTER_LAT`/`CENTER_LON` to something Japan-
+   appropriate (e.g. Japan's rough geographic center, ~36°N 138°E)
+   before the next real `downsampling_run.py` invocation.
+2. Worth considering instead: replace `sort_files_by_proximity()`'s
+   radial-distance model with the mesh-code-quadrant classifier for
+   Japan-specific runs (via an env-var-gated code path, or a fork-local
+   override, matching this file's own established
+   fork-vs-upstream-shared conventions) — a more substantial change,
+   not just a config default, and one that would also directly serve
+   D23's batch-boundary design question. Hidenori's call on scope/timing.
+
+**Audit coverage, explicitly incomplete**: this pass covered
+`aggregation_reproject.py`/`aggregation_merge.py`/`aggregation_run.py`
+(via D22), `worker.py`/`downloader.py`/`manager.py` (via D22),
+`downsampling_run.py` (this entry), `merge_japan_bundles.py` (this
+entry), and `source_to_cog.py`/D5 (retrospective). **Not yet reviewed
+through this lens**: `source_download.py`, `source_bounds.py`,
+`source_polygonize.py` (D15 already optimized it for scale, but not
+specifically re-examined for Oliver-vs-us environment fit),
+`aggregation_covering.py`, `bundle.py` (its `create_archive()` sorts
+every tile ID into memory in one pass and reads full archives
+sequentially — worth checking whether this scales comfortably to a
+true national tile count on this machine's RAM before it's exercised
+for real, not assumed either way). Revisit before the national build's
+downsampling/bundle stages actually run at full scale, per D23's own
+sequencing.
+
+**Hidenori's processing-priority preference for the eventual quadrans-based
+batching (D24's open item 2)**: North Japan → South Japan → East Japan →
+West Japan, in that order. Explicitly a personal preference, not derived
+from a technical constraint — record and honor it once the
+quadrans-style mesh-code classifier actually gets wired into
+`downsampling_run.py` (or wherever the eventual batch-ordering logic
+lands), rather than defaulting to alphabetical or some other arbitrary
+order. `downsampling_run.py` itself remains unmodified as of this
+entry — `CENTER_LAT`/`CENTER_LON` still default to Freetown, no
+quadrans logic wired in yet, this is still an open item, not started.
+
+## D25: Hole-free, progressive execution order for the national build — a concrete design (plan, not yet implemented)
+
+**Status**: Plan accepted, 2026-08-21; execution not yet started.
+Follows the same "record the plan before touching code" discipline
+D22 used. Closes the open technical wrinkle D23 flagged but didn't
+resolve.
+
+**Context**: D23 identified the risk (`downsampling_run.py`'s
+`create_tile()` silently treats a missing child as "no data" rather
+than "not ready," permanently baking a gap into any parent tile
+downsampled before all its children exist) and proposed a front-stage/
+back-stage split (fix the full national *covering* first, only then
+run the heavy per-item pixel work) as the general shape of a fix, but
+left the actual execution order unspecified. Hidenori asked directly
+whether the hole problem was actually solved (it wasn't) and asked for
+an order that is simultaneously logically consistent (no holes) and
+progressive (real partial results well before the full national build
+finishes, given it will run for weeks).
+
+**Decision — the design**:
+
+1. **Front stage, run once, fixed for the whole national build**:
+   `aggregation_covering.py` against the full national union (once
+   `jpnational1` goes national, D14's recipe). This produces the
+   complete, final set of aggregation items and downsampling items —
+   nothing added or removed from this set for the rest of the build.
+   Fixing this set upfront is what makes "has this downsampling item's
+   full child set completed" a well-defined, stable question later —
+   it can't be a moving target.
+
+2. **Back stage, ordered by Hidenori's quadrans priority (北日本→南
+   日本→東日本→西日本)**: aggregation items get a priority weight from
+   the mesh-code-style quadrant classifier (`japan-geotiff-dem/scripts/
+   quadrans_script.rb`'s North≥62/East≥38/South≤32/West-else logic,
+   reimplemented against each aggregation macrotile's own tile bounds
+   rather than a GSI mesh code — a geometric equivalent, not a literal
+   reuse of the Ruby script). Within a priority tier, keep D21's
+   `random.shuffle()` — priority determines *which region tends to
+   finish first*, not a rigid per-item sequence; load-balancing across
+   the 4 workers still matters more locally.
+
+3. **The actual hole-avoidance mechanism — per-item readiness, not
+   per-quadrant gating**: a downsampling item is safe to run exactly
+   when *all of its real children* (computed the same way
+   `downsampling_run.py`'s own `create_tile()` already does,
+   `mercantile.children(extent, zoom=parent_zoom)`) have a matching
+   aggregation `.done` marker — checked directly, not inferred from
+   "is its whole quadrant done." This deliberately sidesteps the
+   boundary case a naive per-quadrant gate would mishandle (a parent
+   tile straddling e.g. the North/East boundary would, under a
+   per-quadrant gate, either publish too early with a hole on one side
+   or wait on a quadrant it barely touches — a per-item check just
+   waits for its own actual children, correctly, regardless of which
+   quadrant(s) they fall in). Quadrans priority influences *when* a
+   given item is likely to become ready, not whether it's ever allowed
+   to run unready.
+
+4. **New, small piece of code needed** (not yet written): a readiness
+   filter — for each `*-downsampling.csv` in the active generation,
+   check whether every child's aggregation `.done` exists; only pass
+   the ready subset into `downsampling_run.py`'s processing loop
+   (today's `main()` has no such check — it just processes whatever
+   dirty-filtered downsampling-csv files exist, trusting them to be
+   complete). Natural home: either a new `get_ready_downsampling_
+   filepaths()` helper in `downsampling_run.py` itself, or a small
+   standalone script mirroring `check_download_progress.py`'s style
+   (read-only, reports readiness; a `--run` mode actually invokes
+   `downsampling_run.py`'s existing per-file processing on just the
+   ready set).
+
+5. **The publish loop**: periodically (D23's still-open "chunk size"
+   question — could be time-based, e.g. hourly, rather than a raw
+   `.done`-count threshold, given the readiness filter already does
+   the real gating work) — run the readiness filter → `downsampling_
+   run.py` over the ready subset → `bundle.py` → `merge_japan_
+   bundles.py` → `rsync` to `stars`. Because nothing is ever
+   downsampled before it's genuinely complete, **`--regenerate`
+   reverts to being a manual repair tool for actual anomalies, not a
+   routine step in the normal publish cycle** — a meaningfully
+   simpler operating model than D23's original "detect and repair
+   holes after the fact" framing.
+
+**`downsampling_run.py` change, separately decided this same session**:
+Hidenori explicitly ruled out forking this file into a Japan-specific
+copy ("ファイル分割はしないことにしよう") — `downsampling_run.py`
+is a real, upstream-tracked shared file (confirmed this session:
+150 lines upstream vs. 429 in this fork's already-extended version),
+and D11's own precedent (two real bugs caught by diffing this exact
+file against upstream) is the concrete reason to keep it that way
+rather than forking it. Priority logic — currently
+`sort_files_by_proximity()`'s Freetown-centered radial-distance model
+(D24's own finding: not just an unset default, a poor geographic fit
+for Japan's shape even if the coordinates were corrected) — becomes
+switchable via the same environment-variable-driven pattern this file
+already uses for `CENTER_LAT`/`CENTER_LON` and `TILE_ENCODING`
+(`terrarium`/`rgb`), not a structural fork. Hidenori's own framing for
+why: "数百行程度のプログラムの整合よりも、数週間かかる生産が合理的
+にあとづけ可能になることを優先する" (a few hundred lines of code
+staying tidy matters less than a multi-week production run staying
+rationally explicable after the fact) — thorough documentation
+(this entry, plus inline comments once implemented) is the explicit
+priority alongside the code change itself, not an afterthought.
+
+**Consequences**:
+- This design is not yet implemented — no code changes accompany this
+  entry. Implementing it (the quadrant classifier, the readiness
+  filter, the `PRIORITY_MODE`-style switch in `downsampling_run.py`,
+  wiring the publish loop) is real, non-trivial engineering, properly
+  scoped as its own piece of work rather than squeezed into this
+  session's live benchmarking. Sequenced after D22's remaining
+  upstream-sync items and `jpnational1`'s national expansion complete,
+  per D23's overall ordering — but now with an actual answer ready for
+  D23's own "chunk size" open question, rather than punting on it
+  again when that moment arrives.
+- `--regenerate`'s role shrinks from "expected, routine" to "escape
+  hatch for real anomalies" — worth updating `downsampling_run.py`'s
+  own docstring/comments to reflect this once the readiness filter
+  lands, so a future session doesn't rediscover the old assumption.
+- The mesh-code-based quadrant classifier will need a from-tile-bounds
+  equivalent (not literally the mesh-code arithmetic, since aggregation
+  items are indexed by mercator tile z/x/y, not GSI mesh codes) — a
+  small, self-contained geometric function, not a big engineering
+  lift, but worth writing carefully and testing against a few known
+  reference points (e.g. confirm Hokkaido lands in North, Kyushu/
+  Okinawa lands in South/West as expected) before trusting it at scale.
+
+### D25 implementation record (2026-08-21, same session)
+
+**Status**: Implemented and verified against real data; not yet
+committed to git (holding until the ZSTD verdict on
+`aggregation_reproject.py`/`aggregation_merge.py` also lands, so both
+sets of this session's changes land together with one clear commit
+message rather than piecemeal).
+
+**What was built**:
+1. `utils.py`: `japan_quadrans_of(lon, lat)` + `JAPAN_QUADRANS_PRIORITY`
+   dict — a lon/lat re-derivation of `japan-geotiff-dem/scripts/
+   quadrans_script.rb`'s mesh-code North/East/South/West classifier,
+   using the JIS 1st-order mesh grid's own defining formula (mesh y ->
+   lat = y × 2/3°; mesh x -> lon = x + 100°) since aggregation items
+   here are indexed by mercator tile z/x/y, not GSI mesh codes.
+2. `downsampling_run.py`: `PRIORITY_MODE` env var (`proximity`
+   default, unchanged behavior; `quadrans` new) switches
+   `sort_files_by_proximity()`'s tie-break from Freetown-centered
+   radial distance to `JAPAN_QUADRANS_PRIORITY` order (北→南→東→西 per
+   Hidenori's stated preference). `DOWNSAMPLING_STRICT` env var
+   (off by default, unchanged behavior) — when set, an item with any
+   missing referenced child PMTiles is skipped entirely (not marked
+   `.done`) instead of proceeding with just a warning, so it gets
+   retried once genuinely ready on a later invocation.
+
+**Verification performed**:
+- Classifier tested against known city coordinates (Sapporo→north,
+  Fukuoka/Naha→south, Tokyo→east, Osaka/Nagoya→west) and exact
+  threshold boundaries (138°E, 132°E, 62×2/3°N) — all correct.
+  Two of the author's own test expectations were wrong on first pass
+  (assumed Sendai/Akita would classify "west"; both are actually east
+  of the 138°E threshold despite being on Tohoku's Pacific/day-sea
+  sides respectively) — corrected by recomputing the JIS mesh code by
+  hand rather than by geographic intuition; the classifier itself was
+  right both times.
+- Defaults confirmed unchanged: `PRIORITY_MODE=proximity`,
+  `CENTER_LAT`/`CENTER_LON` still Freetown, `DOWNSAMPLING_STRICT=False`
+  — a bare re-run with no new env vars set reproduces this file's
+  original behavior exactly, so any future Freetown work isn't
+  affected.
+- `DOWNSAMPLING_STRICT=1` tested against 5 real downsampling-csv files
+  from the live D16 generation (aggregation only ~6-7% complete at
+  test time, so almost nothing should be ready): 3 of 5 correctly
+  skipped with the new message and no `.done` created. The other 2
+  (both very coarse, `0-0-0-0` and `1-1-0-1`) "succeeded" because the
+  test called `main()` directly with an explicit file list, bypassing
+  `__main__`'s own dirty-tile pre-filter (`is_parent_of_dirty_
+  aggregation_tile`/`not_in_previous_aggregation`) — that filter is
+  what normally keeps genuinely-unrelated, already-correct output from
+  an earlier generation out of the processing list in the first place;
+  calling `main()` directly for a quick test sidesteps it. Not a bug in
+  the new logic, just a reminder that `main()`'s test-friendliness
+  (accepting an arbitrary file list) trades away the dirty-filter's
+  own protection — real runs always go through `__main__`.
+- `pipelines/downsampling_covering.py` was also run for real this
+  session (94s, CPU-bound, ~91% CPU) to generate the current
+  generation's 5,881 `-downsampling.csv` files — this repo's
+  `01M0FNHYXSAMNVTV430XD3XB5T` generation previously had **zero**,
+  meaning the readiness/priority logic had no real data to test against
+  until this ran. Worth remembering as a prerequisite step, not
+  something `aggregation_run.py` produces on its own.
+
+**Still open — the publish cadence parameter**: Hidenori's stated
+target for the eventual periodic publish loop (D25 point 5, D23's own
+open "chunk size" question): roughly **every half-day to a day early
+on**, expected to widen as the build progresses and/or throughput
+naturally slows — valuable specifically because it lets "is this
+actually working" be monitored early rather than only found out weeks
+in. Not yet parameterized — needs to be derived from real aggregation
+throughput once it's running at national scope (this session's own
+measurements, ~2/min for the current Kyushu-scope test build, aren't a
+safe basis to extrapolate a national-scope cadence from; D16's own
+build hasn't reached that scale yet). Revisit once `jpnational1`'s
+national expansion lands and a real national-scope aggregation rate is
+observed — pick a time-based trigger (e.g. "run the publish cycle
+every N hours" rather than a raw done-count threshold) tuned to that
+real rate, not decided now.
+
+### D22 follow-up, ZSTD verdict: adopted, final (2026-08-21)
+
+**Status**: Decided, final.
+
+**Context**: Following the LERC verdict (dropped) and Hidenori's own
+follow-up question ("COMPRESS=NONEが我々にとってベストかは未決定
+だね... 速くてそこそこ効く圧縮を導入することで、ディスクのデメリ
+ットをCPUでカバーできる可能性がある"), tested `COMPRESS=ZSTD
+-co ZSTD_LEVEL=1` on the same two spots as the LERC test
+(`aggregation_reproject.py`'s `translate()` output,
+`aggregation_merge.py`'s merged-tile profile). ZSTD level 1 chosen
+specifically for its decode-speed-independent-of-level property
+(unlike LERC's block-based float-error-bounded codec) -- reasoning
+laid out in the same session's answer to Hidenori's "LERC採用基準"
+question. `japan-geotiff-dem`'s own pipeline already uses ZSTD-max
+successfully for its own dst/ output, a useful internal precedent
+(different access pattern -- write-once -- but same project, same
+general codec family, no prior complaints).
+
+**Result**: resumed at 07:19 with 337 items done; reached 398 by
+07:48 -- **61 items in ~29 minutes, ≈2.1/min**, matching the original
+pre-any-patch baseline (62 items in 29 min, ≈2.14/min) almost exactly.
+No LERC-style slowdown. Combined with the earlier short burst right
+after resume (337→372 in ~12 min, artificially fast from cached
+partial-item state, not representative), ZSTD_LEVEL=1 shows **no
+measurable throughput cost** versus uncompressed, while producing
+genuinely smaller intermediate files (real disk-I/O and future
+disk-space benefit under this session's "slow disk, weak memory"
+framing, even though the throughput number alone doesn't directly
+prove the disk-I/O benefit -- worth a direct file-size comparison
+before/after if this ever needs re-litigating).
+
+**Decision**: Adopt `COMPRESS=ZSTD -co ZSTD_LEVEL=1` /
+`compress='ZSTD', zstd_level=1` in both `aggregation_reproject.py`'s
+`translate()` and `aggregation_merge.py`'s merge profile, final.
+Combined with the GDAL memory-reduction flags (already adopted) and
+the `heterogeneous projection` exception check (already adopted), this
+is the full, final state of this session's `57f8481` cherry-pick for
+`aggregation_reproject.py`/`aggregation_merge.py`. Ready to commit to
+git alongside D25's `utils.py`/`downsampling_run.py` changes as one
+session's coherent commit.
+
+**Consequences**: `japan.pmtiles`' actual on-disk intermediate footprint
+during a build should now be meaningfully smaller than the
+pre-session uncompressed baseline, with no observed throughput cost --
+a clean win on both axes this session set out to test. No further
+compression-scheme experimentation planned for this pipeline stage
+unless a new, concrete problem surfaces.
+
+### D24 follow-up: `bundle.py` memory-at-scale concern, measured and resolved (2026-08-21)
+
+**Status**: Investigated with real data; no code change needed.
+
+**Context**: D24 flagged `bundle.py`'s `create_archive()` (sorts every
+referenced tile ID into one in-memory list, `Pool(processes=4)` by
+default) as un-audited for whether it scales comfortably to a true
+national tile count on `slate`. `slate`'s physical RAM was also
+checked for the first time this session: **16GB** (`hw.memsize` =
+17,179,869,184 bytes), 10 cores (4 performance + 6 efficiency) — a
+real, previously-undocumented constraint worth having on record.
+
+**Measurement**: `bundle-store/` already holds real output from an
+earlier complete build (D13, dated 2026-08-14) — used directly rather
+than synthesizing test data. `get_parent_to_filepaths()` against the
+current (regional-plus-national-5m/10m/sea) `pmtiles-store` (64GB,
+4,297 files) found **20 z6-parent groups**, largest being
+`Tile(x=55,y=25,z=6)` at 1,447 source files, and the "planet" bucket
+(`Tile(x=0,y=0,z=0)`, the unparallelized global low-zoom-overview
+group flagged as the main risk concentration point) at 1,303 files —
+comparable size, not disproportionately larger.
+
+Reproduced `create_archive()`'s own list-building + sort logic
+directly against the largest real group (1,447 files → 440,536 tile
+entries) and measured peak RSS via `resource.getrusage(...).ru_maxrss`:
+**106MB, 12.7s total** (listing all 20 parents: 58MB/3.0s;
+building the tile-id list: 9.5s; sort: 0.2s, no measurable RSS
+increase). This directly contradicts the theoretical worry — the
+in-memory sort step is not GB-scale even for the single busiest region
+observed so far.
+
+**National bundle-store file count, estimated via `mercantile.tiles()`
+against Japan's bounding box**: ~30 z6 tiles for a tight
+mainland+Okinawa bbox, ~49 for a generous one including outlying
+islands (Ogasawara etc.) — so **roughly 31-50 total bundle-store
+files** at full national scope (30-49 regional archives + 1 planet
+archive), consistent with the observed 20-group regional-scope count
+scaling up by roughly 1.5-2x, not by orders of magnitude.
+
+**Conclusion**: Even assuming a national 1m expansion increases
+per-region file density 5-10x beyond today's busiest region, the
+list-construction/sort step would extrapolate to roughly 500MB-1GB —
+comfortably within 16GB even across `BUNDLE_WORKERS=4`'s parallel
+fan-out (worst case ~4GB). **No code change needed for this specific
+concern; D24's flag is resolved by measurement, not by guesswork.**
+
+**Still not measured, lower priority**: `read_full_archive()`'s own
+per-source-file memory during the actual tile-writing loop (loads one
+whole source `pmtiles-store` archive's tile bytes into a dict at a
+time). Individual source archives are the *inputs* to the much larger
+aggregated outputs measured above, so they're expected to be smaller
+by a wide margin — not measured directly this session, but not treated
+as a live risk given the margin already found above. Revisit only if
+a real run shows unexpected memory pressure during the write phase
+specifically.
+
+### D22 follow-up: ZSTD disk-savings measured directly; a driver-specific option-name bug found and fixed (2026-08-21)
+
+**Status**: Measured and fixed, final.
+
+**Measurement**: direct apples-to-apples test against a real live
+intermediate VRT from the running D16 build (`11-1757-826-16/0-3857.vrt`):
+`gdal_translate` with `COMPRESS=NONE` produced **381.7MB**;
+the same source with `COMPRESS=ZSTD` produced **188.8MB** — a genuine
+**~50.5% size reduction (~1.98x compression ratio)** on real
+intermediate data, confirming the disk-I/O benefit this session set
+out to test (throughput alone, already measured, doesn't by itself
+prove the size win).
+
+**Bug found in the process**: `aggregation_reproject.py`'s `translate()`
+used `-co ZSTD_LEVEL=1`, which produced `Warning 6: driver COG does
+not support creation option ZSTD_LEVEL` on every invocation (silently
+swallowed all session — SILENT=True suppresses stdout/stderr unless
+explicitly printed, so this warning was never surfaced during the
+actual benchmark runs). The **COG** driver (used here, `-of COG`)
+unifies DEFLATE/ZSTD/LZMA compression-level control under a single
+generic `LEVEL` option, unlike the **classic GTiff** driver (used by
+`aggregation_merge.py`'s `rasterio.open(..., 'w', **profile)`, no
+explicit driver override so it defaults to GTiff), which uses the
+algorithm-specific `ZSTD_LEVEL` name rasterio's `zstd_level=1` kwarg
+already correctly targets — confirmed via `gdalinfo --format COG`'s
+own option listing. Fixed: `aggregation_reproject.py` now uses
+`-co LEVEL=1`. `aggregation_merge.py` was already correct as written
+(different driver, different option name, verified via this session's
+earlier smoke test).
+
+**Practical impact of the bug, checked directly**: negligible.
+Re-ran the same test file with the corrected `-co LEVEL=1`: **188.9MB**,
+within 0.06% of the "broken-flag" result (188.8MB) — meaning the COG
+driver's ZSTD default level (whatever GDAL falls back to when an
+unrecognized option is silently ignored) already happened to be close
+to level 1. **This session's throughput measurements (≈2.1/min,
+matching baseline) and this size measurement both already reflect
+real, representative ZSTD behavior** — the bug didn't skew any
+conclusion already reached, it was purely a latent correctness issue
+(relying on an undocumented fallback rather than an explicit,
+verified setting) worth fixing on its own merits before this becomes
+part of the settled, "clean before rollout" baseline.
+
+**Consequences**: ZSTD verdict (adopted, D22 follow-up above) stands
+unchanged; this entry just adds the missing size-reduction number and
+closes out the "worth a direct file-size comparison... if this ever
+needs re-litigating" note from that earlier entry. `SILENT=True`
+suppressing driver warnings is itself worth remembering as a general
+caution for this file — a similar option-name mistake elsewhere could
+go unnoticed the same way; no action taken on that broader point this
+session, just flagged.
+
+### D22, closed out (2026-08-21, same session)
+
+All 9 commits in the original `fdd6adc..ef97ada` queue reviewed and
+resolved commit-by-commit, per this entry's own discipline. Summary:
+
+- `57f8481`: memory-reduction flags + heterogeneous-projection check
+  adopted; LERC compression tested and dropped (see LERC verdict
+  entry above); multi-host worker/downloader machinery explicitly not
+  adopted (see D22 follow-up, "③ also dropped" entry above).
+- `fdd6adc`: cherry-picked whole (tar-store distribution scripts,
+  purely additive).
+- `a0ae374`: selectively adopted (merge/tile output-naming +
+  dtype-safety + intermediate cleanup, eta.py, list_used_sources.py,
+  frhd* sources); explicitly skipped the multi-host-tied portions.
+- `b029dd8`/`30d18d7`/`f81c706`/`048e7fc`: all 4 Add-source commits
+  taken (purely additive non-Japan sources), plus two small
+  incidental fixes (numpy underflow suppression, a progress print).
+- `9cfbfab`: `remove_dangling_pmtiles.py` hardening taken (directly
+  useful for this project's own stale-data-cleanup needs);
+  CHANGELOG.md/website changes skipped (upstream's own release
+  artifacts).
+- `ef97ada`: `source_create_tarball.py`'s variable-shadowing bug fix
+  taken -- confirmed this fork had the identical bug before fixing.
+
+`git log HEAD..upstream/main` still lists all 9 SHAs -- expected and
+not a sign anything was missed. This was a selective, commit-by-commit
+adoption (`git checkout <sha> -- <path>` plus manual patches for files
+this fork had already diverged on), not `git cherry-pick`/`git merge`
+for most of these, so the resulting commits on `main` have new SHAs
+of their own and will never show as ancestors of `upstream/main` in a
+plain ancestry diff -- the correct way to verify completeness is this
+entry's own record, not the SHA list. Five new commits landed on
+`hfu/mapterhorn`'s `main` this session as a result: `767bbbd`,
+`1c1e4be`, `21f80e6`, `8003cd0`, plus `cfacc55` (the original GDAL
+memory + ZSTD + hole-free-downsampling cherry-pick). Not yet pushed
+to `origin` -- queued as this session's item 4 (git push).
+
+## D26: Source-catalog manifests gzip-compressed instead of moving to Git LFS
+
+**Status**: Implemented, tested, deployed, final.
+
+**Context**: This session's git push of jpnational5's freshly-
+refreshed `file_list.csv` (55.70MB, 422,119 rows) tripped GitHub's
+50MB recommended-file-size warning (push still succeeded — GitHub's
+hard limit is 100MB — but it's a real, growing problem: national-scope
+manifests only get larger as sources refresh). Hidenori's call, given
+a choice between Git LFS and gzip: gzip, on the reasoning that the
+underlying data (a long, highly-repetitive list of near-identical
+URLs) compresses very well and doesn't need LFS's added infrastructure
+and workflow complexity.
+
+**Sizes, measured directly**: `jpnational1` (national, 291,779 rows):
+38.97MB -> **8.25MB** (`gzip -9`, ~21% of original, ~4.7x). `jpnational5`
+(422,119 rows): 55.70MB -> **11.60MB** (~21%, ~4.8x) — comfortably
+resolves the 50MB warning with a wide margin, not just barely.
+
+**Decision**: `utils.py` gained `open_manifest(source)` (prefers
+`file_list.csv.gz`, falls back to a plain `file_list.csv` automatically
+for any source not yet converted — backward compatible, no source
+catalog entry needs to change unless/until its own manifest also grows
+large enough to matter), plus `manifest_exists()`/`manifest_path_glob()`
+helpers. `source_download.py`, `check_download_progress.py`, and
+`source_prune_obsolete.py` — every consumer of `file_list.csv` in this
+fork — switched to the shared helper. Verified all three produce
+identical results (row counts, orphan detection) against the real
+`jpnational1`/`jpnational5` data before deleting the plain `.csv`
+originals (not left around "just in case" — reversible via `gunzip`
+of the committed `.gz` at any time, so nothing was actually lost).
+
+**Consequences**:
+- `jpnational1`'s eventual national-scope manifest (already converted
+  today alongside `jpnational5`, ahead of `jpnational1`'s own download
+  actually finishing) is covered by the same margin — no future
+  GitHub file-size surprise expected from either source's manifest at
+  this scale.
+- Any future source-catalog entry with a large manifest should default
+  to the `.gz` form from the start now that the tooling supports it
+  transparently, rather than hitting this same warning later.
+- Not retrofitted to every existing smaller source-catalog manifest
+  this session (no need — their plain `.csv` sizes are nowhere near
+  the threshold) — `open_manifest()`'s fallback means this is a
+  non-issue either way, adopt `.gz` per-source only when it actually
+  matters.
+
+## D27: Kyushu test build's remaining purpose is real-scale burn-in only; pause it once jpnational5's CPU-bound post-download phase starts
+
+**Status**: Decided, 2026-08-21; not yet executed (jpnational5 download still in progress as of this entry).
+
+**Context**: Hidenori asked directly what the Kyushu test build
+(aggregation_id 01M0FNHYXSAMNVTV430XD3XB5T) is actually accomplishing
+at this point in the session, and whether it should be paused once
+jpnational5's download finishes and its own CPU-bound post-download
+stage (source_bounds.py -> source_polygonize.py, D15's ~2.5h-at-
+national-scale concat phase) starts.
+
+Honest assessment: this build's original purposes (validating D22's
+GDAL-memory/LERC-vs-ZSTD/multi-host decisions live, exercising D25's
+hole-free/quadrans downsampling design) are already fulfilled -- both
+are closed out earlier in this same session. Its own aggregation
+output will not carry forward past D16/D23's planned "step 3" rebuild
+(a fresh aggregation_covering.py run against jpnational5's refreshed,
+and eventually jpnational1's national, coverage necessarily starts a
+new generation ID) -- so further items completed in this specific
+generation are, at this point, essentially throwaway. Its only
+remaining real value: (a) real-scale burn-in of the newly-integrated
+code (merge/tile output-naming + cleanup from a0ae374, ZSTD) under
+sustained load, and (b) productively occupying CPU that would
+otherwise sit idle during jpnational5's network-bound download phase.
+
+**Decision**: once jpnational5's download completes and its own
+CPU-bound `source_bounds.py`/`source_polygonize.py` phase begins,
+pause the Kyushu build (same clean pause procedure used throughout
+this session) rather than let it compete for CPU. The critical path to
+D23's "step 3" rebuild matters more than continued burn-in on output
+that will be discarded regardless. Resuming it (or not) is a fresh
+decision at that point, not a foregone conclusion -- if slate has
+genuine CPU headroom once bounds/polygonize is running (unlikely given
+D15's own multiprocessing.Pool profile, but not verified), revisit.
+
+**Consequences**: This is the practical trigger condition for D23's
+"Kyushu workstream ends" framing -- not literally "when step 3 starts"
+as stated there, but slightly earlier, at "when jpnational5's own
+post-download CPU phase starts" (a cleaner, CPU-contention-driven
+boundary than waiting for the rebuild itself to begin). Whatever the
+Kyushu build's `.done` count reaches by that point is its final tally
+for this generation -- worth a brief final status note in HANDOVER.md
+when it happens, closing out D16's own original test-build framing.

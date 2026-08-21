@@ -2837,3 +2837,194 @@ Paste this after `/clear` to pick up exactly here:
 >
 > `japan-geotiff-dem` (on `aalto`) has no further queued work of its
 > own — both 1m and 5m JCI 2026-09 cycles are complete and reported.
+
+## 2026-08-22: jpnational5 fully refreshed and prepared (download -> prune -> bounds -> polygonize, all complete)
+
+Following on from the 2026-08-21 session (D22 LERC/ZSTD verdicts, D23
+strategy, D25 hole-free design, D26 gzip manifests, D28 case-
+sensitivity bug): `jpnational5`'s full refresh pipeline finished
+end to end, unattended overnight, with Hidenori's Kyushu-scope test
+build (D16/D27) paused throughout to give it full CPU.
+
+**Sequence, timestamps approximate**:
+- ~06:26 (Aug 21): `jpnational5` manifest regenerated from
+  `japan-geotiff-dem`'s national 5m `latest_file_list.csv.gz`
+  (422,119 rows).
+- ~06:28: 48,943 now-obsolete local files pruned to
+  `source-store/jpnational5-stale/` (`source_prune_obsolete.py --apply`).
+- ~06:28-16:26: aria2c download of the ~92k net-new files, running
+  concurrently with the Kyushu build (network-bound, no real CPU
+  contention) -- completed 100%, 422,119/422,119 verified.
+- ~17:27-17:44 (D27's trigger point -- Kyushu build paused here):
+  `source_bounds.py jpnational5` -- single-threaded, 422,119 files,
+  ~17 min, bounds.csv jumped from the stale 378,617-line file straight
+  to 422,120 lines in one atomic write (the script builds the whole
+  list in memory, only writes once at the end -- confirmed by reading
+  its source, not assumed).
+- ~17:45 (Aug 21) - 05:24 (Aug 22): `source_polygonize.py jpnational5 8`
+  -- ~10h for the `gdal_footprint` extraction phase (422,119 files,
+  8-way parallel), then ~1h for D15's batched `gdal vector concat`
+  merge (141 batches of 3,000), then a further ~12 min for the final
+  `ogr2ogr ST_Union(ST_MakeValid(...))` step, then a few more minutes
+  for `shutil.rmtree()` cleanup of the 422,119 individual per-mesh
+  gpkg files. Total polygonize wall-clock: ~11.7 hours.
+- 5 non-fatal "Simplification resulted in empty geometry" GDAL
+  warnings encountered during footprint extraction (investigated
+  live, D-entry not yet written up separately from this one): confirmed
+  via `ogrinfo` that the affected output files genuinely have 0
+  features, but also confirmed via `grep -rl polygon-store *.py` that
+  `aggregation_covering.py` never reads `polygon-store` at all (it
+  uses `bounds.csv`, unaffected) -- only `list_used_sources.py`
+  (diagnostic report) and `source_create_tarball.py` (public
+  distribution artifact) consume it. **No impact on the actual
+  aggregation pipeline or `japan.pmtiles` output** -- worth a real fix
+  only if/when `jpnational5` is ever distributed as a public tarball.
+
+**Final state, verified**: `source-store/jpnational5` 422,119 tifs,
+`bounds.csv` 422,120 lines, `polygon-store/jpnational5.gpkg` 93.8MB
+(national union), `polygon-store/jpnational5/` (the per-mesh
+intermediate directory) cleanly removed. Fully consistent, ready for
+the next `aggregation_covering.py` pass.
+
+**Also found and fixed during this run, unrelated to jpnational5
+specifically but discovered while watching its polygonize log**: D28,
+`get_product_type_rank()`'s case-sensitive regex bug (6,677 legacy
+lowercase-named files across all three national sources misranked as
+tier-A) -- see `DECISIONS.md` D28 for full detail, already committed
+and pushed (`5373993`).
+
+**Concurrently**: `jpnational1`'s own download (started ~06:23 Aug 21,
+network-bound, shared CPU freely with both the Kyushu build and
+`jpnational5`'s polygonize without measurable mutual slowdown) reached
+100% (291,779/291,779 per the manifest) around 02:08 (Aug 22) after
+~19h45m; 8 files then turned up genuinely missing on a direct
+manifest-vs-disk diff (small files, likely transient mid-run
+failures) -- re-running `source_download.py jpnational1` (idempotent,
+re-verifies the whole manifest before fetching the delta) is in
+progress as this entry is written, 7 of 8 still outstanding.
+
+**Next**: once `jpnational1`'s last few files land, per D27 this marks
+the true end of the Kyushu-scope test build's active phase (already
+paused since ~17:27 Aug 21, final tally 2,170/5,875 items, ~36.9% of
+that generation). D23's "step 3" -- a fresh `aggregation_covering.py`
+pass reflecting `jpnational5`'s now-current national coverage -- is
+the next real decision point, alongside the long-deferred question of
+whether to also trigger `jpnational1`'s own D14-style national
+expansion now that its regional-scope download is fully current.
+Neither started yet as this entry is written -- Hidenori's call on
+timing and scope, not assumed.
+
+### Session close, 2026-08-22 06:28 (continuing directly from the entry above)
+
+Wrapping up this session (Hidenori clearing context). Full decision
+log for everything below: `DECISIONS.md` D22 through D28, all in this
+same session, all committed and pushed to `hfu/mapterhorn` (`main`,
+`5373993` is the latest as this is written). Read those entries in
+full before resuming, not just this summary.
+
+**State at close-out**:
+- `jpnational5`: **fully done** — download, prune (48,943 obsolete ->
+  `jpnational5-stale/`), `source_bounds.py`, `source_polygonize.py`
+  all complete and verified consistent (422,119 tifs, 422,120-line
+  bounds.csv, 93.8MB national union `polygon-store/jpnational5.gpkg`).
+- `jpnational1`: 291,772/291,779 — **7 files still outstanding** as
+  this entry is written. `source_download.py jpnational1` is running
+  (re-invoked after the first 100% pass turned up 8 genuinely missing
+  files on a direct manifest-vs-disk diff; 1 has since landed). This
+  re-run re-verifies the *entire* manifest via checksum before
+  reaching the still-missing delta, which is why it's taking hours,
+  not the CPU contention this project has seen elsewhere — confirmed
+  alive and progressing (CPU time climbing, current mesh code
+  advancing) via direct process inspection each time this was
+  checked, not assumed. **Check `find source-store/jpnational1 -name
+  "*.tif" | wc -l` against 291779 first when resuming** — likely
+  finished or very close by then.
+- Kyushu-scope test build (D16/aggregation_id
+  `01M0FNHYXSAMNVTV430XD3XB5T`): **paused since ~17:27 (Aug 21) per
+  D27**, final tally 2,170/5,875 items (~36.9%) for this generation.
+  Its own remaining purpose was already exhausted (D22's ①②③
+  decisions and D25's hole-free design were both validated live
+  against it earlier in the session) — not planned to resume as-is;
+  superseded by the next `aggregation_covering.py` pass (D23's
+  "step 3").
+
+**This session's other durable outcomes** (all in `DECISIONS.md`,
+not re-derived here):
+- D22: GDAL memory-reduction flags + heterogeneous-projection check
+  adopted from upstream `57f8481`; LERC compression tested and
+  **dropped** (25-35x slowdown on repeatedly-read intermediates);
+  ZSTD_LEVEL=1 tested and **adopted** (no throughput cost, ~50%
+  smaller intermediates); the multi-host `worker.py`/`downloader.py`
+  machinery (`57f8481`'s other half) explicitly **not adopted** —
+  this fork is single-host and doesn't need it. All 9 commits in the
+  `fdd6adc..ef97ada` upstream queue reviewed and resolved
+  commit-by-commit.
+- D23: two-week phased strategy (upstream sync -> pause Kyushu ->
+  `jpnational1` national expansion -> incremental national build) —
+  Hidenori's own target cadence for the eventual incremental
+  publish loop: roughly every half-day to a day, early on.
+- D24: pipeline-wide "rational for Oliver's environment, not
+  necessarily rational for ours" audit. Found `downsampling_run.py`'s
+  `CENTER_LAT`/`CENTER_LON` still default to Freetown (never
+  overridden for any Japan run to date) — and more importantly, the
+  whole radial-distance-from-one-point priority model is a poor fit
+  for Japan's elongated shape regardless of the coordinates.
+- D25: hole-free, progressive execution design for the eventual
+  incremental national build — implemented (`utils.japan_quadrans_of()`,
+  `downsampling_run.py`'s `PRIORITY_MODE`/`DOWNSAMPLING_STRICT` env
+  vars, both default-off/unchanged-behavior), tested against real
+  data. Hidenori's priority order for quadrans batching: **北日本 ->
+  南日本 -> 東日本 -> 西日本** (his own stated preference, not derived
+  from anything technical — honor it when this actually gets wired
+  into the publish loop).
+- D26: source-catalog manifests now `.csv.gz` (gzip -9, ~21% of
+  plain-CSV size) instead of Git LFS — resolves the GitHub 50MB
+  file-size warning `jpnational5`'s refresh tripped. `utils.
+  open_manifest()` used by all three consumer scripts, backward
+  compatible with any source still on plain `.csv`.
+- D27: decided (and executed) to pause the Kyushu build once
+  `jpnational5`'s own CPU-bound post-download phase started, rather
+  than let them compete — the Kyushu build's own output was already
+  going to be superseded regardless.
+- D28: found and fixed a real bug, incidentally, while watching
+  `jpnational5`'s polygonize log scroll by — `get_product_type_rank()`'s
+  regex was uppercase-only, silently misranking 6,677 legacy
+  lowercase-named files (`jpnational10`: 95.9% of its entire file set)
+  as tier-A. Fixed with `re.IGNORECASE`. A good reminder that this
+  kind of thing surfaces from *watching* a live run closely, not just
+  from deliberate audits.
+
+**Next, in order, once resumed** (none started yet):
+1. Confirm `jpnational1` reached 291,779/291,779 (or diagnose if not
+   — the 7 remaining files' exact names were logged this session,
+   search this entry's own earlier "missing" list in scrollback/git
+   history if needed, or just re-run the manifest-vs-disk diff).
+2. Decide with Hidenori: re-raise `jpnational1`'s own national
+   expansion now (D16's original next-step, same D14 recipe as
+   `jpnational5`/`jpnational10`), given its regional-scope data is
+   now fully current — or proceed straight to D23's "step 3" rebuild
+   with `jpnational1` still regional. Not decided this session.
+3. D23's "step 3": a fresh `aggregation_covering.py` pass reflecting
+   `jpnational5`'s national refresh (and possibly `jpnational1`'s
+   national expansion, depending on (2)) — this starts a **new**
+   `aggregation_id` generation; the paused Kyushu generation's own
+   `.done` progress does not carry forward.
+4. Before that pass: D23 point 4's "clean suspect intermediate data"
+   concern — re-examine whether anything in `pmtiles-store`/
+   `bundle-store`/`meta-store` from the old regional-scope generation
+   needs invalidating, not just `tmp-store` (already proven safe to
+   clean this session, twice).
+5. Wire D25's hole-free design into an actual periodic publish loop
+   (the readiness-filter + `PRIORITY_MODE=quadrans` + `DOWNSAMPLING_
+   STRICT=1` pieces are built and tested in isolation, but not yet
+   assembled into the real automation D23 envisions) — pick a chunk
+   size/cadence once real national-scale aggregation throughput is
+   known, targeting Hidenori's half-day-to-a-day early cadence.
+6. D20's still-deferred real-data validation (20 random overlapping-
+   source samples via `lineage_inspect.py`, checking for seam
+   artifacts/NODATA handling) — postponed this session for CPU-load
+   reasons (D22's build was competing for cores at the time); revisit
+   once there's genuine headroom.
+
+Converse in Japanese, per this repo's own language policy (top of
+this file) — same as `japan-geotiff-dem`'s.
