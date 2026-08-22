@@ -3185,3 +3185,68 @@ small residual risk, rather than blocking on a full sweep first.
 
 Resume prompt is in DECISIONS.md D35 (not duplicated here) -- read that
 entry in full, plus japan-geotiff-dem's own D18, before resuming.
+
+## 2026-08-22 (resumed, Hidenori back): manifests refreshed, real national launch executed
+
+Full detail in `DECISIONS.md`'s addendum under D35 -- short version:
+
+1. Refreshed `japan-geotiff-dem`'s manifest (`source-coop login` +
+   `just filelists 1` on `aalto`) and this repo's own `source-catalog/
+   jpnational1/file_list.csv.gz` to match, confirming the 38 D18-fixed
+   files' checksums now agree end to end (upstream manifest, this
+   repo's manifest, and local `source-store` bytes all match). Also
+   published a Changelog entry on `japan-geotiff-dem`'s own public
+   `source-coop/README.md` (`just docs`).
+2. Confirmed `jpnational1`'s `bounds.csv`/`polygon-store` (already
+   refreshed earlier today, before this resumed session) are not stale
+   relative to the 38 corrected files -- see addendum for why this
+   doesn't actually matter either way.
+3. **Ran D23's "step 3" for real**: fresh national `aggregation_
+   covering.py` -> new generation `01M0MWK852631SHCHPA66F21WQ`, then
+   started `aggregation_run.py` continuously (1,979 dirty items, 4
+   workers, per D32's operating model). **This is the real national
+   build. Currently running.** Check `screen -ls` for
+   `aggregation_run_national` and `tail aggregation_run_national.log`
+   / `.done` file count under `aggregation-store/
+   01M0MWK852631SHCHPA66F21WQ/` to see live progress.
+4. Extended D18's decode-validity screening (generalized into the new
+   `screen_source.py`, replacing the old hardcoded `screen_
+   jpnational1.py`) to `jpnational5`/`10`/`sea`: **all clean, no
+   corruption found** -- `jpnational5`'s 2,062 "0% valid" files turned
+   out to be a structurally distinct, legitimate-empty-tile signature
+   (uniform 506-byte files, nationwide scatter), not D18's bug. Detail
+   in `DECISIONS.md`.
+
+**Not yet done, left for whoever resumes next**:
+- The 38-fix's remaining loose ends from D35 are still open: the 7
+  silent-corruption files not yet re-uploaded/re-copied, and the
+  4929/4930 comprehensive sweep (73/109 meshes unchecked) -- both
+  still deliberately deferred per Hidenori's own residual-risk call,
+  not blockers.
+- `aggregation_run.py` is running continuously and should be left
+  running (D32: never pause for publishing). Once enough of the 1,979
+  items are `.done` to be worth a first publish, move to `publish_
+  cycle.py`'s first real execution (HANDOVER's earlier resume-prompt
+  steps 4-5 still apply).
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex`). Read `DECISIONS.md`'s D35 and its
+> 2026-08-22 addendum in full first.
+>
+> **Check what's running**: `screen -ls` on `slate` for
+> `aggregation_run_national` (the real national build, started this
+> session -- should still be running, do not stop it) and
+> `disk_headroom` (harmless). `tail -f pipelines/aggregation_run_
+> national.log` and compare `.done` count under `pipelines/
+> aggregation-store/01M0MWK852631SHCHPA66F21WQ/` against the "1,979
+> dirty items" starting count for progress.
+>
+> **Once meaningfully far along** (Hidenori's own past framing: no
+> hard chunk-size commitment yet, judge based on real throughput --
+> see D23 point 5's still-open design question about incremental
+> publish chunk sizing before automating this): run `publish_cycle.py`
+> for its first-ever real execution, watch it closely.
+>
+> Converse in Japanese, per this repo's own language policy.

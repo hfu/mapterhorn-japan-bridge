@@ -3202,3 +3202,66 @@ residual risk against the full national dataset, not a blocker.
 > it's a known pattern this session, not a real problem.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+### Addendum (2026-08-22, resumed session): manifests refreshed, real launch (D23 step 3) executed, 5m/10m/sea screened clean
+
+**Manifest regeneration (this entry's own point 1) done**: `japan-geotiff-
+dem`'s `source-coop login` refreshed, `just filelists 1` re-run on
+`aalto` -- confirmed exactly the 38 corrected filenames' size/md5
+changed in the new `1/latest_file_list.csv.gz` (diffed old vs new).
+This repo's own `source-catalog/jpnational1/file_list.csv.gz` re-fetched
+from the public bucket to match (`84849ef`) -- diff confirmed the same
+38 rows changed, and a spot-check of 3 of the 38 filenames' local
+`source-store/jpnational1/*.tif` bytes matched the new manifest's MD5
+exactly. `japan-geotiff-dem`'s own `source-coop/README.md` Changelog
+updated and published (`just docs`) with a public-facing note about the
+fix.
+
+**`jpnational1` bounds/polygonize**: confirmed NOT stale despite the
+38 files' local mtimes showing later than `bounds.csv`/`polygon-
+store/jpnational1.gpkg`'s own regeneration timestamps (11:24/19:19 vs.
+22:12 for the sampled files) -- the later mtime is `aria2c`'s own
+tail-end re-verification pass (mentioned in this file's D34/HANDOVER
+entries as "still finishing up") touching already-correct files, not a
+content change: the 3 sampled files' MD5s already matched the
+corrected manifest values before *and* after. Moot regardless, since
+`bounds.csv` is header-only (extent unaffected by pixel corruption
+either way) and `aggregation_covering.py` never reads `polygon-store`
+at all (both already established in D35 above).
+
+**D23 step 3 executed**: fresh national `aggregation_covering.py` run
+against the full union (`jpnational1`+`jpnational5`+`jpnational10`+
+`jpnationalsea`, all national) -- new generation `01M0MWK852631SHCHPA
+66F21WQ` (8,354 items), completed in ~5 minutes. Diffed against the
+prior Kyushu-scope test generation (`01M0FNHYXSAMNVTV430XD3XB5T`):
+only 1,979 items came back dirty (composition actually changed by
+`jpnational1` going national) -- the dirty-diffing mechanism
+(`get_dirty_aggregation_filenames`) worked as expected, correctly
+sparing the many non-Japan/unchanged macrotiles worldwide from
+redundant reprocessing. `aggregation_run.py` then started for real
+(default 4 workers, per D32's decided operating model -- not
+overridden), running continuously against these 1,979 items.
+
+**5m/10m/sea decode-validity screening (resolves D18's deferred
+question)**: generalized `screen_jpnational1.py` into `screen_
+source.py` (arbitrary source name, same full-read-forces-decode +
+valid-pct methodology). Results:
+- `jpnational10` (4,981 files) and `jpnationalsea` (275 files): **zero
+  decode errors, zero 0%-valid candidates** -- fully clean.
+- `jpnational5` (422,119 files): **zero decode errors** (no ZSTD-type
+  crash anywhere) but **2,062 files at exactly 0% valid data**.
+  Investigated rather than assumed: all 2,062 are **exactly 506 bytes**
+  on disk with no exception (ZSTD's minimal-size encoding of a
+  constant-nodata raster), versus 18-23KB+ for a typical real-data
+  file in the same corpus -- a categorically different signature from
+  D18's actual corruption (which produced either decode failures or
+  wrong-but-substantial file sizes, e.g. the ~2MB real-data case that
+  published as 0%). Mesh-code distribution is also scattered
+  nationwide (dozens of mesh4 codes, max 163 in any one code) rather
+  than D18's tight 4929/4930 clustering. Conclusion: these are
+  legitimately-empty DEM5A/5B sub-meshes (small 225x150-pixel cells,
+  plausibly coastal/boundary slivers outside GSI's actual survey
+  footprint), not an instance of the `gmldem2tif` corruption bug.
+  **5m/10m/sea are not affected by D18's bug** -- the "similar-order-
+  of-magnitude risk" flagged as untested in `japan-geotiff-dem`'s own
+  D18 did not materialize here.
