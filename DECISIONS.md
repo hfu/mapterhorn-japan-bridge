@@ -3107,3 +3107,98 @@ is now unblocked. `source_bounds.py`/`source_polygonize.py` for
 (the existing `jpnational1` bounds/polygonize predate today's final 7
 files) — do that before trusting `jpnational1`'s coverage in the new
 `aggregation_covering.py` pass.
+
+## D35: `jpnational1` source data quality issue found (`gmldem2tif` silent corruption) — 38/45 fixed, investigation ongoing
+
+**Status**: Partial fix landed. Full technical detail lives in
+`japan-geotiff-dem` DECISIONS.md D18 (the bug is in that repo's own
+conversion tool, not anything in this repo's pipeline) — this entry is
+the `mapterhorn-japan-bridge`-side pointer and consequence record, not
+a duplicate writeup.
+
+**What happened**: while refreshing `jpnational1`'s `bounds`/
+`polygonize` for the real national launch, `source_polygonize.py` hit
+ZSTD decode errors on a small number of files. Traced upstream to a
+real, silent data-corruption bug in `unopengis/gmldem2tif` (the tool
+that converts GSI's raw GML into the 1m GeoTIFFs `jpnational1`
+downloads from `s3://smartmaps/japan-geotiff-dem/1/`) — not anything in
+this repo's own download/aggregation code. Full root-cause writeup,
+including what was ruled out and what remains unconfirmed, is in
+`japan-geotiff-dem`'s own `DECISIONS.md` D18.
+
+**Scope found so far**: 45 confirmed-corrupted files, all within mesh4
+`4929`/`4930` (Nagasaki-area). A national screening pass (valid-data
+percent computed for all 291,779 `jpnational1` files on `slate`) found
+**zero decode failures anywhere outside this same `4929`/`4930` zone** —
+strong evidence the issue is narrowly localized, not a national-scale
+problem. A `4929`/`4930`-wide sweep (109 2次メッシュ total, 36 checked
+as of this entry, all clean outside the already-known bad range) was
+in progress when this entry was written.
+
+**Fixed so far**: 38 of the 45 (the unambiguous decode-failure class)
+re-converted correctly and re-uploaded to
+`s3://smartmaps/japan-geotiff-dem/1/` (see `japan-geotiff-dem` D18) —
+independently re-verified post-upload. These same 38 corrected files
+were also copied directly into this repo's own `jpnational1` source-store
+on `slate` (`pipelines/source-store/jpnational1/*.tif`), bypassing the
+checksum-based download-skip logic (which wouldn't otherwise notice
+the upstream fix, since it only trusts its own manifest's MD5).
+
+**Left open, in priority order for whoever resumes**:
+1. `japan-geotiff-dem`'s own manifest (`latest_file_list.csv.gz`) is
+   still stale for these 38 filenames (blocked on a `source-coop login`
+   credential refresh at the point this was written) — **this repo's
+   own `source-catalog/jpnational1/file_list.csv.gz` derives from that
+   upstream manifest, so it needs regenerating too, in that order**,
+   once the upstream one is current. Until then, don't trust this
+   repo's own manifest's MD5 for these 38 filenames either.
+2. The remaining 7 confirmed-corrupted files (silent, no decode error)
+   haven't been re-uploaded upstream or re-copied into this repo's
+   `source-store` yet.
+3. `bounds.csv`/`polygon-store` for `jpnational1`: **not urgently
+   affected** — `bounds.csv` never reads pixel data (header-only), and
+   `aggregation_covering.py` doesn't consume `polygon-store` at all
+   (confirmed by reading the code this session, not assumed) — so
+   neither blocks the real launch. Low-priority cleanup only.
+4. The `4929`/`4930` comprehensive sweep (73/109 2次メッシュ still
+   unchecked) — coordinate with `japan-geotiff-dem`'s own session,
+   since the mesh-code list, downloaded raw GML, and ground-truth
+   verification scripts all live in that session's scratch space on
+   `aalto`, not here.
+
+**Decision on how to proceed with the real launch (D23 step 3)**:
+Hidenori's own call, explicit: proceed to the next stage (fresh
+national `aggregation_covering.py`) **accepting some residual risk**,
+rather than waiting for the full `4929`/`4930` sweep to close out —
+the confirmed-fixed 38 files plus the strong national-screening
+evidence of localization are enough confidence to move forward. The
+still-open 7 soft-corruption files and any undiscovered corruption
+within the unchecked 73 meshes are a small, geographically-bounded
+residual risk against the full national dataset, not a blocker.
+
+### Resume prompt (session left off here — Hidenori away ~20h)
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`. Read this file's
+> D35 and, importantly, `japan-geotiff-dem`'s own `DECISIONS.md` D18 +
+> `HANDOVER.md`'s matching entry (different repo, `/Users/hfu/
+> japan-geotiff-dem` on `aalto`) — the corruption bug and its fix live
+> there, this repo only consumes the result.
+>
+> **First**: check whether `japan-geotiff-dem`'s manifest regeneration
+> (`source-coop login` then `just filelists 1`, blocked on credential
+> expiry when this was written) has happened. If yes, regenerate this
+> repo's own `source-catalog/jpnational1/file_list.csv.gz` from it
+> (D14's recipe) before trusting checksums for the 38 corrected
+> filenames.
+>
+> **Then**: proceed toward the real launch (D23 step 3) per Hidenori's
+> own explicit go-ahead — fresh national `aggregation_covering.py`,
+> accepting the residual risk documented above. `jpnational1`'s
+> `bounds.csv`/`polygon-store` do not need refreshing first (confirmed
+> not consumed in a way that matters — see point 3 above).
+>
+> `slate`'s SSH tunnel (`slate-via-spacex`, via Cloudflare Access) may
+> need a fresh browser-based re-auth if idle too long — expect this,
+> it's a known pattern this session, not a real problem.
+>
+> Converse in Japanese, per this repo's own language policy.

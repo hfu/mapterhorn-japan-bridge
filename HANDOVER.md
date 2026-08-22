@@ -3169,3 +3169,19 @@ running as this was written -- harmless, let it finish on its own.
 **Nothing else outstanding from this session.** Next real step is the
 resume-prompt's step 1 (refresh jpnational1's bounds/polygonize) then
 straight into the real launch sequence.
+
+## 2026-08-22 (late session): jpnational1 data quality issue found and partially fixed -- see DECISIONS.md D35
+
+Session paused here, Hidenori away ~20h. Full detail: DECISIONS.md D35
+(this repo) + japan-geotiff-dem's own DECISIONS.md D18 (the actual bug
+and fix live in that separate repo/session on aalto). Short version:
+found a silent data-corruption bug affecting a small, geographically-
+localized subset of jpnational1's 1m source data (mesh4 4929/4930
+specifically) -- 38 of 45 known-bad files already fixed upstream and
+in this repo's own source-store; manifest regeneration and the
+remaining 7 files are the next concrete steps. Hidenori's explicit call:
+proceed toward the real national launch (D23 step 3) accepting the
+small residual risk, rather than blocking on a full sweep first.
+
+Resume prompt is in DECISIONS.md D35 (not duplicated here) -- read that
+entry in full, plus japan-geotiff-dem's own D18, before resuming.
