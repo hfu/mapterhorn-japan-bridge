@@ -3028,3 +3028,127 @@ not re-derived here):
 
 Converse in Japanese, per this repo's own language policy (top of
 this file) — same as `japan-geotiff-dem`'s.
+
+## 2026-08-22: Pre-launch capacity/correctness test campaign for the incremental national build (D28-D34)
+
+Session run from `aalto` via SSH (`slate-via-spacex`), not on `slate`
+directly — same repo, remote operation. Full decision log:
+`DECISIONS.md` D28 through D34, all this same session. Framed by
+Hidenori as an "Artemis launch" campaign: thorough ground testing of
+every pipeline stage before committing to the real, hard-to-reverse
+national `aggregation_covering.py` pass (D23's "step 3").
+
+**State at close-out**:
+- **`jpnational1`: national-scope download COMPLETE and independently
+  verified** (D34) — 291,779/291,779 files, 20-sample hand-recomputed
+  MD5 check all matched. `aria2c`'s own re-verification pass was still
+  finishing up as this was written (2 processes alive, ~163min CPU
+  time) — let it exit on its own, don't kill it.
+- **`jpnational5`: already complete** (prior session) — download,
+  prune, bounds, polygonize all done and verified.
+- Both national sources ready means **D23's "step 3" (fresh national
+  `aggregation_covering.py`) is now unblocked** — the actual "launch."
+  **Not started this session.**
+- **Before that launch**: `jpnational1`'s own `source_bounds.py`/
+  `source_polygonize.py` need a re-run — the existing bounds/polygon
+  data predates the final 7 files that landed this session. Don't trust
+  `jpnational1`'s coverage in a new `aggregation_covering.py` pass
+  without refreshing this first.
+- **Kyushu-scope test build** (`aggregation_id 01M0FNHYXSAMNVTV430XD3XB5T`,
+  D16/D27): resumed briefly this session for a concurrent-load capacity
+  test (D32), then paused again — `.done` count around 2,600-2,700/5,875
+  as of the last check, still not planned to resume as its own
+  deliverable (superseded once the real national generation starts).
+  **This generation now has some small, permanent gaps** from the D29
+  orphan-deletion incident — harmless since it's throwaway, but don't
+  be surprised if a future `bundle.py`/`downsampling_run.py` run
+  against it hits a handful of already-known missing-children skips.
+- **`lineage_inspect.py`**: real bug found and fixed (D28, colors were
+  mismapped for any tile missing a tier) — committed and pushed to
+  `hfu/mapterhorn` (`01f42ff`).
+- **`merge_japan_bundles.py`**: real OOM risk found and fixed (D30,
+  mmap → seek+read, 9GB RSS → ~50MB) — committed and pushed
+  (`f0240a0`).
+- **`bundle.py`**: granularity bottleneck found (one dense region
+  dominates wall-clock regardless of worker count) and a scheduling fix
+  applied (D31, largest-first + chunksize=1) — **verified clean once**,
+  a **second clean verification (`bundle_rehearsal3`, screen session)
+  was still running as this was written** — check `/tmp/bundle_
+  rehearsal3.log` and `screen -ls` first when resuming; if it finished
+  since, this fix is fully confirmed and worth committing to git (not
+  yet committed — only deployed live on `slate`, not checked into
+  `hfu/mapterhorn`).
+- **`pmtiles-store` staleness** (D23 point 4, D29): audited, 2,215
+  confirmed-orphan files deleted (16.16GB freed) — **but the deletion
+  process itself had a real incident** (see D29 in full: a flawed
+  orphan test plus a delete-while-reading race that crashed a bundle.py
+  rehearsal). One downsampling item's stale `.done` marker was found
+  and cleared as the one genuinely dangerous piece of fallout. Read
+  D29's "lesson recorded" paragraph before ever cleaning `pmtiles-
+  store`/`bundle-store`/`aggregation-store` again — don't delete while
+  any pipeline process might be reading, and don't use "matches a
+  current aggregation-item key" alone as an orphan test.
+- **Operating model decided** (D32): `aggregation_run.py` runs
+  continuously once the real build starts (never paused for publishing);
+  the publish pipeline is a single, non-overlapping, externally-
+  scheduled cycle; default worker counts kept as-is (measured: load
+  11-14/10 cores sustained for over an hour with no thrashing); cadence
+  starts at once/day.
+- **`publish_cycle.py` written** (D33) — assembles the full readiness-
+  gated downsampling → bundle → merge → rsync-to-stars cycle behind a
+  `flock()`. **Not yet run for real** — its first real execution should
+  be part of the real national build's first publish cycle, not before.
+  `rsync` target verified reachable via `--dry-run` only.
+
+**Not yet committed to git on `slate`** (all live-deployed, not pushed):
+`pipelines/bundle.py` (D31 fix), `pipelines/publish_cycle.py` (D33, new
+file), `pipelines/check_downsampling_readiness.py` (new file, D25's
+readiness-filter report tool), `pipelines/check_disk_headroom.py` (new
+file, disk monitoring loop). Commit these once `bundle_rehearsal3`
+confirms clean, alongside a `git status --short` sanity check.
+
+**Also still running as background `screen` sessions on `slate`** as
+this was written: `disk_headroom` (15-min disk-space logging loop,
+harmless, fine to leave running indefinitely), `bundle_rehearsal3`
+(the pending clean re-verification above). Check `screen -ls` on
+resume.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, most recently
+> worked via SSH from `aalto` (`slate-via-spacex`). Read `DECISIONS.md`
+> D28 through D34 and this file's own "2026-08-22: Pre-launch capacity/
+> correctness test campaign" entry in full before touching anything.
+>
+> **First, check what's actually running**: `screen -ls` on `slate` for
+> `bundle_rehearsal3` (a pending clean re-verification of D31's bundle.py
+> fix) and `disk_headroom` (harmless, leave running). Check `ps aux |
+> grep aria2c` — should have exited cleanly by now (jpnational1's own
+> re-verification pass); if somehow still running, just let it finish.
+>
+> **If `bundle_rehearsal3` finished clean**: commit the four uncommitted
+> files listed above (`git status --short` first) to `hfu/mapterhorn`,
+> push, then proceed to the real launch sequence below. **If it also
+> crashed or shows a real regression**: don't launch yet — diagnose
+> first, per D29's own lesson about not assuming a clean environment.
+>
+> **Real launch sequence, once bundle_rehearsal3 is confirmed clean and
+> committed** (this is D23's "step 3", genuinely the point-of-no-return
+> event this whole session's testing campaign was preparing for):
+> 1. Re-run `jpnational1`'s `source_bounds.py`/`source_polygonize.py`
+>    (its existing data predates the final 7 files from this session).
+> 2. Run a fresh `aggregation_covering.py` against the full national
+>    union (`jpnational1`+`jpnational5`+`jpnational10`+`jpnationalsea`,
+>    all national now) — this starts a **new** `aggregation_id`
+>    generation; the Kyushu-scope generation's own `.done` progress does
+>    not carry forward (expected, per D27).
+> 3. Start `aggregation_run.py` for real, continuously (D32's operating
+>    model — do not pause it for publishing).
+> 4. Once enough of the new generation is done to be worth a first
+>    publish, run `publish_cycle.py` for its first-ever real execution
+>    (D33) — this is also that script's own first real test, watch it
+>    closely the first time.
+> 5. Set up `publish_cycle.py` on a daily external schedule (cron/
+>    launchd) once step 4 confirms it works end to end.
+>
+> Converse in Japanese, per this repo's own language policy.

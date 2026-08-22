@@ -2845,3 +2845,265 @@ boundary than waiting for the rebuild itself to begin). Whatever the
 Kyushu build's `.done` count reaches by that point is its final tally
 for this generation -- worth a brief final status note in HANDOVER.md
 when it happens, closing out D16's own original test-build framing.
+
+## D28: D20's deferred real-data validation, done — plus a real bug found in the diagnostic tool itself
+
+**Status**: Done, 2026-08-22.
+
+**Context**: D20 called for a 20-sample real-data check of the seven-tier
+priority merge (`lineage_inspect.py`), deferred repeatedly for CPU-load
+reasons. Run this session against 20 randomly-sampled aggregation items
+from the Kyushu-scope generation with ≥2 priority groups (3,633
+candidates out of 5,875 total items had genuine multi-tier overlap).
+
+**Result**: All 20 samples processed with no errors; priority ordering
+correct in every case (higher tiers dominate where present, lower tiers
+correctly fill only the remaining gaps — e.g. `jpnational1/A` at 84.2%
+of one tile with `jpnational5/A`, `jpnational10/b`, `jpnationalsea`
+splitting the rest).
+
+**Bug found via visual inspection, not the numeric output**: `lineage_
+inspect.py`'s `PALETTE` was keyed by a group's *position in that tile's
+own* `get_grouped_source_items()` list (0..len(groups)-1), not by the
+group's *global* tier (1=0, 5a=1, 5b=2, 5c=3, 10a=4, 10b=5, sea=6). Most
+tiles don't have all seven tiers present, so the list is a subsequence,
+not always starting at tier 0 — a tile missing tier 3 (5c) has its real
+`sea` group land on local index 4 and get painted 10a's orange instead
+of sea's grey. Confirmed visually: a `jpnational1`+`jpnationalsea` tile
+(`11-1779-826-16`) rendered its ocean half in vivid orange. The printed
+numeric breakdown was unaffected (it already indexes `groups[val]`
+directly) — only the PNG's color legend was wrong.
+
+**Fix**: added `GLOBAL_TIER = {(source, product_type_rank): tier}` and
+route every `PALETTE` lookup through it. Re-tested against the same
+tile — ocean now renders grey. Diagnostic-tool-only change;
+`aggregation_merge.py` itself was never affected (it already keys
+priority by the correctly-ordered `get_grouped_source_items()` sort,
+not by any color mapping).
+
+**Consequences**: `hfu/mapterhorn` commit `01f42ff` (pushed). Any prior
+visual review of `lineage_inspect.py` output before this fix should be
+treated as untrustworthy for tiles with non-contiguous tier coverage —
+the numeric percentages were always correct, only the picture lied.
+
+## D29: `pmtiles-store`/`bundle-store` staleness audit (D23 point 4) — findings, cleanup, and an incident from the cleanup itself
+
+**Status**: Done, 2026-08-22.
+
+**Findings**: `pmtiles-store` held two eras mixed with no way to tell
+them apart by inspection alone — 2,938 files dated 2026-08-09~14 (the
+D13 build, predates this session's D14-D28 work entirely) and 2,172
+files dated 2026-08-20~21 (the still-active, still-partial Kyushu-scope
+generation `01M0FNHYXSAMNVTV430XD3XB5T`). `bundle-store`/`meta-store`
+were **entirely untouched since 2026-08-14** — `bundle.py` had not run
+even once against any of the intervening generations. The live
+production `japan.pmtiles` served from `stars` therefore reflects none
+of this session's fixes (D18–D28) or `jpnational5`'s national refresh.
+
+Root cause, confirmed by reading `utils.get_dirty_aggregation_filenames()`:
+`pmtiles-store`/`bundle-store`/`meta-store` are keyed purely by tile
+coordinate, not by `aggregation_id` — and the dirty-check only ever
+compares the *current* generation against the *immediately previous*
+one (`aggregation_ids[-2]`). Anything from two or more generations back
+is structurally invisible to every future dirty-check, permanently —
+not a rare edge case, a designed blind spot.
+
+**Cleanup performed, and a real mistake made doing it**: cross-referenced
+old (pre-8/19) `pmtiles-store` filenames against the current generation's
+own `*-aggregation.csv` keys; 2,215 of 2,719 had no match and were
+deleted (16.16GB freed) as presumed orphans from the source-catalog
+entries deleted in the 2026-08-19 cleanup (`jphakodatetrial*`,
+`jpsapporo*`, `jpshakotan*`).
+
+**This check was flawed in two ways, discovered only after the delete**:
+1. It compared against *aggregation*-item keys only. `pmtiles-store`
+   also holds *downsampling*-tier output (the tile pyramid down to z0),
+   which structurally never matches an aggregation-item key — the check
+   could never distinguish "orphaned aggregation leaf" from "legitimate
+   downsampling overview not yet touched by this generation's own
+   naming."
+2. The delete ran **while `bundle.py`'s rehearsal run was already
+   in flight**, having captured its own file list in memory at start —
+   deleting a file that run had already committed to reading crashed it
+   (`FileNotFoundError` on `10-887-406-16.pmtiles`, itself a genuine
+   aggregation-tier leaf output from the older, superseded generation
+   `01KZVPVTAM9V0QP8SRR42XRYKW`).
+
+**Damage assessment, done carefully rather than assumed**: cross-referenced
+every filename referenced by the *current* generation's own
+`*-downsampling.csv` children-lists against what's now missing.
+Only **one** downsampling item (`11-1764-825-15`) was found in the
+genuinely dangerous state — its own `.done` marker present, its own
+output file gone, meaning it would silently never self-heal (`main()`
+only checks the `.done` marker, not the file's actual existence).
+Fixed by removing that stale marker. Every other "missing" reference
+(~8,600 total, ~5,600 matching the flawed orphan criterion) is already
+handled gracefully by `DOWNSAMPLING_STRICT`'s existing missing-children
+skip — not silent corruption, just items that will retry once genuinely
+ready. **Bounded real impact**: the current Kyushu-scope generation
+(already throwaway per D27) can no longer be bundled 100% completely;
+the eventual real national generation is unaffected, since it computes
+its own covering/dependency graph from scratch and won't reference
+these specific stale filenames at all.
+
+**Lesson recorded for future sessions**: never delete files from
+`pmtiles-store`/`bundle-store`/`aggregation-store` while any
+`aggregation_run.py`/`downsampling_run.py`/`bundle.py` process might be
+reading from them — stop consuming processes first. And "does this
+filename match a current aggregation-item key" is **not** a valid
+orphan test on its own, because `pmtiles-store` holds two structurally
+different namespaces (aggregation leaves and downsampling pyramid
+levels) that must be checked separately.
+
+## D30: `merge_japan_bundles.py` OOM risk found and fixed (mmap → seek+read)
+
+**Status**: Done, 2026-08-22. `hfu/mapterhorn` commit `f0240a0` (pushed).
+
+**Finding**: `pmtiles.reader.MmapSource` maps the whole input file and
+never calls `madvise()` to release pages already scanned. A straight
+sequential pass over one large `bundle-store` archive lets that file's
+resident pages accumulate toward the file's full size. Measured directly
+on `slate` (16GB RAM): RSS hit **~9GB (56% of physical memory)** reading
+a single 42.9GB regional bundle (`6-55-25.pmtiles`, Kyushu), with free
+memory down to ~450MB and swap starting to grow — a real risk to every
+other job sharing the box, `jpnational1`'s day-long download included.
+Killed before it went further.
+
+**Fix**: replaced `MmapSource` with a local `FileSource` (plain
+`seek()`+`read()`, 8MB buffer) in this fork's own ad hoc
+`merge_japan_bundles.py` only — not the upstream `pmtiles` library.
+Re-measured: **~45-59MB RSS**, finished in **~12 minutes for 809,337
+tiles**, no throughput regression versus the mmap version's (killed,
+never-finished) run.
+
+**Also corrected**: this file's own header comment claimed it was "not
+checked in to this fork" — false since `5609479` (2026-08-09); fixed
+the comment to match reality.
+
+## D31: `bundle.py`'s granularity bottleneck — found, and a scheduling fix (not a full re-architecture)
+
+**Status**: Done (fix implemented and clean-re-verified), 2026-08-22.
+
+**Finding**: `create_archive()` has no internal parallelism (the PMTiles
+writer format needs tile-id-sorted sequential writes) — one region is
+one atomic, single-worker task. Measured: a 23-region bundle run left
+one of `BUNDLE_WORKERS=2` idle after finishing several small regions
+while the other spent **64 of the run's 77 total minutes** on the one
+region holding 430,856 tiles (Kyushu, the region this whole session's
+test build concentrated on). More workers would not shorten this
+specific critical path — the bottleneck is task granularity, not worker
+count. `Pool.map`'s default chunksize also doesn't sort by size, so
+which task starts first is essentially glob-order luck.
+
+**Decision**: rather than re-architecting `create_archive()`'s write
+path (real engineering, deferred as not clearly worth it while today's
+cadence has multi-hour margin), added a cheap, provably-non-worse fix:
+sort `parent_to_filepaths.items()` by file count descending before
+`pool.map(..., chunksize=1)` — classic longest-processing-time-first
+scheduling, near-optimal for minimizing makespan across identical
+workers, and guarantees the largest task is never accidentally
+scheduled late. Verified post-fix: both `BUNDLE_WORKERS=2` workers
+observed busy (95-99% CPU) concurrently from early in the run, instead
+of one sitting idle.
+
+**Consequences**: does not reduce the giant single-region task's own
+raw duration (~64 min stands, dominated by real CPU work); only
+eliminates *scheduling-induced* idle time on the other worker(s). Full
+internal parallelization of `create_archive()` remains a candidate for
+later if a real national-scale run's single-densest-region time turns
+out to threaten the publish cadence (D32) — not attempted this session.
+
+## D32: Operating model for the incremental national build — decided, with real measurements
+
+**Status**: Decided, 2026-08-22.
+
+**Question**: should `aggregation_run.py` pause for each publish cycle
+(D23's original framing), or run continuously with a "thin, exactly one
+at a time" publish pipeline alongside it? Hidenori's own hypothesis:
+pausing wastes real progress for no benefit if CPU is the shared
+bottleneck; concurrent execution risks disk I/O contention instead.
+
+**Measured** (aggregation_run.py [4 workers] + downsampling_run.py
+[5 workers, quadrans+strict] + aria2c [jpnational1's tail], sustained
+>1 hour): load average 11-14 on 10 physical cores throughout, **no
+throughput collapse** for either job (aggregation ~5/min, faster than
+the isolated D22 baseline of ~2.14/min — attributable to cheaper
+remaining items, not concurrency helping), **no swap growth** (178MB
+flat), **no single-process memory blowup**. Disk I/O, the originally-
+suspected risk, turned out lower under this combination (55-68MB/s,
+~3000 IOPS) than `merge_japan_bundles.py` running *alone* (161-239MB/s)
+— aggregation's access pattern is many small random reads, not the
+bulk sequential reads that actually stress this USB-SSD-backed volume.
+
+**Decision**:
+1. `aggregation_run.py` runs continuously once the real national build
+   starts — never paused for a publish cycle.
+2. The publish pipeline (readiness-gated `downsampling_run.py` →
+   `bundle.py` → `merge_japan_bundles.py` → `rsync` to `stars`) runs as
+   exactly one non-overlapping instance, external-schedule-triggered
+   (not self-looping) — see `publish_cycle.py` (D33).
+3. Default worker counts (`AGGREGATION_WORKERS=4`, `DOWNSAMPLING_
+   WORKERS=5`, `BUNDLE_WORKERS=2`) are kept as-is — the measured
+   oversubscription doesn't cause thrashing, and reducing them would
+   sacrifice real wall-clock savings for no measured benefit. **Watch
+   load average, not disk I/O**, as the live go/no-go signal during the
+   real build; if 15-minute load consistently exceeds ~15-16 *and*
+   throughput visibly degrades, dial back the publish side first
+   (`DOWNSAMPLING_WORKERS`/`BUNDLE_WORKERS`), not aggregation's own.
+4. **Cadence: start at once per day.** Today's per-stage costs at
+   partial/small scale (downsampling backlog: hours-scale;
+   `bundle.py`: ~77min pre-fix, dominated by one dense region; `merge_
+   japan_bundles.py`: ~12min) sum to a plausible 2-4h full cycle at
+   real national scale — comfortable margin under 24h, clearly
+   incompatible with anything close to hourly. Revisit toward
+   twice-daily only once a real national-scale `bundle.py` run confirms
+   the single-densest-region time (D31) stays well under budget.
+
+## D33: `publish_cycle.py` — the assembled incremental publish loop (written, not yet run for real)
+
+**Status**: Written and syntax-checked, 2026-08-22. **Not yet executed
+against production** — deliberately, since running it now would bundle/
+merge/publish the throwaway Kyushu-scope generation's content to the
+live `stars` endpoint.
+
+Implements D32's decision directly: `flock()`-guarded single-instance
+run of `downsampling_run.py` (`PRIORITY_MODE=quadrans DOWNSAMPLING_
+STRICT=1`) → `bundle.py 1` (`BUNDLE_WORKERS=2`) → `merge_japan_bundles.py`
+→ `rsync -av --progress bundle-store/japan.pmtiles stars@stars.local:
+/home/stars/data/`, with no internal sleep/loop — cadence (D32: daily
+to start) is the job of whatever schedules this script (cron/launchd),
+not this file. `rsync` target verified reachable via `--dry-run` this
+session (correct auth, correct path, correctly identifies the current
+75.9GB `japan.pmtiles`) without transferring anything. First real,
+full end-to-end run of this exact script is still outstanding — will
+happen naturally as part of D34/the real national build's first
+publish cycle.
+
+## D34: `jpnational1` national-scope download — complete and independently verified
+
+**Status**: Done, 2026-08-22.
+
+`jpnational1`'s national-scope download (D14 recipe, 291,779-entry
+manifest) reached **291,779/291,779** files present. The last 7 files
+outstanding at this session's start (transient failures from the
+previous ~20h pass) all resolved once `source_download.py`'s ongoing
+re-verification pass reached them — confirmed reachable and correctly
+sized at the source before the retry even landed (`curl -I` against two
+of the seven, both 200 OK with matching `Content-Length`).
+
+Beyond `aria2c`'s own `--check-integrity` (MD5-checksum-based, verifies
+every file against the manifest as part of its normal run), an
+**independent** check was run per Hidenori's request: local MD5
+recomputed by hand for 20 randomly-sampled files against the manifest's
+stored checksum (not reusing aria2c's own code path at all) — 20/20
+matched. Manifest row count (291,779) also matches the on-disk file
+count exactly.
+
+**Next**: with `jpnational5` (national, done) and `jpnational1`
+(national, done — this entry) both current, D23's "step 3" — a fresh
+`aggregation_covering.py` pass defining the real national generation —
+is now unblocked. `source_bounds.py`/`source_polygonize.py` for
+`jpnational1`'s refreshed download have not been re-run this session
+(the existing `jpnational1` bounds/polygonize predate today's final 7
+files) — do that before trusting `jpnational1`'s coverage in the new
+`aggregation_covering.py` pass.
