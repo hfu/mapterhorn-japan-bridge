@@ -3152,3 +3152,20 @@ resume.
 >    launchd) once step 4 confirms it works end to end.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+
+### Addendum, same session, shortly after the entry above
+
+`bundle_rehearsal3` finished clean: `DONE_EXIT_0`, 23 files, and
+**~18 minutes total** (vs the pre-fix run's 77 minutes) -- D31's
+scheduling fix confirmed working as intended, both workers observed
+busy from early on. The four previously-uncommitted files (`bundle.py`,
+`publish_cycle.py`, `check_downsampling_readiness.py`,
+`check_disk_headroom.py`) are now committed and pushed to
+`hfu/mapterhorn` (`bb4f17f`). `pipelines-rehearsal/` removed (53GB
+reclaimed). `aria2c` (jpnational1's tail-end verification) was still
+running as this was written -- harmless, let it finish on its own.
+
+**Nothing else outstanding from this session.** Next real step is the
+resume-prompt's step 1 (refresh jpnational1's bounds/polygonize) then
+straight into the real launch sequence.
