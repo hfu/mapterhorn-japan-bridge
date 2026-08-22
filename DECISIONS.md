@@ -3265,3 +3265,81 @@ valid-pct methodology). Results:
   **5m/10m/sea are not affected by D18's bug** -- the "similar-order-
   of-magnitude risk" flagged as untested in `japan-geotiff-dem`'s own
   D18 did not materialize here.
+
+## D36: `publish_cycle.py`'s first real execution (clean, end to end) — and a reproducible visual-verification recipe for the live viewer
+
+**Status**: Accepted / recorded, 2026-08-23.
+
+**Context**: With the D23 step-3 national build running (D35's addendum),
+this was `publish_cycle.py`'s (D33) first-ever real invocation --
+deliberately run early, while only a handful of `aggregation_run.py`
+items were `.done`, specifically to validate the whole chain
+end-to-end while the blast radius of anything going wrong was small
+(Hidenori's own framing: "空ファイルでも良いから一通り進むことは重要").
+
+**Result -- ran clean, no errors, all four stages**:
+1. `downsampling_run.py` (`DOWNSAMPLING_STRICT=1`, per D25): **0 files**
+   -- correctly found no parent tile with enough `.done` children yet
+   to be worth downsampling. This is expected, not a failure: it means
+   this cycle's verification only reaches `aggregation_run.py`'s own
+   native leaf-zoom output (written directly by `aggregation_tile.py`
+   into `pmtiles-store`), not the downsampled low-zoom overview
+   pyramid (z1 up to each item's own zoom) -- that stage remains
+   unexercised until a later cycle, once enough sibling items complete
+   for some parent to become ready.
+2. `bundle.py 1`: ~15 minutes (2 workers).
+3. `merge_japan_bundles.py`: ~15 minutes, wrote `bundle-store/
+   japan.pmtiles`, **590,176 tiles, 56,790,317,840 bytes (52.9GB)**.
+4. `rsync` to `stars` (`/home/stars/data/`): **44m8s**, sent
+   14.6GB over the wire against the 52.9GB total (delta-transfer
+   speedup 3.88x against the previous Kyushu-test-scope file already
+   there) -- confirms the destination-side checksum/delta phase seen
+   mid-transfer (85% CPU on `stars`'s rsync process, no bytes moving
+   yet) was real work, not a stall.
+
+Total cycle wall-clock: ~1h17m, well inside the "once per day" cadence
+budget from `publish_cycle.py`'s own docstring.
+
+**Verified live, independently of the pipeline's own success exit
+code**:
+- `https://depot.optgeo.org/japan.pmtiles` `Content-Length` matches
+  the new file's byte count exactly.
+- `martin`'s catalog (`https://stars.optgeo.org/catalog`) shows the
+  `japan` source active -- confirms the hot-reload behavior from
+  [[project_stars_martin_pmtiles_hosting]] fired again without a
+  restart.
+- **Visual confirmation, not just header/catalog checks**: picked one
+  of `aggregation_run.py`'s actual completed items
+  (`11-1757-825-16`), converted its z/x/y to lat/lng with
+  `mercantile.bounds()` (center ~32.9165, 128.9355 -- Shin-Kamigoto,
+  Goto Islands, adjacent to the D18/D35 corrected 4929/4930 zone),
+  loaded `https://hfu.github.io/mapterhorn-japan-bridge/#hash=
+  <zoom>/<lat>/<lng>/0/0` in a browser, enabled "3D地形表示", and
+  zoomed in tight: real 1m-detail contour lines and hillshade relief
+  rendered (150m contour, a 62m spot elevation), not a flat/placeholder
+  tile. This is real terrain data flowing through the whole chain
+  (`aggregation_run.py` -> `bundle.py` -> `merge_japan_bundles.py` ->
+  `rsync` -> `depot.optgeo.org` -> the GH Pages viewer), not just a
+  successful-looking log.
+
+**Reusable recipe for this kind of spot-check** (worth repeating on
+future cycles, not a one-off): `find aggregation-store/<id> -name
+'*.done'` to list real completed items, pick one, convert its
+`z-x-y` prefix with `mercantile.bounds(x, y, z)` to get a center
+lat/lng, then open the GH Pages viewer at `#hash=<zoom>/<lat>/<lng>/
+<bearing>/<pitch>` and toggle 3D terrain.
+
+**Tooling caveat found along the way, NOT a bug in `app.js` or the
+viewer itself**: when driving this GH Pages viewer through Claude
+Code's own Browser-pane automation and resizing the viewport (e.g.
+`resize_window`) *after* the page has already constructed the
+MapLibre `Map`, the canvas can get stuck at its pre-resize backing
+size (observed: stuck at 400x300 in a 1280x720 viewport, rendering
+the map into a small corner with the rest blank). This is an artifact
+of that automation harness's asynchronous CDP viewport override not
+reliably triggering MapLibre's own built-in `ResizeObserver`-based
+auto-resize -- real users navigating normally never hit this, since
+their viewport is stable before the page loads, and `app.js` needs no
+extra resize-handling code for them. Workaround when it happens during
+this kind of automated check: run `window.map.resize()` in the page's
+JS console.

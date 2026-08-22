@@ -3250,3 +3250,60 @@ Full detail in `DECISIONS.md`'s addendum under D35 -- short version:
 > for its first-ever real execution, watch it closely.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## 2026-08-23: `publish_cycle.py` first real run, verified live, national build continuing
+
+Full detail: `DECISIONS.md` D36. Short version: ran `publish_cycle.py`
+for real for the first time (downsampling -> bundle -> merge -> rsync),
+clean end to end, ~1h17m total. Confirmed live on `depot.optgeo.org`/
+`stars.optgeo.org` (content-length + martin catalog), and visually
+confirmed real 1m terrain detail rendering in the GH Pages viewer at
+one of the actually-completed aggregation items' coordinates
+(Shin-Kamigoto / Goto Islands). `downsampling_run.py` had 0 files to
+process this cycle (not enough sibling `.done` items yet for any
+parent to be ready) -- expected this early, not a problem.
+
+`aggregation_run.py` (the national build itself, generation
+`01M0MWK852631SHCHPA66F21WQ`) is continuing uninterrupted per D32 --
+**102 / 1,979 dirty items done** as of this checkpoint (~7h in), load
+average steady around 5.6-5.8/10 cores, disk headroom stable
+(~749GB free on `/Volumes/Migrate-2025-04`). Per-item cost is uneven
+(D21) -- don't linearly extrapolate a confident ETA from this alone,
+but the current pace suggests several more days, consistent with
+D23's own original expectation.
+
+**Next steps, in order**:
+- Keep `aggregation_run.py` running (screen session
+  `aggregation_run_national`) -- never pause it for publishing (D32).
+- Re-run `publish_cycle.py` periodically as more items complete (no
+  fixed chunk size decided yet -- D23 point 5's own open design
+  question about incremental chunk sizing is still open; for now,
+  running it opportunistically when checking in seems reasonable
+  given how cheap this first cycle turned out to be when there's
+  little new to process).
+- Once downsampling actually has real work to do (some parent's full
+  child set finally `.done`), that's the point to also visually
+  re-verify at a lower zoom (the overview pyramid), not just the leaf
+  zoom confirmed this session -- D36's recipe generalizes to that too,
+  just pick a lower-zoom macrotile.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex`). Read `DECISIONS.md` D35 (+ its
+> addendum) and D36 before touching anything.
+>
+> **Check what's running**: `screen -ls` on `slate` for
+> `aggregation_run_national` (should still be running -- do not stop
+> it) and `disk_headroom`. Compare `.done` count under `pipelines/
+> aggregation-store/01M0MWK852631SHCHPA66F21WQ/` against the 1,979
+> total dirty items for progress; don't assume it's stalled from a
+> short observation window (D21).
+>
+> **To publish an update**: run `uv run python3 publish_cycle.py`
+> (flock-protected, safe to invoke any time -- see D36 for what a
+> clean run looks like and how to spot-check the result live,
+> including the visual-verification recipe using a real completed
+> item's coordinates).
+>
+> Converse in Japanese, per this repo's own language policy.
