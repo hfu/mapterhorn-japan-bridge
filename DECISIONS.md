@@ -3649,3 +3649,97 @@ progress rate (still running continuously per D32) is measurably
 better or worse while each downsampling worker-count is active. This
 mirrors D38's own `AGGREGATION_WORKERS` 4-vs-3 comparison
 methodology -- same discipline, same reason: don't guess, measure.
+
+### Addendum (2026-08-23 18:50, post-blackout): D38 experiment results
+
+`publish_cycle_4` (started 09:22:44, spanning nearly the entire
+blackout) finished cleanly at 17:50:04, no errors -- full breakdown:
+`downsampling_run.py` (full pass over 5,382 candidates) 6h23m25s,
+`bundle.py` 30m58s, `merge_japan_bundles.py` 27m52s, `rsync` 1h5m5s.
+Output: **856,075 tiles, 96,202,173,466 bytes (89.6GB)** -- verified
+byte-identical across `bundle-store` on `slate`, `/home/stars/data/`,
+and `https://depot.optgeo.org/japan.pmtiles`. Downsampling success
+rate this pass: 1,464/5,382 (27.2%).
+
+**`AGGREGATION_WORKERS=3` result**: 176 -> 281 done (105 items) over
+8h21m = **~12.6 items/hour**, vs. the 4-worker baseline's 15-16/hour
+(D38) -- about 79% of baseline, consistent with (not worse than) the
+"shouldn't drop below 3/4" reasoning discussed live. **Caveat, found
+on review, don't over-read this number**: this 3-worker window had
+`publish_cycle_4` (5-worker downsampling, then 2-worker bundle)
+running concurrently for almost the *entire* measurement window
+(09:22-17:50 of the 10:29-18:50 window) -- much heavier concurrent
+overlap than the 4-worker baseline had (cycles 2-3 only occupied a
+comparatively small fraction of that longer baseline window). So this
+79% figure conflates "3 vs 4 aggregation workers" with "how much of
+the window had heavy concurrent publish activity" -- it is not a
+clean isolated comparison. Worth getting a real 4-workers-alone vs.
+3-workers-alone measurement (no concurrent publish cycle) if this
+matters enough to pin down precisely later.
+
+**Resource headroom, before vs. after `publish_cycle_4` finished**:
+load average dropped from a 9.9-19 range (concurrent 3+5 workers) to
+a steady 4.4-4.8 once `publish_cycle_4` completed and only the 3
+`aggregation_run.py` workers remained; free memory pages jumped from
+~145MB to ~2GB over the same transition. Strongly suggests the
+`publish_cycle`-side worker pools (5 for downsampling, 2 for bundle)
+were the dominant contributor to the earlier tight-memory/high-load
+readings, more so than `aggregation_run.py`'s own worker count.
+
+## D39: worker reallocation -- `AGGREGATION_WORKERS` back to 4, `DOWNSAMPLING_WORKERS` set to 3 (was implicitly 5)
+
+**Status**: Accepted and applied, 2026-08-23 19:08 JST.
+
+**Context**: D38's own addendum above found `publish_cycle`'s worker
+pools (downsampling=5, bundle=2) were the more likely dominant
+resource-pressure contributor, not `aggregation_run.py` itself.
+Combined with confirmed post-blackout headroom (load down to
+~4.4-4.8, ~2GB free memory once `publish_cycle_4` finished),
+Hidenori's proposal: restore `aggregation_run.py` (the priority
+process -- "1号完走が最優先") to its untouched 4-worker default, and
+instead reduce `downsampling_run.py`'s own worker count (5 -> 3) --
+the secondary, "catches up over time" process where a slower pass is
+low-stakes, not the priority one.
+
+**Options considered** (logged for the reasoning, not just the
+outcome): (4,4) -- restores aggregation, only mildly trims
+downsampling, but leaves total peak concurrency unchanged at 8 workers
+(no net contention reduction, less informative as a test). (3,4) --
+rejected: no justification found for continuing to suppress the
+priority process now that headroom is confirmed available. **(4,3)
+-- chosen**: restores aggregation to its best-known throughput
+unconditionally, meaningfully cuts downsampling's own resource draw
+(5->3, a 40% cut), and reduces total peak concurrency from 8 to 7.
+
+**Known trade-off, accepted deliberately**: D37's addendum already
+found `downsampling_run.py`'s own full-candidate-list pass is the
+dominant cost of a `publish_cycle` run (6h23m of `publish_cycle_4`'s
+8h27m total, 75%) -- cutting its worker count will likely make future
+`publish_cycle` runs take *longer* wall-clock, not shorter, so the
+"downsampling is short so a smaller pool doesn't matter" framing from
+earlier in this same session's discussion turned out not to match
+what D38 actually measured. Deliberately accepted anyway: a slower
+downsampling pass isn't gating anything time-critical (same reasoning
+as D23/D32's whole "overview completeness isn't urgent" stance) --
+only `aggregation_run.py`'s own continuous progress is priority-critical,
+and this change protects that unconditionally.
+
+**Execution**: same restart mechanics as D38 (kill old `aggregation_
+run.py` tree by PID -- confirmed zero orphans afterward -- then
+relaunch fresh in the same-named `screen` session). New instance
+confirmed via its own log: `start aggregating 1686 items... using 4
+workers` (exactly `1979 - 293`, the done count at restart time --
+no `.todo`/`.done` drift). `publish_cycle.py` itself edited (not just
+an env var at invoke time, since nobody was actively invoking it at
+this moment) to add `'DOWNSAMPLING_WORKERS': '3'` to its
+`downsampling_run.py` call's `extra_env` -- committed
+(`99dcd69`) so this persists for every future `publish_cycle.py`
+invocation, not just a one-off.
+
+**Next steps**: run "`publish_cycle_5`" (the next invocation) to
+observe: (1) whether `aggregation_run.py` throughput actually returns
+to the 15-16/hour baseline now unconditionally protected; (2) how much
+longer `downsampling_run.py`'s own pass takes with 3 workers vs D38's
+6h23m at 5 workers, and whether that's an acceptable trade for the
+reduced peak contention; (3) whether load/memory headroom during
+concurrent operation improves further vs. the D38 (3,5) configuration.
