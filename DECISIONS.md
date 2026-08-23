@@ -3617,3 +3617,35 @@ the blackout.
 > addendum for the corrected sweep methodology.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+### Addendum: planned `DOWNSAMPLING_WORKERS` comparison for the next publish cycle
+
+Discussed but deliberately NOT done this session (only ~20min left
+before the blackout, and `publish_cycle_4`'s current `downsampling_run.py`
+pass was healthy -- not worth killing a working one-shot pass just to
+retest something that only matters for whatever's left of THIS pass,
+with no time to properly verify a clean restart).
+
+**Live observation that motivates this**: at one checkpoint mid-`publish_cycle_4`,
+all 3 `aggregation_run.py` workers were at 0% CPU (between items) while
+`downsampling_run.py`'s own concurrent 5-worker pool (its default,
+`get_worker_count()` in that file, same env-var-at-Pool-creation
+pattern as `AGGREGATION_WORKERS`) was at 91-95% CPU each -- confirming
+the elevated load seen during publish cycles is currently dominated by
+`downsampling_run.py`'s own pool, not `aggregation_run.py`. Since
+`create_tile()` does the same kind of small random-access reads
+against `pmtiles-store` archives that made `AGGREGATION_WORKERS`/the
+USB-external-SSD tps pattern worth investigating (D38's own resource
+survey), `DOWNSAMPLING_WORKERS` is a plausible second lever.
+
+**Plan for next time `publish_cycle.py` is invoked (call it "cycle
+5")**: run once with `DOWNSAMPLING_WORKERS=5` (today's default,
+unchanged) and once with `DOWNSAMPLING_WORKERS=4`, far enough apart
+(or with enough items in each pass) to get a real throughput
+comparison rather than D21-style noise from a couple of expensive
+items. Record: items/minute through the `downsampling_run.py` pass,
+`uptime`/`vm_stat` during each, and whether `aggregation_run.py`'s own
+progress rate (still running continuously per D32) is measurably
+better or worse while each downsampling worker-count is active. This
+mirrors D38's own `AGGREGATION_WORKERS` 4-vs-3 comparison
+methodology -- same discipline, same reason: don't guess, measure.
