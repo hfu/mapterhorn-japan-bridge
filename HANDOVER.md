@@ -3307,3 +3307,141 @@ D23's own original expectation.
 > item's coordinates).
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## 2026-08-23/24: D23 step 3 real launch, a ~7h blackout survived cleanly, worker tuning (D38/D39), storage trajectory found (D40)
+
+Long session spanning `aalto`'s own `/clear` boundary -- full technical
+detail lives in `DECISIONS.md` D35 (+ addendum) through D40. This entry
+is the session-level orientation for whoever resumes after `/clear`.
+
+**Where things stand right now** (2026-08-24 06:22 JST): `aggregation_
+run.py` (generation `01M0MWK852631SHCHPA66F21WQ`) running continuously
+in `screen` session `aggregation_run_national`, `AGGREGATION_WORKERS=4`,
+**450/1,979 aggregation items done** (~22.7%). `downsampling` at
+**1,790/5,382 done** (lagging behind aggregation as expected -- more
+succeed each time `publish_cycle.py` runs and more aggregation items
+have completed). `publish_cycle.py` not currently running (last run,
+"cycle 5b", finished clean at 00:16:50 -- `japan.pmtiles` now
+107,966,785,627 bytes / 951,005 tiles, live on `depot.optgeo.org`).
+Load average steady ~5.5/10 cores, free disk ~606GB. All healthy.
+
+**What happened, in order**:
+1. **D35 resumed**: refreshed `japan-geotiff-dem`'s manifest (38
+   corrected files from the earlier corruption fix), regenerated this
+   repo's own `jpnational1/file_list.csv.gz` to match, ran a fresh
+   ground-truth sweep of 53/109 already-downloaded 4929/4930 meshes
+   (3,768 individual files) -- all clean, two real methodology bugs
+   found and fixed along the way (see `japan-geotiff-dem`'s own D18
+   addendum). 56 meshes and the previously-flagged 7 "silent" files
+   remain unswept -- still deliberately paced thin-and-long, not
+   urgent given the residual-risk call already made.
+2. **D23 step 3 actually executed**: fresh national `aggregation_
+   covering.py` (new generation, 8,354 items, 1,979 dirty against the
+   old Kyushu-scope test generation), then `aggregation_run.py`
+   started for real and has been running continuously since
+   (2026-08-22 23:09, survived a mid-flight worker-count restart
+   twice -- see below -- with zero data loss both times, confirmed via
+   `.done`/`.todo` accounting matching exactly across each restart).
+3. **`publish_cycle.py` run 5 times** (D36-D39): first run validated
+   the whole chain end-to-end; a real, reproducible `bundle.py` crash
+   (D37) was hit twice (`FileNotFoundError` when `aggregation_run.py`
+   replaces a `pmtiles-store` file mid-read) -- harmless, just retried
+   both times, **still not fixed in `bundle.py` itself**, flagged as a
+   known gap for whoever next touches that file. A structural gap was
+   found and fixed: `downsampling_covering.py` (the one-time-per-
+   generation candidate-list builder, analogous to `aggregation_
+   covering.py`) had never been run for this generation, meaning
+   `downsampling_run.py` could never produce anything no matter how
+   much aggregation completed -- fixed by running it once (D38).
+4. **A ~7-hour blackout was survived cleanly** (Hidenori's own
+   framing: an "in-orbit restart" test on the priority process,
+   deliberately timed while `slate` couldn't be observed or
+   intervened on). Everything kept running unattended in `screen`
+   sessions and was found healthy on reconnect.
+5. **Worker tuning, twice** (D38 then D39): first tried
+   `AGGREGATION_WORKERS` 4->3 (paired with the default
+   `DOWNSAMPLING_WORKERS=5`) during the blackout -- measured ~79% of
+   baseline throughput, but confounded by nearly the entire window
+   also running a concurrent `publish_cycle`. After the blackout,
+   reallocated to **`AGGREGATION_WORKERS=4` (restored, unconditional
+   priority) + `DOWNSAMPLING_WORKERS=3`** (D39, committed into
+   `publish_cycle.py` itself, not just an env var) -- this combination
+   was then measured cleanly: aggregation ran at ~13.2 items/hour
+   *while* two full publish cycles ran concurrently, vs. ~14.1
+   items/hour with no publish cycle running at all. **Only ~7%
+   overhead** -- confirms D39's reallocation successfully protects the
+   priority process from the secondary one, much better than the
+   D38 configuration did.
+6. **D40, storage trajectory concern found** (not yet acted on):
+   `pmtiles-store` + `bundle-store`'s `japan.pmtiles` together already
+   show real triple-redundancy for the same elevation data (raw
+   per-item archives / regional bundles / final merged file). Naive
+   linear extrapolation from the current ~22% completion projects
+   roughly **~770GB more** needed for just the existing elevation
+   product to reach 100%, against only ~600GB currently free.
+   Hidenori's own call: **investigate the D23-point-4 old-Kyushu-test-
+   generation cleanup carefully as the leading mitigation**, before
+   storage actually becomes a hard blocker -- not urgent this exact
+   moment, but flagged as the next real piece of work.
+7. **A lineage/provenance tileset was discussed and deliberately NOT
+   started** -- `lineage_inspect.py` is intentionally a single-tile,
+   on-demand PNG diagnostic only (D20's own scope decision), not a
+   tileset generator. Building a real lineage tileset would need new
+   production-pipeline code and its own storage budget on top of
+   D40's already-tight picture -- explicitly deferred, not scheduled.
+
+**Next steps, in priority order for whoever resumes**:
+1. **Design and execute the D40 storage mitigation**: audit exactly
+   how much of `pmtiles-store`/`bundle-store` belongs to the old
+   Kyushu-test generation (`01M0FNHYXSAMNVTV430XD3XB5T`) vs. the
+   current national one, apply D29's own lesson (verify before
+   deleting, never delete while any pipeline process might be
+   reading) before removing anything. Do this before the free-space
+   trajectory actually becomes a blocker, not after.
+2. Keep `aggregation_run.py` running uninterrupted (never pause it
+   for publishing, per D32 -- still the standing model). Re-run
+   `publish_cycle.py` periodically; D39's `(4,3)` worker split is now
+   the committed default in `publish_cycle.py` itself, no need to
+   re-specify it by hand.
+3. D35's own remaining items (56/109 4929/4930 meshes, 7 unidentified
+   silent-corruption files) stay paced thin-and-long, whenever
+   convenient -- not urgent.
+4. **Note on monitoring continuity**: this session ran a 15-minute
+   status-check loop via a local `Monitor` background task (checking
+   `aggregation_run.py`/`publish_cycle.py`/disk via SSH). That task is
+   tied to this specific session and will not survive `/clear` --
+   whoever resumes should set up fresh monitoring if continuous
+   observation is wanted again, rather than assuming it's still
+   running.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth). Read `DECISIONS.md` D35 through D40 in full before
+> touching anything -- this was a long, dense session; don't skip any
+> of them.
+>
+> **First**: `screen -ls` for `aggregation_run_national` (should still
+> be running -- the priority process, never intentionally stopped) and
+> check its `.done` count (`find pipelines/aggregation-store/
+> 01M0MWK852631SHCHPA66F21WQ -name '*-aggregation.csv.done' | wc -l`,
+> out of 1,979) against this entry's 450 to gauge elapsed progress.
+> Also check `df -h /Volumes/Migrate-2025-04` against this entry's
+> ~606GB free -- if it's dropped substantially, D40's storage concern
+> may already be biting; if so, that becomes the priority over
+> anything else below.
+>
+> **Then**: decide whether to tackle D40's storage cleanup now (audit
+> old-Kyushu-generation `pmtiles-store`/`bundle-store` footprint,
+> confirm safe to delete per D29's lesson, then actually free it) or
+> keep deferring -- check current free space trend first, don't guess.
+>
+> **Otherwise**: business as usual -- `publish_cycle.py` can be run
+> any time (its `DOWNSAMPLING_WORKERS=3`/`BUNDLE_WORKERS=2` are
+> already committed defaults), `aggregation_run.py` keeps running
+> unattended regardless. Set up a fresh monitoring loop if continuous
+> observation is wanted (the previous session's was tied to that
+> session, not persistent).
+>
+> Converse in Japanese, per this repo's own language policy.

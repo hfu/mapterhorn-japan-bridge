@@ -3743,3 +3743,76 @@ longer `downsampling_run.py`'s own pass takes with 3 workers vs D38's
 6h23m at 5 workers, and whether that's an acceptable trade for the
 reduced peak contention; (3) whether load/memory headroom during
 concurrent operation improves further vs. the D38 (3,5) configuration.
+
+## D40: storage trajectory concern found -- existing elevation product alone may exhaust free space before the national build finishes
+
+**Status**: Recorded, 2026-08-24 06:09 JST. Investigation and monitoring
+only -- no action taken yet, per Hidenori's own "早めに監視・対策を検討
+しよう" framing (consider soon, not necessarily act immediately).
+
+**Context**: While discussing a hypothetical future feature (a
+lineage/provenance tileset, deliberately not started -- see the
+`lineage_inspect.py` discussion this session), a storage breakdown of
+`pipelines/` was taken to estimate that feature's incremental cost.
+The breakdown itself surfaced a bigger, more immediate concern
+unrelated to lineage.
+
+**Breakdown at 433/1,979 (21.9%) aggregation items done**:
+`source-store` 345GB (static -- downloads complete, won't grow
+further), `tmp-store` 54GB (should be near-zero when idle -- see
+below), `pmtiles-store` 110GB (raw per-item archives, grows with
+aggregation progress), `bundle-store` 204GB (regional bundles + the
+current `japan.pmtiles`, itself 108GB of that 204GB). Free space at
+this point: ~598GB.
+
+**The concern**: `pmtiles-store` and `bundle-store`'s `japan.pmtiles`
+both hold substantially the *same* underlying elevation data, just
+packaged differently (raw per-item archives vs. bundled regional
+archives vs. one final merged file) -- up to threefold redundancy
+on disk at any given time during active production, not overlapping
+storage. Naively scaling each by the completion fraction (108GB /
+0.219 for `japan.pmtiles`, 110GB / 0.219 for `pmtiles-store`) projects
+roughly **~490GB and ~500GB respectively at 100% aggregation
+completion** -- call it **~770GB more** needed beyond the current
+state for the *existing* elevation-only product alone, against only
+~598GB currently free. This is a rough linear extrapolation (real
+per-item output size varies, and downsampling's own overview-tile
+contribution isn't proportional to aggregation's own item count), but
+directionally suggests **the current national build may not have
+enough headroom to finish without either freeing space or growing the
+volume**, independent of any new feature.
+
+**Leading candidate mitigation, already identified but not yet
+executed**: D23 point 4 flagged, back when the national build was
+first being planned, that "intermediate data whose freshness relative
+to a national `jpnational1` is in doubt" should be cleaned before/
+during the real build -- specifically the old Kyushu-scope test
+generation (`aggregation_id` `01M0FNHYXSAMNVTV430XD3XB5T`, D16/D27)'s
+own `pmtiles-store`/`bundle-store`/`tmp-store` footprint, which this
+session's `pmtiles-store` figure (110GB) likely still includes
+alongside the current national generation's own output -- this was
+never fully specified or carried out (D23's own words: "needs its own
+short design pass when the moment actually arrives"). That moment may
+now have arrived. Not done this session -- flagging as the next
+concrete storage-relief action to design and execute, likely freeing
+a meaningful fraction of that 110GB (and some of the 54GB `tmp-store`)
+without touching anything from the current, still-in-progress
+generation.
+
+**Also unquantified, worth checking before acting**: whether
+`bundle-store`'s non-`japan.pmtiles` ~96GB (the regional 6-x-y.pmtiles
+bundles) are transient/regenerable-each-cycle or accumulating stale
+copies across cycles -- if the latter, that's a second, distinct
+cleanup candidate alongside the old-generation `pmtiles-store` data.
+
+**Next steps, in priority order**: (1) keep monitoring free space
+during the ongoing burn (already being tracked every 15min); (2) once
+a natural pause point arrives (not urgent this second, per Hidenori's
+"早めに検討" rather than "今すぐ対処" framing), audit exactly how much
+of `pmtiles-store`/`bundle-store` belongs to the old Kyushu-test
+generation vs. the current national one (D29's own lesson applies
+here too: verify before deleting, never delete while any pipeline
+process might be reading, don't use a naive "doesn't match current
+aggregation-item key" test alone); (3) decide whether to clean now or
+wait for firmer evidence the ~770GB projection is actually on track
+to bite.
