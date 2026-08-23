@@ -3495,3 +3495,125 @@ finished or hung.
 > reuse it, don't re-derive.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D38: mid-flight `AGGREGATION_WORKERS` 4->3 experiment, ahead of a ~7h blackout window
+
+**Status**: In progress, started 2026-08-23 10:29 JST.
+
+**Context**: A live resource-headroom check on `slate` (CPU, memory,
+storage, I/O) found: CPU load 12-19/10 cores (near/above D32's own
+tested "11-14 sustained" ceiling); **memory genuinely tight** -- 16GB
+total, ~145MB free, real (if modest) active swap usage; storage
+capacity healthy (~730GB free); disk I/O on the working volume
+(`/Volumes/Migrate-2025-04`, a **USB-attached** external SSD, not
+internal) showing high transaction rates (250-280 tps) at modest
+throughput (13-18MB/s) -- consistent with many small random I/O
+operations, a workload pattern USB handles worse than internal
+NVMe/Thunderbolt. D30's earlier mmap->seek+read fix (9GB RSS -> ~50MB
+in `merge_japan_bundles.py`) was almost certainly load-bearing for
+this machine ever running stably at all, given how little memory
+headroom exists now even without that historical 9GB consumer.
+
+Hidenori's own framing (Artemis analogy): the current national build
+is "Artemis 1" -- completing it without incident is paramount, but
+gathering operational lessons for the future is also valuable, as
+long as it doesn't put the primary burn at risk. With `downsampling`
+now producing real output (D37) and a ~7-hour window starting where
+`slate` cannot be observed or intervened on, this was treated as a
+good, low-risk moment to test whether trading worker count for lower
+memory/CPU contention measurably changes throughput or stability --
+a real experiment, not just a guess, precisely because the "before"
+baseline is well-established and the "after" period will run
+unobserved and thus can't be second-guessed mid-flight.
+
+**Baseline (4 workers, clean/`aggregation.csv.done`-only counts, no
+downsampling contamination)**: started 2026-08-22 23:09. 113 done by
+2026-08-23 06:38 (7h29m, 15.1 items/hour). 176 done by 10:27:04
+(11h18m total, 16.5 items/hour over the later 06:38-10:27 window).
+Concurrent conditions varied throughout (publish cycles 2-4 ran
+intermittently in this same window), so this isn't a fully isolated
+baseline, but it's the best available reference.
+
+**Restart mechanics -- verified safe, not just assumed**: confirmed
+`AGGREGATION_WORKERS` is read once at `Pool` creation
+(`get_worker_count()`), so changing it requires a process restart --
+no live reconfiguration is possible. Precedent: D21 already proved
+killing and restarting `aggregation_run.py` mid-generation is safe
+(`.done` markers persist on disk, `.todo` files get re-picked-up,
+no data loss) -- same mechanism relied on here.
+
+**Execution, at 176/1,979 done (1,803 remaining)**:
+1. `screen -S aggregation_run_national -X quit` -- **found to be
+   insufficient by itself**: the screen wrapper died but the actual
+   process tree (main `aggregation_run.py` + its 4 workers) survived
+   as orphans, still running under the old worker count. Real lesson:
+   killing the `screen` session does not reliably kill everything
+   inside it on this setup -- don't assume it does.
+2. Explicitly `kill -TERM`'d every PID in the old tree (login, bash,
+   uv, the main script, and all 4 worker PIDs) directly. Verified
+   zero survivors afterward via a full `ps aux` sweep -- no orphans,
+   no zombies.
+3. Relaunched in a fresh same-named `screen` session with
+   `AGGREGATION_WORKERS=3`. Log confirmed `start aggregating 1803
+   items... using 3 workers` -- exactly `1979 - 176`, confirming no
+   `.todo`/`.done` accounting drift across the restart.
+4. Confirmed the concurrently-running `publish_cycle_4`
+   (`downsampling_run.py`, its own separate 5-worker pool) was
+   completely undisturbed by this restart -- different process tree
+   entirely, no interaction.
+
+**Also fixed along the way**: the session's own ad-hoc 15-minute
+monitoring script had a counting bug -- it globbed bare `*.done`
+under the aggregation-store folder, which silently started
+double-counting `*-downsampling.csv.done` markers together with
+`*-aggregation.csv.done` ones once downsampling began succeeding
+(D37). Every "done: N/1979" figure reported during roughly
+09:56-10:26 this session was inflated by the downsampling successes
+mixed in (e.g. a reported "229" was actually 176 aggregation + ~53
+downsampling). Fixed to count each kind separately. Not a pipeline
+bug -- purely in the throwaway monitoring script -- but worth noting
+in case anyone cross-references chat-log figures from that window
+against `aggregation-store` directly.
+
+**Not yet known**: whether 3 workers measurably changes throughput,
+load, or memory headroom -- that's the actual experiment, and the
+result will only be visible once `slate` is reachable again after
+the blackout.
+
+### Resume prompt (read this first when `slate` is reachable again)
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` after a ~7h
+> blackout window, via SSH from `aalto` (`slate-via-spacex` -- likely
+> needs a fresh Cloudflare Access browser re-auth after this long a
+> gap).
+>
+> **First, the actual experiment result**: `screen -ls` for
+> `aggregation_run_national` (should still be running -- if not,
+> that's the first thing to investigate) and check its current
+> `.done` count (`find pipelines/aggregation-store/
+> 01M0MWK852631SHCHPA66F21WQ -name '*-aggregation.csv.done' | wc -l`
+> -- use this exact pattern, NOT bare `*.done`, see D38's own
+> monitoring-bug note). Compute the 3-worker-era throughput: (new
+> count - 176) done items over the elapsed hours since 2026-08-23
+> 10:29 JST, compare against the baseline 15-16 items/hour at 4
+> workers. Also check `uptime`/`vm_stat`/`vm.swapusage` for whether
+> load and memory pressure genuinely eased.
+>
+> **Then check `publish_cycle_4`** (`downsampling_run.py`'s own pass
+> over 5,382 candidates) -- did it finish? How many
+> `-downsampling.csv.done` markers exist now vs. the ~49 seen right
+> before the blackout? Did it proceed to `bundle.py` ->
+> `merge_japan_bundles.py` -> `rsync`, and did that complete?
+>
+> **Decide from the data, not a guess**: if 3 workers clearly helped
+> (better load/memory headroom with similar or better throughput),
+> consider keeping it. If throughput dropped meaningfully with no
+> real stability gain, reverting to 4 is easy (same kill+restart
+> mechanics as D38, now doubly proven safe).
+>
+> D35's own remaining items (56/109 4929/4930 meshes unswept, 7
+> unidentified "silent" files) are still open and still paced "thin
+> and long" -- see `japan-geotiff-dem`'s own `DECISIONS.md` D18
+> addendum for the corrected sweep methodology.
+>
+> Converse in Japanese, per this repo's own language policy.
