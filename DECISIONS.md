@@ -3816,3 +3816,144 @@ process might be reading, don't use a naive "doesn't match current
 aggregation-item key" test alone); (3) decide whether to clean now or
 wait for firmer evidence the ~770GB projection is actually on track
 to bite.
+
+
+### Addendum (2026-08-24 07:16 JST): Kyushu-generation cleanup audit — ready to execute, deliberately deferred
+
+**Status**: Investigation complete, execution deliberately deferred (Hidenori's
+own call: free up time for other work now, run the cleanup later). Nothing
+deleted this session.
+
+**Method, following this file's own D29 lesson** (don't test "does this
+filename match a current key" alone; check both aggregation-leaf and
+downsampling namespaces; never delete while a consuming process might read):
+extracted every generation's own `(z,x,y)` position keys from its
+`aggregation-store/<id>/*-aggregation.csv` filenames (covers all 5
+generations present: `01KZK5Q1XWP5N0YBEPBSB1DX3R`, `01KZM87D6PEKWM2B2ZEDSNFSQW`,
+`01KZVPVTAM9V0QP8SRR42XRYKW`, the Kyushu-scope test generation
+`01M0FNHYXSAMNVTV430XD3XB5T` (D27/D37), and the current national generation
+`01M0MWK852631SHCHPA66F21WQ`), then set-differenced every older generation's
+positions against the current generation's own position set. `lsof` confirmed
+zero open file handles on every target path at check time.
+
+**High-confidence, safe-to-delete-now total: 45.68GB**, itemized:
+- `tmp-store/01M0FNHYXSAMNVTV430XD3XB5T` (Kyushu's own working directory —
+  GDAL VRTs, intermediate tiffs/webp, file-lists, never cleaned up after
+  that generation finished): **39.61GB**
+- `tmp-store/old-trial-setaside`, `sea-crop-v1-superseded`,
+  `sea-crop-v2-superseded` (already self-named obsolete by an earlier
+  session), plus two empty ULID dirs from even older generations: **0.21GB**
+- `bundle-store/japan.pmtiles.bak-20260810` (a manual backup snapshot from
+  2026-08-10, referenced by no script): **3.31GB**
+- `pmtiles-store` files at positions that exist **only** in an old
+  generation's own covering and never appear in the current national
+  generation's covering — confirmed permanent orphans, will never be
+  overwritten by `aggregation_tile.py`'s own in-place stale-file cleanup
+  (`aggregation_tile.py`'s `glob(f'{out_folder}/{z}-{x}-{y}-*.pmtiles')` +
+  `os.remove` logic only fires when that exact position is reprocessed):
+  **148 files, 2.54GB**. All 148 traced back to Kyushu-only positions
+  specifically (370 Kyushu-only positions exist; only these 148 still have
+  a file on disk, the rest were presumably already swept by D29's own
+  cleanup pass).
+
+**Explicitly NOT a cleanup opportunity — self-heals, don't touch**: the
+remaining ~41.7GB of pre-cutoff `pmtiles-store` content (44.25GB total old
+minus the 2.54GB true orphans above) sits at positions **shared** with the
+current national generation's own covering — `aggregation_tile.py` will
+delete-and-replace these in place, for free, as the remaining 1,507 items
+get processed. Deleting them early would gain nothing (the position gets
+rewritten either way) and costs a small risk of interfering with an
+in-flight read. `bundle-store`'s ~111GB of non-`japan.pmtiles` regional
+bundles were also checked and found to be fully regenerated every
+`publish_cycle.py` run (all 24 non-bak files carry mtimes from the most
+recent cycle) — not an accumulating cost, D40's own open question above is
+now resolved: no cleanup needed there.
+
+**Generation-usage comparison (Hidenori's specific ask)**: compared the
+current national generation's own on-disk footprint against the Kyushu
+generation's own remaining on-disk footprint, both attributed by the same
+position cross-reference (not by mtime cutoff alone, to correctly count
+positions the current generation has already overwritten in place):
+
+| | pmtiles-store | tmp-store | aggregation-store meta | **total** |
+|---|---|---|---|---|
+| Current national gen (`01M0MWK...`), 472/1,979 (23.9%) done | 76.45GB | 12GB | 95MB | **≈88.55GB** |
+| Kyushu gen (`01M0FNHYXSAMNVTV430XD3XB5T`), fully finished | 44.25GB | 39.61GB | 77MB | **≈83.94GB** |
+
+**Finding: the current generation's own footprint already exceeds the
+entire (complete) Kyushu generation's footprint, at under a quarter done.**
+Naive linear extrapolation (88.55GB / 0.239) projects **≈371GB** for the
+current generation's own `pmtiles-store`+`tmp-store`+meta alone at 100%
+completion — in the same order of magnitude as this file's own earlier
+~770GB `pmtiles-store`+`bundle-store` projection (that earlier figure also
+included `bundle-store`, which this table deliberately excludes since it's
+a shared derived artifact, not generation-owned storage). Practical
+implication: Kyushu's remaining footprint (~84GB, of which only ~45.7GB is
+actually reclaimable right now) is a **shrinking fraction** of total
+storage pressure going forward — worth doing eventually for the guaranteed
+45.7GB, but the current generation's own continued growth is and will
+remain the dominant driver of D40's storage-trajectory concern, not
+Kyushu's legacy data.
+
+**Ready to execute whenever desired** (on `slate`, in
+`/Volumes/Migrate-2025-04/github/hfu-mapterhorn/pipelines/`):
+`cleanup_kyushu_generation.sh` — re-checks `lsof` on every target path
+immediately before deleting (abort-on-open-handle, doesn't trust this
+session's one-time check to still hold later), then deletes exactly the
+45.68GB itemized above. Depends on the co-located manifest
+`kyushu_cleanup_manifest_pmtiles_orphans.txt` (the 148 orphan paths, so a
+future run doesn't need to recompute the cross-reference — though if
+`aggregation_covering.py` is ever re-run for a new generation before this
+executes, regenerate the manifest first rather than trusting a stale one).
+Syntax-checked (`bash -n`) and spot-verified (3 sampled manifest paths
+confirmed to exist) this session; not actually run.
+
+## D41: Proposed storage-tiering split for generation 2+ — slow storage for `source-store`/`bundle-store`, fast internal disk for `tmp-store`
+
+**Status**: Proposed, 2026-08-24. Hidenori is procuring slow storage
+hardware now. **Not for the current (first) national generation** — this
+is an infrastructure change to design in for whichever build comes after
+today's, analogous to how D38/D39's own worker-count tuning was framed as
+lessons for "next time," not a retrofit of the in-flight run.
+
+**Motivation**: this session's D40-addendum audit (above) reconfirmed
+D38's own finding that `/Volumes/Migrate-2025-04` (a single USB-attached
+external SSD, not internal) shows an I/O pattern — many small random
+reads/writes at high transaction rates, modest throughput — that this kind
+of external-USB volume handles worse than internal NVMe/Thunderbolt
+storage. Hidenori's own proposed split, following the same
+allocate-slow-storage-to-slow-tolerant-data principle already used
+elsewhere (referenced as "Oliver"'s pattern in conversation): put the
+volume's cold/write-once/rarely-reread data on cheaper slow storage, and
+give the volume's hottest small-random-I/O churn a fast tier instead.
+
+**Proposed split**:
+- `source-store` (345GB, static once downloaded per D40's own breakdown;
+  read repeatedly only while `aggregation_run.py` is actively touching a
+  given source tile, which for any one file happens once per relevant
+  aggregation item, not continuously) → **slow storage**.
+- `bundle-store` (regional bundles + `japan.pmtiles`, all write-once-then-
+  shipped via `rsync` to `stars`; nothing on `slate` re-reads this
+  directory's own content except each cycle's own bundling pass, which
+  writes fresh copies rather than re-reading old ones) → **slow storage**.
+- `tmp-store` (the actual hot path — per-item GDAL VRT mosaics,
+  intermediate tiffs, webp tiles, all read+written repeatedly within a
+  single item's short processing window, exactly the small-random-I/O
+  pattern D38 flagged as the worse-fit-for-USB workload) → **fast internal
+  system disk**, off the external volume entirely.
+- `pmtiles-store` and `aggregation-store` deliberately left unaddressed
+  here — not yet analyzed for this split; a future session should check
+  their own read/write pattern (D32 already found `aggregation_run.py`'s
+  own I/O here was, surprisingly, *lower* than `merge_japan_bundles.py`'s
+  sequential reads — this may already be fine on the external volume as-is,
+  don't assume it needs to move without re-checking) before deciding.
+
+**Not yet done**: no hardware acquired, no migration plan written, no
+`get_pmtiles_folder()`/`utils.py`-level path changes designed. Flagging as
+a concrete next design task once Hidenori's slow-storage procurement lands
+— revisit this entry then, and check whether internal disk on `slate` has
+enough free capacity to host `tmp-store`'s working-set size (D38's own
+peak-usage figures, ~12-40GB per generation per this session's own table
+above, are the right reference point for internal-disk sizing, not
+`tmp-store`'s historical worst case of 139GB mentioned in
+`check_disk_headroom.py`'s own docstring).
