@@ -3343,3 +3343,155 @@ their viewport is stable before the page loads, and `app.js` needs no
 extra resize-handling code for them. Workaround when it happens during
 this kind of automated check: run `window.map.resize()` in the page's
 JS console.
+
+## D37: `publish_cycle.py` cycles 2-4 -- a real pmtiles-store race found, live re-verification, and the downsampling-covering gap that made downsampling permanently inert
+
+**Status**: Accepted / recorded, 2026-08-23. Continuation of D36's first
+real `publish_cycle.py` execution, same national build
+(`01M0MWK852631SHCHPA66F21WQ`) as D35/D36.
+
+**Cycle 2 -- crashed, harmless**: `bundle.py` crashed with
+`FileNotFoundError: pmtiles-store/7-114-46/12-3648-1501-14.pmtiles`.
+Root cause: `bundle.py`'s own file-listing `glob()` caught this file
+under its OLD name (maxzoom 14, from a stale/prior state); by the time
+`bundle.py` got around to reading it (12+ minutes into a 357,100-tile
+bundle pass), `aggregation_run.py` -- running continuously per D32,
+concurrently -- had finished re-processing that exact item and
+replaced the file under a NEW name (maxzoom 16, since this item's
+child composition changed with `jpnational1` going national). A
+same-path content overwrite might have survived this race; a rename
+(different maxzoom -> different filename) cannot. Confirmed via
+`aggregation-store`'s own `.done` marker for that item and the fresh
+`pmtiles-store/7-114-46/12-3648-1501-16.pmtiles` mtime lining up
+exactly with the crash window. No corruption, no side effects --
+`publish_cycle.py`'s own `flock()` and non-overlapping design meant
+this was just a wasted ~13-minute bundle pass, immediately retried.
+**Not yet fixed** in `bundle.py` itself (e.g. catching
+`FileNotFoundError` per-file and re-globbing/skipping rather than
+crashing the whole pool) -- flagging as a known, reproducible gap for
+whoever next touches `bundle.py`, in the same spirit as D23 point 5's
+still-open question about running the publish chain concurrently with
+an in-progress generation.
+
+**Cycle 3 -- clean, and independently re-verified live**: Retried
+immediately, ran end to end (downsampling: 0 files as usual at this
+point -- see below for why; bundle + merge: `671,948` tiles,
+`65,291,476,281` bytes; rsync: 44min-class transfer, `9,363,147,557`
+bytes actually sent against the full 65GB, delta speedup `6.97x`).
+Verified three ways, not just a clean exit code: (1) byte-identical
+file size across `bundle-store` on `slate`, `/home/stars/data/` on
+`stars`, and `https://depot.optgeo.org/japan.pmtiles`; (2) martin
+catalog showing the `japan` source hot-reloaded; (3) **visual
+re-verification at two newly-added locations far from the first
+check** -- Wakkanai (45.06°N, Japan's northernmost point, real 1m
+contours/spot elevations rendered) and Oita/Kyushu (33.2°N) -- using
+D36's own recipe (pick a real `.done` item's z/x/y, convert with
+`mercantile.bounds()`, load the GH Pages viewer at that coordinate).
+Both areas had zero `jpnational1` coverage in the old Kyushu-scope
+test generation, so this is real evidence the national expansion is
+flowing all the way through to the live map, not just Kyushu.
+
+**Bigger finding -- downsampling has been structurally inert since the
+generation started, independent of how much aggregation completes**:
+Both cycles 1 and 3 reported `Total: 0 files` for
+`downsampling_run.py`, which was read (D36) as "not enough sibling
+`.done` items yet." That's incomplete -- the actual reason is that
+`downsampling_run.py`'s own candidate list comes from
+`aggregation-store/{id}/*-downsampling.csv` files, and **those are
+only ever created by a separate, one-time-per-generation script,
+`downsampling_covering.py`** (the exact analogue of
+`aggregation_covering.py` for the aggregation side) -- which had never
+been run for this generation. `publish_cycle.py` itself never calls
+it. Confirmed directly: zero `*-downsampling.csv` files existed under
+this generation's `aggregation-store` folder before this was caught.
+**Without this step, downsampling can never produce anything, no
+matter how many aggregation items finish** -- a structural gap, not a
+readiness/timing issue.
+
+**Fix applied**: ran `downsampling_covering.py` once for this
+generation (analogous cost to `aggregation_covering.py` -- a few
+minutes, read-only against `aggregation-store`, no interference with
+the concurrently-running `aggregation_run.py` burn). Produced 8,340
+candidate `-downsampling.csv` files and 5,382 `.todo` markers.
+`publish_cycle.py`'s own `downsampling_run.py` step immediately
+started correctly recognizing `Total: 5382 files` on the next
+invocation (cycle 4) -- confirms the fix, not just the covering
+script's own exit code.
+
+**Consequence for `publish_cycle.py`/automation**: this covering step
+needs to be run once per generation, by hand, before the first
+publish cycle of that generation -- not currently automated anywhere.
+Worth adding to `publish_cycle.py`'s own preflight (a cheap
+`os.path.exists` check against at least one expected
+`-downsampling.csv`, or just always re-running
+`downsampling_covering.py` idempotently before `downsampling_run.py`)
+so a future new generation doesn't silently repeat this. **Not done
+this session** -- flagging as the concrete next fix, not carrying it
+out under time pressure (see below).
+
+**Cycle 4 -- kicked specifically to test the fix, still running as
+this was written**: With the candidate list now real, every item
+checked so far has correctly been recognized-but-skipped
+(`DOWNSAMPLING_STRICT` -- referenced child `pmtiles-store` file not
+yet on disk, "will retry on a future run"), which is expected: only
+~150/1,979 aggregation items are done at this point, nowhere near
+enough for any downsampling parent's full child set to be ready yet.
+**Observed side effect worth recording**: `downsampling_run.py`'s own
+per-item `os.path.isfile()` checks against `pmtiles-store` appear to
+contend for disk I/O with `aggregation_run.py`'s concurrent GDAL work
+on the same external volume -- system load briefly spiked to
+`~18-19`/10 cores (above D32's own tested-safe `11-14` ceiling) while
+both ran together, before settling back to `~12` within a few
+minutes. Investigated live (not assumed): confirmed no duplicate
+`aggregation_run.py` instance (`ps` showed the PIDs suspected of being
+a second instance were actually `aggregation_run.py`'s own worker's
+`gdal_translate` child subprocesses, all correctly parented under the
+single running instance). At the observed pace (~110 items in ~14
+minutes, apparently slowed by this same disk contention), a full pass
+over all 5,382 candidates would take on the order of hours -- cycle 4
+may still be mid-`downsampling_run.py` well after this session's SSH
+access to `slate` lapses. It runs inside a detached `screen` session
+(`publish_cycle_4`), so it will keep running unattended regardless;
+whoever resumes should check its outcome rather than assume it either
+finished or hung.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth if the tunnel session lapsed). Read this file's D35
+> (+ addendum), D36, and D37 in full first.
+>
+> **Check `aggregation_run_national` first** (`screen -ls`, then
+> `.done` count under `pipelines/aggregation-store/
+> 01M0MWK852631SHCHPA66F21WQ/` against 1,979) -- this should still be
+> running uninterrupted (D32: never pause it). If it's not running,
+> that's a real problem, investigate before anything else.
+>
+> **Then check `publish_cycle_4`** (`screen -ls`, `cat
+> pipelines/publish_cycle_4.log`): did `downsampling_run.py` finish
+> its pass over the 5,382 candidates? Did any of them actually
+> succeed this time (look for lines other than the
+> `DOWNSAMPLING_STRICT ... skipping` pattern -- a real success prints
+> `create_archive` output and no warning)? Did it proceed on to
+> `bundle.py` / `merge_japan_bundles.py` / `rsync`, and did that
+> complete? If it's still stuck mid-`downsampling_run.py`, that's
+> consistent with the disk-contention slowdown observed this session
+> -- let it finish rather than assuming a hang, but do check load
+> average and `ps` for real worker activity first (D21's own
+> "don't assume stalled from a short window" lesson, same as always).
+>
+> **Before the next fresh publish cycle after this one**: consider
+> whether `downsampling_covering.py` needs adding to
+> `publish_cycle.py`'s own preflight (see D37's "Consequence" section)
+> -- not done this session, a real gap if a future new generation ever
+> gets created without someone remembering this step by hand again.
+>
+> **D35's own remaining items are still open and still deliberately
+> paced "thin and long"**: 56/109 4929/4930 meshes still unswept (need
+> fresh GSI downloads), 7 previously-flagged "silent" corrupted files
+> still unidentified. See `japan-geotiff-dem`'s own `DECISIONS.md` D18
+> addendum (2026-08-23) for the corrected ground-truth methodology --
+> reuse it, don't re-derive.
+>
+> Converse in Japanese, per this repo's own language policy.
