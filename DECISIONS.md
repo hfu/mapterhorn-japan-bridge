@@ -3957,3 +3957,64 @@ peak-usage figures, ~12-40GB per generation per this session's own table
 above, are the right reference point for internal-disk sizing, not
 `tmp-store`'s historical worst case of 139GB mentioned in
 `check_disk_headroom.py`'s own docstring).
+
+
+### Addendum (2026-08-24 22:13 JST): Kyushu cleanup executed (41GB); pmtiles-store orphan deletion re-flagged as NOT purely disk-space-neutral
+
+**Status**: Partially executed. tmp-store + bak-file portion done; the
+pmtiles-store orphan-file portion deliberately held back on a newly
+noticed correctness concern (see below), not yet decided.
+
+**Executed** (live, both `aggregation_run_national` and `publish_cycle_6`
+running concurrently at the time — confirmed safe per this file's own
+addendum above, since neither process touches these specific paths):
+`tmp-store/01M0FNHYXSAMNVTV430XD3XB5T` (Kyushu working directory,
+39.61GB), the three small already-marked-obsolete `tmp-store` dirs
+(`old-trial-setaside`, `sea-crop-v1-superseded`, `sea-crop-v2-superseded`,
+0.21GB combined), the two empty pre-Kyushu generation dirs, and
+`bundle-store/japan.pmtiles.bak-20260810` (3.31GB). `lsof` re-checked
+immediately before deletion per the earlier addendum's own script logic
+(both clean). Free space: 582GiB -> 623GiB (df), consistent with the
+expected ~43GB.
+
+**New concern found on review, before touching the remaining 2.54GB of
+`pmtiles-store` orphans**: the earlier addendum's own "148 confirmed
+permanent orphans" framing assumed these files are simply inert dead
+weight, safe to delete for space alone. Re-reading D29's own root-cause
+section surfaced a fact that framing missed: `bundle.py`'s own file
+listing is an **unconditional** `glob('pmtiles-store/*.pmtiles' +
+'*/*.pmtiles')` — it does not filter by which generation's covering
+"owns" a given tile position. This means these 148 old-Kyushu-era files,
+despite sitting at positions absent from the current national
+generation's own `aggregation-store` coverage, are almost certainly
+**still being picked up and included in every `bundle.py`/`merge_japan_
+bundles.py` pass** -- i.e. still part of the currently-live, currently-
+served `japan.pmtiles` at `depot.optgeo.org` right now, not orphaned in
+the sense of "already invisible to the live map." Deleting them would
+therefore not be a pure disk-space reclaim -- it would remove real (if
+generation-stale/superseded, and geographically narrow) terrain content
+from those specific tile positions on the live map, until/unless the
+current national generation ever reprocesses that exact `(z,x,y)`
+position itself (which, being outside its own covering, it structurally
+never will -- same D29 root-cause mechanism).
+
+**Not resolved this session**: whether these 148 positions falling
+outside the national covering is itself correct/intentional (e.g. a
+tiling-scheme change that legitimately excludes them) or an oversight
+worth investigating -- and, separately, whether removing stale-but-
+real content from those narrow areas is an acceptable tradeoff for the
+2.54GB. Deliberately held back rather than deleted, pending that
+decision. If deleted later, the best timing to avoid D37/D29-style
+races is **before `bundle.py` starts globbing** for whichever
+`publish_cycle` run comes next, not mid-run.
+
+**Housekeeping**: `pipelines/cleanup_kyushu_generation.sh` and its
+manifest (`kyushu_cleanup_manifest_pmtiles_orphans.txt`, committed
+`b21d191`) still exist on `slate` but are now partially stale -- the
+`tmp-store`/`bak` steps are no-ops if re-run (targets already gone,
+`rm -rf`/`rm -f` on missing paths is silent success), and the
+`pmtiles-store` orphan step is the only piece still meaningfully
+pending. Not repushed to git this session; whoever next touches this
+should either trim the script down to just the pending step or leave
+it as reference and act manually once the correctness question above
+is resolved.
