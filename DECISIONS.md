@@ -4018,3 +4018,103 @@ pending. Not repushed to git this session; whoever next touches this
 should either trim the script down to just the pending step or leave
 it as reference and act manually once the correctness question above
 is resolved.
+
+## D42: Digest of Oliver's feedback on release cadence, data volume, and file format — informs 号2 planning
+
+**Status**: Recorded, 2026-08-25. This entry is Hidenori's/Claude's own
+analysis of a private conversation with Mapterhorn maintainer Oliver
+Wipfli, not a transcript — per standing practice, person-to-person
+correspondence content stays out of the repo; only the technical
+substance and its implications for this project are recorded here.
+
+**Trigger model, corrected**: earlier framing in this session's own
+correspondence draft ("we key our cadence off Mapterhorn's release,
+not GSI's") turned out to invert the actual dependency. Oliver's own
+release trigger is demand-aggregated across the whole Mapterhorn
+terrain-source ecosystem (130+ sources already, more coming, plus
+imagery) — he cuts a release when fresh data exists **and someone
+tells him to include it**. That means passively waiting for an
+announcement from him is the wrong posture: nothing happens until we
+proactively signal readiness. The correct model is the reverse of
+what was drafted: **refresh our own side whenever GSI actually
+updates** (that's the real, controllable trigger on our end), and
+separately, **proactively flag to Oliver when a fresh build is ready**
+— his own release timing then stays entirely his call, informed by
+everything else he's juggling, not something we can or should wait on
+passively.
+
+**Release cadence, externally confirmed**: Oliver's last Mapterhorn
+release was 2026-05, and his own stated goal is a terrain-data release
+roughly every few months — consistent with the general observation
+(his own example: Switzerland's national terrain refreshes fully every
+6 years but partially every year) that terrain sources update on slow
+cycles almost everywhere. Japan's own 1m DEM is characterized as still
+early-stage with unusually large quarterly updates by comparison,
+which lines up with the 2025-07 -> 2026-07 GSI announcement gap already
+on record (`japan-geotiff-dem` `HANDOVER.md`) — not dispositive proof
+of a fixed quarterly cadence, but directionally consistent with it.
+
+**~100k file delta, externally cross-checked**: comparing this
+project's own `latest_file_list.csv.gz` (291,779 current entries)
+against the already-in-Mapterhorn `jpdem1a` source (206,127 entries)
+independently produced ~106,648 missing (new) and ~20,996 to-delete
+(stale) files -- Oliver ran this comparison himself from the manifest
+directly, without needing anything further from this side, confirming
+the manifest is usable as-is by a third party. This matches Hidenori's
+own expectation and explanation: part is genuinely new GSI coverage,
+part is the geographic-adjacency effect (D18's own corruption
+investigation surfaced the same pattern independently -- updates
+cluster spatially, so a real content change in one area touches many
+neighboring grid cells even where the underlying survey didn't
+change).
+
+**New, still-open question for 号2 -- published-source file format**:
+Oliver asked whether the Source Cooperative-published GeoTIFFs
+themselves (not this project's own internal aggregation intermediates)
+could match Mapterhorn's own preferred input format exactly -- LERC
+compression, internally tiled, no overview pyramid. He's explicit this
+trades against general-purpose GIS usability (no overviews means no
+true Cloud-Optimized GeoTIFF; older software may lack LERC support)
+but is what Mapterhorn itself wants as direct input. **This is a
+distinct question from D22's own LERC verdict** -- D22 tested LERC on
+this project's own short-lived, repeatedly-re-read aggregation
+intermediates (`aggregation_merge.py`'s per-window reads) and correctly
+rejected it there (15-35x slower). Whether the *final, published,
+read-once* source GeoTIFFs should use LERC is a separate, unanswered
+question -- not yet tested, not blocked by D22's own conclusion.
+
+**Real technical lead surfaced by the exchange, worth investigating for
+号2**: Oliver reported his own Mapterhorn-side aggregation pipeline
+uses uncompressed intermediates today and saw only a small compute-time
+cost switching those to LERC to save disk -- a sharp contrast with this
+project's own 15-35x finding. The likely explanation, from comparing
+the two pipelines' own access patterns: Oliver's merge step reads each
+source file once before merging; this project's `aggregation_merge.py`
+does **repeated windowed reads across every grouped source tiff**
+(D22's own root-cause finding), paying LERC's per-block decode cost
+many times over for the same bytes. **If `aggregation_merge.py` were
+ever redesigned around a single-pass read per source file** (real
+engineering, not attempted this session), LERC could plausibly become
+viable for our own aggregation intermediates too -- which would cut
+`pmtiles-store`/`tmp-store` footprint directly, addressing D40's
+storage-trajectory concern from a different angle than D41's physical
+storage-tiering plan. Flagging as a genuine 号2 architecture candidate,
+not committing to it -- would need its own real benchmark before
+adoption, same discipline as D22's own.
+
+**Storage constraint, now mutually understood**: this project's own
+D38/D41 storage/hardware limits (external USB 3.0 Gen1 SSD, 16GB RAM,
+the D30 mmap-vs-seek+read fix) were explained to Oliver in the course
+of this exchange and acknowledged as a real, currently-expensive-to-fix
+constraint (storage and memory prices both cited as elevated right
+now) -- not a surprise or a criticism from his side, just a shared
+reality of running this on modest hardware. Reinforces D41's own
+framing: worth addressing eventually, not urgent, procurement already
+in motion.
+
+**Implication for 号2 planning**: the next generation's own kickoff
+trigger should be framed as "GSI ships a real update, we refresh and
+tell Oliver" (proactive, GSI-anchored on our side) rather than waiting
+on any signal from Mapterhorn's own release calendar. The LERC/format
+question and the single-pass-merge architecture lead are both real
+candidate scope items for 号2's own design pass -- neither started.
