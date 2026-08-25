@@ -4169,3 +4169,130 @@ tell Oliver" (proactive, GSI-anchored on our side) rather than waiting
 on any signal from Mapterhorn's own release calendar. The LERC/format
 question and the single-pass-merge architecture lead are both real
 candidate scope items for 号2's own design pass -- neither started.
+
+## D43: Session summary (2026-08-24〜25) — D35 corruption investigation closed, publish_cycle_6 completed and verified live, Oliver correspondence + 号2 planning started
+
+**Status**: Recorded, 2026-08-25 18:50 JST. `aggregation_run_national`
+still running uninterrupted, unaffected by anything in this entry.
+
+**What happened this session, in order**:
+
+1. **D40's Kyushu-generation cleanup, partially executed**: freed
+   ~41GB (`tmp-store/01M0FNHYXSAMNVTV430XD3XB5T` + small superseded
+   dirs + `bundle-store/japan.pmtiles.bak-20260810`), safe to run
+   concurrently with the live burn since none of it overlaps paths the
+   running processes touch. **Deliberately NOT deleted**: the ~2.54GB
+   of confirmed pmtiles-store orphans -- re-examination found
+   `bundle.py`'s glob is unconditional, so those old-generation files
+   are almost certainly still being bundled into every live
+   `japan.pmtiles`, not inert. Still pending a real decision (see D40's
+   own addenda) before removal.
+
+2. **D35/D18 corruption investigation: fully closed.** Beyond the 45
+   files already known, a full ground-truth sweep of all 109 `4929`/
+   `4930` 2次メッシュ (7,485 files, using a newly-committed, corrected
+   `japan-geotiff-dem/scripts/ground_truth_check.py`) found 3 more
+   corrupted files (mesh `492963`) -- fixed the same way as the
+   original 45. **Final count: 48 corrupted files found and fixed,
+   zero remaining known-suspect meshes.** Broader calibration sampling
+   (~3,544 files: full Hokkaido `Z007` pack, 8 other scattered
+   prefectures, and an exhaustive check of Kyushu/Okinawa's own `Z007`
+   pack immediately outside `4929`/`4930`) found **zero corruption
+   anywhere outside the `4929`/`4930` zone** -- real evidence the bug
+   stayed localized, not proof it's impossible elsewhere. D35 itself
+   marked CLOSED in this file. Full detail lives in `japan-geotiff-dem`
+   DECISIONS.md D18 and its many addenda -- read that repo's own file
+   for the complete technical narrative, not re-derived here.
+
+3. **Oliver Wipfli correspondence, digested (not transcribed) into
+   D42**: corrected the update-trigger model (refresh proactively when
+   GSI ships new data, notify Oliver, don't wait passively for his own
+   release signal -- he aggregates demand across 130+ sources and only
+   releases when someone tells him something's ready), got an
+   independent ~100k-file-delta confirmation of this project's own
+   manifest, and surfaced two real open engineering questions for the
+   next generation: whether to publish a LERC/tiled/no-overview
+   Mapterhorn-ready variant of the source GeoTIFFs (separate question
+   from D22's own aggregation-intermediate LERC rejection), and whether
+   `aggregation_merge.py` could be redesigned around single-pass reads
+   to make LERC viable for our own intermediates too.
+
+4. **`PLAN.md` created** (repo root) -- a living, forward-looking
+   design doc for 号2 (generation 2), covering the corrected trigger
+   model, expected ~100k-file refresh scope, the data-quality baseline
+   2号 should start from, infrastructure prerequisites (D41 storage
+   tiering, D37's still-unautomated `downsampling_covering.py`
+   preflight, 1号's own eventual residue cleanup), and the open LERC/
+   format question. Not started -- gated on GSI actually shipping new
+   data, per the corrected trigger model.
+
+5. **`publish_cycle_6` completed successfully end to end**, started
+   2026-08-24 19:06:02, finished 2026-08-25 07:03:50 (~12h). Final
+   output: **`japan.pmtiles`, 159,566,959,509 bytes (159.6GB),
+   1,377,720 tiles** -- both up substantially from cycle 5b (107.97GB/
+   951,005 tiles), reflecting continued national aggregation progress.
+   `rsync` sent 56.86GB (delta speedup 2.81x) over ~2h57m. **Verified
+   live independently**: `depot.optgeo.org`'s own `Content-Length`
+   matches the file size exactly; `stars`'s martin catalog shows the
+   `japan` source hot-reloaded. No `bundle.py` crash this cycle (D37's
+   own known race did not fire). One real finding along the way: while
+   `publish_cycle_6` ran concurrently with `aggregation_run.py`,
+   aggregation throughput dropped sharply for a stretch (a 20-minute
+   window with zero new `.done` markers, though workers were
+   confirmed still actively burning CPU, not hung) -- worse than D38's
+   own recorded contention pattern but self-recovered without
+   intervention. Not deeply investigated further; a data point for
+   whoever next tunes concurrent publish-cycle timing.
+
+**Current state, as of this entry (2026-08-25 18:50 JST)**:
+- `aggregation_run_national`: **1,098/1,979 done** (55.5%), running
+  continuously and alone (no publish_cycle active) since 07:03.
+- Load average ~5.5, swap ~900MB, disk free **489Gi** -- all healthy,
+  no concerns.
+- No `publish_cycle_7` started yet -- next one is a judgment call
+  whenever it seems like a good moment (D32's "roughly once a day"
+  guidance), not yet triggered this entry.
+- The 15GB of raw GML zips used for the corruption investigation
+  (`~/Downloads` on `aalto`) have been deleted -- their purpose was
+  fulfilled (all fixes independently re-verified from S3, not from
+  local copies) and this matches the project's own storage-discipline
+  convention. `/tmp` scratch dirs from this session also cleaned up.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth if idle too long, same as always). Read this file's
+> D35 (now CLOSED), D40's addenda, D42, and this D43 in full first --
+> also skim `PLAN.md` at the repo root for 号2's own standing design
+> notes, and `japan-geotiff-dem`'s own `DECISIONS.md` D18 if the
+> corruption investigation needs revisiting (it shouldn't -- it's
+> closed).
+>
+> **First**: `screen -ls` for `aggregation_run_national` (should still
+> be running -- D32: never intentionally pause it) and check its
+> `.done` count (`find pipelines/aggregation-store/
+> 01M0MWK852631SHCHPA66F21WQ -name '*-aggregation.csv.done' | wc -l`
+> against 1,979) against this entry's own 1,098 to gauge elapsed
+> progress and pace. At the last healthy standalone pace (~17-20/hr),
+> full completion was projected around 2026-08-27~28.
+>
+> **Then**: decide whether it's a good moment for the next
+> `publish_cycle` (no fixed schedule -- D32's own "roughly daily"
+> guidance, or whenever enough new aggregation progress has
+> accumulated). If run, expect a multi-hour cycle (downsampling is the
+> long pole) and watch for D37's own known-harmless `bundle.py` race
+> if it fires.
+>
+> **Storage**: D40's ~2.54GB pmtiles-store-orphan question is still
+> open (not disk-space-neutral, re-check `bundle.py`'s own glob
+> behavior before touching it -- see D40's own addenda). Otherwise
+> storage headroom was healthy (489Gi free) as of this entry.
+>
+> **号2**: still gated on GSI actually shipping new DEM1A data (check
+> `https://service.gsi.go.jp/kiban/app/data_update_info/`) -- no fixed
+> cadence known, don't assume a date. When it happens, `PLAN.md` has
+> the standing design notes; update it rather than re-deriving from
+> scratch.
+>
+> Converse in Japanese, per this repo's own language policy.
