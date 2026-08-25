@@ -3108,13 +3108,16 @@ is now unblocked. `source_bounds.py`/`source_polygonize.py` for
 files) — do that before trusting `jpnational1`'s coverage in the new
 `aggregation_covering.py` pass.
 
-## D35: `jpnational1` source data quality issue found (`gmldem2tif` silent corruption) — 38/45 fixed, investigation ongoing
+## D35: `jpnational1` source data quality issue found (`gmldem2tif` silent corruption) — CLOSED, 48/48 fixed
 
-**Status**: Partial fix landed. Full technical detail lives in
-`japan-geotiff-dem` DECISIONS.md D18 (the bug is in that repo's own
-conversion tool, not anything in this repo's pipeline) — this entry is
-the `mapterhorn-japan-bridge`-side pointer and consequence record, not
-a duplicate writeup.
+**Status**: **Closed, 2026-08-25.** All 48 confirmed-corrupted files
+(38 + 7 + 3, see the closing addendum at the end of this entry) fixed,
+re-verified, and propagated into this repo's own `jpnational1` source
+store and manifest. Full technical detail lives in `japan-geotiff-dem`
+DECISIONS.md D18 (the bug is in that repo's own conversion tool, not
+anything in this repo's pipeline) — this entry is the
+`mapterhorn-japan-bridge`-side pointer and consequence record, not a
+duplicate writeup.
 
 **What happened**: while refreshing `jpnational1`'s `bounds`/
 `polygonize` for the real national launch, `source_polygonize.py` hit
@@ -3265,6 +3268,54 @@ valid-pct methodology). Results:
   **5m/10m/sea are not affected by D18's bug** -- the "similar-order-
   of-magnitude risk" flagged as untested in `japan-geotiff-dem`'s own
   D18 did not materialize here.
+
+
+### Closing addendum (2026-08-25): investigation complete, item closed
+
+**Final tally**: 48 confirmed-corrupted 1m files total across the
+whole investigation -- 38 (2026-08-22, decode-failure class) + 7
+(2026-08-25, silent class, in the original 10 suspect meshes) + 3
+(2026-08-25, later, found in mesh `492963` via a full sweep of all 109
+`4929`/`4930` meshes -- previously unswept). All re-converted,
+independently re-verified twice (once right after upload, once more
+via a fresh fetch), and propagated into this repo's own
+`pipelines/source-store/jpnational1/` and
+`source-catalog/jpnational1/file_list.csv.gz` (bypassing the
+checksum-skip logic each time, same as D35's own original approach).
+Full technical detail, file-by-file, lives in `japan-geotiff-dem`'s own
+`DECISIONS.md` D18 and its addenda -- not duplicated here.
+
+**Scope closed**: the full 109-mesh `4929`/`4930` zone (7,485 files)
+has now been ground-truth-checked in its entirety, not just the
+originally-suspect 10 meshes. Zero further corruption found beyond the
+48 already fixed.
+
+**Broader-region calibration, also clean**: to check whether the bug
+extended beyond `4929`/`4930`, ~3,544 additional files were sampled
+from Hokkaido (full `Z007` region pack, 16 meshes), 8 other scattered
+prefecture-level mesh4 codes (D18's own original distant-region
+sample, re-checked with the corrected script), and an exhaustive check
+of the Kyushu/Okinawa region's own `Z007` pack (36 meshes, directly
+adjacent to but outside the `4929`/`4930` hot zone). **Zero mismatches
+found anywhere outside `4929`/`4930`.** Not proof the bug is
+impossible elsewhere, but real, geographically diverse negative
+evidence supporting the working conclusion that this was a localized
+issue, not a national or Kyushu/Okinawa-wide one. A full exhaustive
+Kyushu/Okinawa sweep remains not planned -- this sampling round already
+delivered a proportionate answer.
+
+**D35's own original "left open" list, resolved**:
+1. Upstream + this repo's own manifests: regenerated, current.
+2. The 7 (then 3 more) soft-corruption files: all fixed.
+3. `bounds.csv`/`polygon-store`: confirmed not affected (unchanged
+   from the original entry's own finding).
+4. The `4929`/`4930` comprehensive sweep: **done**, 109/109 meshes.
+
+**Not this item's scope, deliberately deferred (unchanged)**: whether
+the same corruption-bug class exists in 5m/10m -- D35's own addendum
+already confirmed 5m/10m/sea are *not* affected (screened separately,
+zero decode errors, the observed 0%-valid cases there are a distinct,
+legitimate phenomenon). This closes that open question too.
 
 ## D36: `publish_cycle.py`'s first real execution (clean, end to end) — and a reproducible visual-verification recipe for the live viewer
 
