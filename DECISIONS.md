@@ -4296,3 +4296,327 @@ still running uninterrupted, unaffected by anything in this entry.
 > scratch.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D44: publish_cycle crash-rate analysis across all of 1号 (3/8, all one root cause) — `bundle.py` fix applied, closing D37's open gap
+
+**Status**: Recorded, 2026-08-26 05:50 JST. Continuation of D43's own
+session, same national build (`01M0MWK852631SHCHPA66F21WQ`).
+
+**Trigger**: `publish_cycle_7` crashed overnight (started 2026-08-25
+19:00, crashed between 02:19 and 02:49 the next morning, mid-`bundle.py`)
+with the exact `FileNotFoundError` signature D37 first documented and
+left unfixed. Hidenori asked directly: across all of 1号's publish
+cycles so far, how often has this actually happened, is that rate
+concerning, can it be engineered away, and does it correlate with how
+far `aggregation_run_national` has progressed?
+
+**Full crash-rate audit, read from the actual log files (not assumed
+from memory)**: every `publish_cycle_*.log` on `slate` was checked for
+`Traceback`/`RuntimeError`/`publish cycle finished` markers.
+
+| Cycle | Started | Outcome |
+|---|---|---|
+| first | 2026-08-22 23:37 | ✅ finished clean |
+| 2 | 2026-08-23 06:37 | 💥 crashed (bundle.py) |
+| 3 | 2026-08-23 07:09 | ✅ finished clean (retry of 2) |
+| 4 | 2026-08-23 09:22 | ✅ finished clean |
+| 5 | 2026-08-23 19:15 | 💥 crashed (bundle.py) |
+| 5b | 2026-08-23 21:36 | ✅ finished clean (retry of 5) |
+| 6 | 2026-08-24 19:06 | ✅ finished clean |
+| 7 | 2026-08-25 19:00 | 💥 crashed (bundle.py) |
+| 8 | 2026-08-26 04:36 | (in progress at time of writing) |
+
+**3 crashes out of 8 resolved launches (37.5%)** -- meaningfully high,
+not a rare fluke as D43's "cycle 6 didn't hit it" phrasing might have
+implied in isolation.
+
+**All three crashes independently confirmed to be the identical
+mechanism**, by reading each traceback's actual missing filename, not
+just trusting the shared `FileNotFoundError` class name:
+
+- cycle 2: `pmtiles-store/7-114-46/12-3648-1501-**14**.pmtiles` (D37's
+  own original finding)
+- cycle 5: `pmtiles-store/7-114-49/12-3652-1577-**13**.pmtiles`
+- cycle 7: `pmtiles-store/7-112-51/10-898-408-**12**.pmtiles` -- and,
+  this session, directly confirmed the *replacement* file now sits at
+  the same logical position: `pmtiles-store/7-112-51/10-898-408-
+  **16**.pmtiles`, mtime 03:01, right after the crash window.
+
+Mechanism (D37's own account, now doubly confirmed): `bundle.py`
+`glob()`s the entire `pmtiles-store/` tree once, up front, then can
+spend well over an hour reading files for a single large parent
+region. If `aggregation_run_national` -- running continuously per D32
+-- reprocesses and renames (via its own maxzoom-suffix change) a file
+this pass already captured under its old name, the cached path goes
+stale mid-read and `bundle.py`'s `pool.map()` propagates the exception,
+killing the entire cycle (not just that one region).
+
+**Fix applied and committed** (`hfu-mapterhorn` `8b4a50c`,
+`pipelines/bundle.py`): wrapped the `read_full_archive(filepath)` call
+in `create_archive()`'s read loop in `try/except FileNotFoundError`.
+On catch, prints a clear warning and treats that source file's tiles as
+absent for this pass (`tile_id_to_bytes = {}`, guarded by `if tile_id
+in tile_id_to_bytes` before each `writer.write_tile()` call) rather
+than crashing the whole `Pool.map()`. **Deliberately does not try to
+hot-swap in the renamed file**: that file's tiles are decomposed at a
+different zoom than what the earlier prep loop already computed for
+the stale filename, so its tile IDs wouldn't line up -- swapping would
+silently write wrong data, not just recover gracefully. The affected
+parent's bundle is very slightly incomplete for that one cycle only;
+since `bundle.py` always does a full fresh pass (`dirty_only = False`,
+already the case before this fix), the next `publish_cycle` re-globs
+and picks up the item correctly. Same skip-and-retry-next-time shape
+as `DOWNSAMPLING_STRICT`'s own pattern elsewhere in this pipeline --
+consistent with this codebase's existing conventions, not a new idiom.
+Syntax-checked remotely on `slate` before committing; not yet
+exercised against a live race (won't be provably validated until a
+future `bundle.py` run actually hits the timing window again and logs
+the new warning instead of crashing).
+
+**Does crash probability correlate with aggregation progress?
+Inconclusive from n=3, and the mechanism argues against a simple
+story either way.** The race needs both (a) a stale, pre-existing file
+still sitting at some position from before the current generation's own
+reprocessing reached it, and (b) that same position getting reprocessed
+by `aggregation_run_national` during `bundle.py`'s own read window. As
+the national run's 1,979-item queue drains, the population satisfying
+(a) mechanically shrinks toward zero -- arguing for a *falling* rate
+over time, all else equal. But `bundle.py`'s own read window has also
+been *growing* cycle over cycle as `pmtiles-store`/`japan.pmtiles` grow
+(D40), which pushes the other way. Observed crash points were ~5-8%,
+~15-20%, and (directly measured this session) **62.5%** aggregation
+completion -- crashes at both very early and quite late stages, no
+visible trend, and definitely not "only an early-generation problem."
+With only 3 data points this can't be resolved statistically; the fix
+above makes the question moot for `bundle.py` itself going forward
+regardless of which way the true rate moves.
+
+**Current state, as of this entry (2026-08-26 05:50 JST)**:
+- `aggregation_run_national`: **1,296/1,979 done (65.5%)**, running
+  continuously, unaffected by any of this.
+- `publish_cycle_8` running (started 04:36:10, retry of crashed cycle
+  7, screen session `publish_cycle_8`), mid-`downsampling_run.py`
+  (~1,354/5,382 at this entry's snapshot) -- will be the first cycle to
+  actually exercise the new `bundle.py` fix once it reaches that stage.
+- Disk free: 440Gi, stable, no new concern beyond D40's still-open
+  ~2.54GB orphan question (unchanged, untouched this session).
+- A session-local 15-minute status-check loop (cron-based, this
+  session only) has been running throughout -- **does not survive this
+  session ending**, same caveat as the HANDOVER.md note on the previous
+  Monitor-based loop. Whoever resumes should set up fresh monitoring if
+  continuous observation is wanted again.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth if idle too long; if a *second* re-auth attempt hangs
+> with "another cloudflared process is already waiting," check for and
+> kill a stale `cloudflared access ssh` process before retrying -- seen
+> and resolved this session, not yet a fully understood root cause).
+>
+> Read this file's D35 (CLOSED), D40's addenda, D42, D43, and this D44
+> in full first -- also skim `PLAN.md` for 号2's own standing design
+> notes.
+>
+> **First**: `screen -ls` for `aggregation_run_national` (D32: never
+> intentionally pause it) and check its `.done` count against 1,979
+> (`find pipelines/aggregation-store/01M0MWK852631SHCHPA66F21WQ -name
+> '*-aggregation.csv.done' | wc -l`) against this entry's own 1,296 to
+> gauge pace. At ~17-20/hr, full completion was still projected around
+> 2026-08-27〜28 as of D43; re-check against the actual trend now.
+>
+> **Then check `publish_cycle_8`** (screen session `publish_cycle_8`,
+> log `pipelines/publish_cycle_8.log`): did it finish? If it reached
+> `bundle.py` and hit the D37 race again, the fix committed this
+> session (`hfu-mapterhorn` `8b4a50c`) should now print a `WARNING:
+> ... no longer exists -- likely overwritten by a concurrent
+> aggregation_run.py reprocess ... Skipping its tiles this cycle`
+> line and keep going, instead of crashing the whole cycle -- if you
+> see a crash with the *same* `FileNotFoundError` traceback shape
+> despite that fix being live, the fix itself needs debugging, don't
+> just retry-and-move-on this time.
+>
+> **Storage**: D40's ~2.54GB `pmtiles-store` orphan question is still
+> open and still untouched (`bundle.py`'s glob is unconditional, so
+> those old-generation files are likely still being bundled into every
+> live `japan.pmtiles` -- don't delete without re-confirming that's
+> still true first).
+>
+> **号2**: still gated on GSI actually shipping new DEM1A data -- no
+> fixed cadence known, don't assume a date. `PLAN.md` has the standing
+> design notes; update it rather than re-deriving from scratch.
+>
+> Converse in Japanese, per this repo's own language policy.
+
+## D45: downsampling completion-guarantee audit — found a worse, silent variant of D37/D44's race inside `create_tile()`, plus its root cause (`utils.create_archive`'s non-atomic write); both fixed
+
+**Status**: Recorded, 2026-08-26 06:00 JST. Continuation of D44's own
+session, same national build (`01M0MWK852631SHCHPA66F21WQ`).
+
+**Trigger**: after D44's `bundle.py` fix, Hidenori asked directly
+whether `downsampling_run.py` can actually be trusted to reach 100%
+completion once `aggregation_run_national` finishes — noting that
+downsampling's own progress has looked sluggish across this session's
+publish cycles and that 1号's success depends on this working
+correctly, not just looking like it's working.
+
+**Traced the full dependency chain by reading the actual code (not
+assumed)**: `aggregation_covering.py`'s `write_aggregation_items()`
+computes each item's `child_z` (maxzoom) once, deterministically, from
+`source_item['maxzoom']` — purely a function of the input source data's
+own resolution, not anything decided at processing time — and encodes
+it directly into that item's own `{z}-{x}-{y}-{child_z}-aggregation.csv`
+filename. `aggregation_tile.py` (line 79) parses `child_z` straight
+back out of that same filename and uses the identical value to build
+its own output path (`{z}-{x}-{y}-{child_z}.pmtiles`, line 102) — so
+there is no structural mismatch between what a generation's planning
+step predicts and what its own tiling step actually produces. This
+matters because it means **the D37/D44 race truly is a timing issue
+(a stale file from an older generation, at the same position, not yet
+overwritten)**, not a permanent filename mismatch that would make
+`DOWNSAMPLING_STRICT`'s skip-and-retry loop forever — once
+`aggregation_run_national` reaches 100%, every position's file should
+settle at its correct, expected name. **Good news, confirmed by
+reading the code, not assumed.**
+
+**But found a worse variant of the same race, previously undetected
+because it fails silently instead of crashing**: `downsampling_run.py`'s
+`main()` does check for missing referenced files before starting an
+item (respects `DOWNSAMPLING_STRICT`, skips-without-marking-done — this
+part is correct and already understood). But `create_tile()` — the
+per-parent-tile worker, called via `pool.starmap()` — has its **own**,
+separate `if not os.path.isfile(filepath): continue` check on the same
+referenced files, reached later (after `main()`'s own pre-check already
+passed), and this one is **not gated by `DOWNSAMPLING_STRICT` at all**.
+If `aggregation_run_national` renames the file in the (much narrower,
+but nonzero) window between `main()`'s pre-check and this worker's
+actual read, `create_tile()` silently treats that quadrant as if it
+had no data (the surrounding `except Exception: pass` swallows this and
+any other read failure the same way) — and `main()` then marks the
+**whole parent tile `.done` anyway**, with a real hole in it, and
+**nothing left to ever retry it**. This is strictly worse than
+`bundle.py`'s old crash: a crash is loud and self-healing (D37's own
+"retried immediately, ran clean" pattern); this is silent and
+permanent. Directly answers Hidenori's concern: as written, this was
+a real, unaddressed risk to whether 1号 actually converges to a fully
+correct national tileset, not just to whether it *looks* done.
+
+**Root cause traced one level deeper — `utils.create_archive()`
+(shared by both `aggregation_tile.py` and `downsampling_run.py`, the
+function that actually writes a `.pmtiles` file) writes directly to its
+final `out_filepath`** (`open(out_filepath, 'wb')`, tiles streamed in,
+header/directory only written at `writer.finalize()`). This means the
+file exists on disk (`os.path.isfile() == True`) and is a **valid-
+looking but incomplete/unparseable target** for the entire duration of
+the write, not just absent-then-present. A concurrent reader hitting
+this narrower sub-window would get a corrupt-read exception rather
+than a clean "not there" signal — a second, harder-to-catch variant of
+the same underlying race, affecting `bundle.py`'s reads too (though
+D44's fix already catches `FileNotFoundError` there; this sub-window
+would previously have surfaced as some other exception type,
+unhandled).
+
+**Three-part fix, all committed to `hfu-mapterhorn`**:
+1. `utils.create_archive()` (`ff23d2e`): now writes to a same-directory
+   `{out_filepath}.tmp-{pid}` path and `os.replace()`s into place only
+   after `finalize()` completes. `os.replace()` on the same filesystem
+   is atomic — a reader now only ever observes the old file (or
+   nothing) or the fully-complete new one, never a partial state. Fixes
+   this at the source for every current and future consumer, not just
+   the two call sites known to be affected today.
+2. `downsampling_run.py`'s `create_tile()` (`ff23d2e`): the referenced-
+   but-missing case now raises a new `ChildPmtilesUnavailable`
+   exception instead of silently continuing (the `child not in
+   tile_to_pmtiles_filename` case — genuinely uncovered, not a race —
+   is untouched, still a legitimate silent skip). The broad
+   `except Exception: pass` around the actual read was removed at the
+   same time: with (1) in place, a genuine read failure there is no
+   longer expected from this specific race, and letting it surface
+   (rather than swallowing it) means any *other* unexpected read
+   problem now also triggers a retry instead of a silent partial tile.
+3. `downsampling_run.py`'s `main()` (`ff23d2e`): the `pool.starmap()`
+   call is now wrapped in `try/except ChildPmtilesUnavailable`; on
+   catch, prints a clear warning, cleans up `tmp_folder`, and skips the
+   item without marking `.done` — same skip-and-retry-next-time shape
+   `DOWNSAMPLING_STRICT`'s own outer check already uses, just extended
+   to cover the later, narrower race window too.
+
+**`bundle.py`'s own `create_archive()` (a separate, local function in
+that file, not `utils.create_archive()`) was deliberately left
+untouched** — `bundle-store` output is only ever read by
+`merge_japan_bundles.py`, which runs strictly after `bundle.py`
+completes within the same `publish_cycle.py` invocation, never
+concurrently with a writer; not exposed to this race class the same
+way `pmtiles-store` is.
+
+**Deployment timing note, for the record**: both fixed files were
+copied to `slate` while `publish_cycle_8`'s own `downsampling_run.py`
+was still mid-run (~1,393/5,382 at the time). This carries a small,
+understood risk: `downsampling_run.py` uses `multiprocessing`'s
+`spawn` start method, so newly-spawned `Pool` workers after the
+deploy would import the *new* code while the already-running main
+process still holds the *old* code in memory — if the race had fired
+in that narrow overlap, the old main process's unwrapped
+`pool.starmap()` call would have failed to unpickle the new
+`ChildPmtilesUnavailable` exception cleanly and crashed the run (same
+"crash, then retry cleanly" cost already accepted for D37/D44's own
+`bundle.py` race, not a new failure class). Checked immediately after
+deploying: `publish_cycle_8` was still running, unaffected. **The
+fixes are only proven correct against a *future* fresh
+`downsampling_run.py` invocation that runs entirely on the new code
+end to end** — not yet validated against a live occurrence of the
+race itself, same caveat as D44's own `bundle.py` fix.
+
+**Current state, as of this entry (2026-08-26 06:00 JST)**:
+- `aggregation_run_national`: 1,296/1,979 done (65.5%), unaffected.
+- `publish_cycle_8`: still running, mid-`downsampling_run.py`
+  (~1,393/5,382 at last check), now on the fixed code for any newly-
+  spawned worker going forward; will be the first run to actually
+  exercise the `ChildPmtilesUnavailable` catch path if the race fires
+  again before this pass finishes.
+- `DECISIONS.md`/`HANDOVER.md`/`PLAN.md` all updated this session (see
+  D44 and PLAN.md's own infrastructure-prerequisites section).
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth; if a retry hangs on "another cloudflared process is
+> already waiting," kill the stale `cloudflared access ssh` process
+> first).
+>
+> Read this file's D35 (CLOSED) through D45 in full before touching
+> anything -- D44 and D45 are dense and directly load-bearing for
+> whether 1号 actually finishes correctly, not just whether it looks
+> finished. Skim `PLAN.md` for 号2's own standing design notes (updated
+> this session with a pointer to D44's fix).
+>
+> **First**: `screen -ls` for `aggregation_run_national` (D32: never
+> intentionally pause it) and check its `.done` count against 1,979
+> (currently 1,296) to gauge pace.
+>
+> **Then check whatever `publish_cycle_N` is most recent**: did it
+> finish clean? If `bundle.py` or `downsampling_run.py` hit the D37/
+> D44/D45 race again, the fixes committed this session (`hfu-mapterhorn`
+> `8b4a50c`, `ff23d2e`) should now either print a clear `WARNING`
+> and keep going (bundle.py) or skip the item with a `WARNING` and
+> continue (downsampling_run.py) -- if either still crashes with the
+> *same* underlying `FileNotFoundError`-class traceback despite these
+> fixes being live, don't just retry-and-move-on this time, the fix
+> itself needs debugging.
+>
+> **Once aggregation reaches 100%**, this is the real test: run
+> `downsampling_run.py` once with no other process touching
+> `pmtiles-store` concurrently, and confirm it converges to
+> `Total: 0 files` needing work (everything either already `.done` or
+> genuinely has no coverage) -- that's the actual proof D45's fix
+> closes the loop, not just that it stopped crashing.
+>
+> **Storage**: D40's ~2.54GB `pmtiles-store` orphan question is still
+> open and untouched.
+>
+> **号2**: still gated on GSI actually shipping new DEM1A data -- no
+> fixed cadence known.
+>
+> Converse in Japanese, per this repo's own language policy.

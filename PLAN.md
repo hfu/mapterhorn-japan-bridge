@@ -101,6 +101,16 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
   the first publish cycle, or downsampling silently produces nothing
   forever (D37's own finding). **Fix this before 2号's first publish
   cycle**, not after rediscovering the same gap again.
+- **D37/D44's `bundle.py` pmtiles-store race, now fixed** (`hfu-
+  mapterhorn` `8b4a50c`): 1号 hit this 3 times out of 8 publish
+  cycles (37.5% — see D44's full audit). `bundle.py` now catches the
+  race's `FileNotFoundError` per source file and skips just that
+  file's tiles for the current pass instead of crashing the whole
+  cycle. Carries forward to 2号 automatically (same script, same repo)
+  — no separate action needed at 2号's kickoff, but if a *new* crash
+  signature ever appears there, don't assume it's the same already-
+  fixed race without checking the traceback's actual missing filename
+  first.
 - **1号's own residue cleanup**: once 1号 fully completes, its
   `pmtiles-store`/`tmp-store`/`aggregation-store` footprint becomes the
   next generation's "old-generation" cleanup candidate, exactly like

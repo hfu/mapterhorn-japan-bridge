@@ -3445,3 +3445,140 @@ Load average steady ~5.5/10 cores, free disk ~606GB. All healthy.
 > session, not persistent).
 >
 > Converse in Japanese, per this repo's own language policy.
+
+
+## 2026-08-24〜26: D35 corruption investigation closed, Oliver correspondence (D42), publish_cycle crash-rate analysis + bundle.py race fix (D44), downsampling completion-guarantee audit + fix (D45)
+
+Bridges two sessions this entry hadn't yet covered -- full technical
+detail lives in `DECISIONS.md` D35's closing addendum through D45.
+This entry is the session-level orientation for whoever resumes.
+
+**Where things stand right now** (2026-08-26 06:00 JST): `aggregation_
+run.py` (generation `01M0MWK852631SHCHPA66F21WQ`) running continuously
+in `screen` session `aggregation_run_national`, **1,296/1,979 items
+done (65.5%)**. `publish_cycle_8` running (screen session
+`publish_cycle_8`, started 04:36), mid-`downsampling_run.py`. Disk free
+~440Gi. All healthy.
+
+**What happened, in order, across both sessions**:
+1. **D35's corruption investigation fully closed**: a full ground-truth
+   sweep of all 109 `4929`/`4930` 2次メッシュ (7,485 files) found 3 more
+   corrupted files beyond the original 45 -- 48 total, all fixed and
+   re-verified. Broad calibration sampling (~3,544 files across
+   Hokkaido, 8 scattered prefectures, and Kyushu/Okinawa's own `Z007`
+   pack) found zero corruption anywhere outside the known zone. See
+   `japan-geotiff-dem`'s own `DECISIONS.md` D18 for the full technical
+   narrative -- not duplicated here.
+2. **Correspondence with Mapterhorn maintainer Oliver Wipfli, digested
+   into D42** (not transcribed, per standing practice): corrected the
+   update-trigger model -- refresh proactively when GSI ships new data,
+   then tell Oliver, rather than waiting passively for his own release
+   signal. Got an independent ~100k-file-delta confirmation of this
+   project's manifest. Surfaced two open 号2 engineering questions: a
+   LERC/tiled/no-overview source-GeoTIFF variant for Mapterhorn's own
+   direct consumption, and whether `aggregation_merge.py` could move to
+   single-pass reads to make LERC viable for our own intermediates too.
+3. **`PLAN.md` created** (repo root) -- living 号2 design doc, gated on
+   GSI actually shipping new DEM1A data, not started.
+4. **`publish_cycle_6` completed clean** (~12h, `japan.pmtiles` grew to
+   159.6GB/1,377,720 tiles), verified live three ways.
+5. **`publish_cycle_7` crashed**, then **a full crash-rate audit across
+   all of 1号's publish cycles found 3 crashes out of 8 launches
+   (37.5%)** -- cycles 2, 5, and 7, all the *identical* `bundle.py`
+   `FileNotFoundError` race D37 first found and left unfixed (glob'd
+   file renamed mid-read by a concurrent `aggregation_run.py`
+   reprocess). Crash points spanned ~5% to 62.5% aggregation
+   completion with no clear trend -- not just an early-generation risk.
+6. **`bundle.py` fix applied and committed** (`hfu-mapterhorn`
+   `8b4a50c`): catches the race's `FileNotFoundError` per source file,
+   skips just that file's tiles for the current pass instead of
+   crashing the whole cycle. Self-heals via the next cycle's own full
+   fresh pass. See D44 for the full reasoning on why hot-swapping the
+   renamed file instead wasn't safe.
+7. **Asked directly whether downsampling can actually be trusted to
+   reach 100% once aggregation finishes -- audited the full dependency
+   chain by reading the code, found a worse, silent variant of the same
+   race (D45)**: `aggregation_covering.py` assigns each item's maxzoom
+   deterministically and `aggregation_tile.py` always honors it exactly
+   (confirmed no permanent filename mismatch -- good news), but
+   `downsampling_run.py`'s own `create_tile()` had an *inner* missing-
+   file check, unprotected by `DOWNSAMPLING_STRICT`, that silently
+   treated a renamed-away child file as "no data" and let `main()` mark
+   the whole parent tile `.done` anyway -- a permanent, silent hole,
+   worse than `bundle.py`'s old loud crash. Root cause traced one level
+   deeper: `utils.create_archive()` (shared by both `aggregation_
+   tile.py` and `downsampling_run.py`) wrote its `.pmtiles` output
+   directly to the final path, non-atomically, so a concurrent reader
+   could also hit a partially-written file mid-write.
+8. **Three-part fix applied and committed** (`hfu-mapterhorn`
+   `ff23d2e`): `utils.create_archive()` now writes to a temp path and
+   `os.replace()`s into place atomically; `create_tile()` now raises a
+   `ChildPmtilesUnavailable` exception instead of silently swallowing
+   the missing-file case; `main()` catches it and skips the item
+   without marking it done, same shape as `DOWNSAMPLING_STRICT`'s own
+   existing pre-check. Deployed while `publish_cycle_8`'s own
+   `downsampling_run.py` was still mid-run -- a small, understood,
+   accepted risk (see D45's own "Deployment timing note"), confirmed
+   not to have crashed anything at deploy time.
+9. **A session-local 15-minute cron status-check loop ran throughout**
+   this second session -- same caveat as always: tied to that session,
+   does not survive it ending.
+
+**Next steps, in priority order for whoever resumes**:
+1. **The real test for D45's fix**: once `aggregation_run_national`
+   reaches 100%, run `downsampling_run.py` once with nothing else
+   touching `pmtiles-store` concurrently and confirm it converges to
+   `Total: 0 files` needing work -- that's the actual proof the fix
+   closes the loop, not just that nothing crashed.
+2. Check whether the currently-running (or most recent) `publish_cycle`
+   hit the D37/D44/D45 race again and whether the fixes actually
+   worked as designed (clear `WARNING` + continued execution) rather
+   than still crashing or (for downsampling) still silently completing
+   with a hole.
+3. Keep `aggregation_run_national` running uninterrupted (D32, still
+   standing). Re-run `publish_cycle.py` roughly daily (D32).
+4. D40's ~2.54GB `pmtiles-store` orphan cleanup is still deliberately
+   deferred -- re-confirm `bundle.py`'s glob behavior before touching
+   it, nothing has changed there.
+5. 号2 stays gated on a real GSI DEM1A update landing -- check
+   `https://service.gsi.go.jp/kiban/app/data_update_info/`
+   periodically, no fixed cadence known.
+6. Set up fresh monitoring if continuous observation is wanted again
+   -- neither this session's cron loop nor any earlier session's
+   Monitor-based one persists across sessions.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth if idle too long; if a retry hangs on "another
+> cloudflared process is already waiting," kill the stale
+> `cloudflared access ssh` process first).
+>
+> Read `DECISIONS.md` D35's closing addendum through D45 in full before
+> touching anything -- D44 and D45 are dense and directly load-bearing
+> for whether 1号 actually finishes correctly, not just whether it
+> looks finished. Skim `PLAN.md` for 号2's own standing design notes.
+>
+> **First**: `screen -ls` for `aggregation_run_national` (never
+> intentionally pause it, D32) and check its `.done` count against
+> 1,979 to gauge pace against this entry's own 1,296.
+>
+> **Then**: check the most recent `publish_cycle`'s outcome -- did it
+> finish clean? If it hit the known race again, did the new fixes
+> (`hfu-mapterhorn` `8b4a50c` for `bundle.py`, `ff23d2e` for
+> `downsampling_run.py`/`utils.py`) actually prevent a crash/silent
+> hole this time, or do they need further work? Neither fix has been
+> proven against a live occurrence yet -- this is the one open question
+> this session couldn't close by itself.
+>
+> **Once aggregation hits 100%**: run `downsampling_run.py` once
+> cleanly (nothing else touching `pmtiles-store`) and confirm it
+> converges to zero remaining work -- the real proof D45's fix closes
+> the loop.
+>
+> **Otherwise**: business as usual -- storage headroom was fine (~440Gi
+> free), D40's orphan cleanup still deliberately deferred, 号2 still
+> gated on GSI shipping new data with no fixed cadence.
+>
+> Converse in Japanese, per this repo's own language policy.
