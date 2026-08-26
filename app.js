@@ -7,9 +7,6 @@ window.onunhandledrejection = (e) => {
   console.error('unhandledrejection:', e.reason);
 };
 
-let protocol = new pmtiles.Protocol();
-maplibregl.addProtocol('pmtiles', protocol.tile);
-
 fetch('style.json')
   .then(r => r.json())
   .then(style => {

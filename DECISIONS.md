@@ -4748,3 +4748,112 @@ request here.
 > fixed cadence known.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D47: GH Pages viewer reads terrain from `martin`'s XYZ endpoint instead of the raw `.pmtiles` file directly
+
+**Status**: Accepted and executed, 2026-08-26 21:15 JST. Hidenori's own
+request: the viewer was still reading `mapterhorn-japan-bridge.pmtiles`
+straight off `depot.optgeo.org` via the `pmtiles://` protocol (client-
+side range requests into the raw 211GB archive); switch it to
+`https://stars.optgeo.org/mapterhorn-japan-bridge/{z}/{x}/{y}` (the
+`martin`-served XYZ endpoint for the same archive, already confirmed
+live in D46) instead, for Cloudflare's own edge-cache benefit on
+individual small tile responses versus large-file range requests.
+
+**Changes, in `mapterhorn-japan-bridge`**:
+- `style.json`: the `mapterhorn` source's `url` changed from
+  `pmtiles://https://depot.optgeo.org/mapterhorn-japan-bridge.pmtiles`
+  to `https://stars.optgeo.org/mapterhorn-japan-bridge` -- a
+  standard MapLibre `raster-dem` source pointed at `martin`'s own
+  TileJSON document (not a hardcoded `tiles` array), so zoom range/
+  bounds/attribution stay in sync with whatever `martin` currently
+  reports rather than needing to be hand-maintained here.
+- `app.js`: removed the now-dead `pmtiles.Protocol()` registration
+  (`maplibregl.addProtocol('pmtiles', ...)`)  -- nothing in the style
+  uses the `pmtiles://` scheme any more (`bvmap` was already a plain
+  XYZ source via `martin`).
+- `index.html`: removed the now-unused `pmtiles@4.3.0` script tag --
+  the viewer no longer ships the `pmtiles` client library at all.
+
+**Verified before deploying, not just assumed**: ran the edited files
+against a local static server, loaded in a real browser context.
+`martin`'s XYZ tiles fetch correctly (`200`, `image/webp`, real byte
+content) and decode to the expected `512x512` pixel dimensions for
+every successfully-returned tile sampled (`z0/0/0`, two `z13` tiles
+near Hakodate, one `z14` tile) -- confirms `martin` serves the
+identical underlying bytes a direct `pmtiles://` read would have,
+just fronted by a normal HTTP tile endpoint instead. The default 2D
+hillshade view renders correctly (roads/coastline/labels/relief all
+present around 函館, after an initial-paint nudge this session's own
+headless test tooling needed -- not expected to affect real user
+browsers, which trigger MapLibre's normal tile-loading pipeline via
+their own pan/zoom/resize interactions).
+
+**Found, not caused by this change (best evidence, not fully proven)**:
+toggling the 3D terrain checkbox surfaces a `dem dimension mismatch`
+console error from MapLibre at several coarser zoom levels (z8-z11)
+near Hakodate. Investigated rather than assumed: every tile this
+session could confirm actually returned `200` decoded to the correct
+`512x512` regardless of zoom, so this isn't a real pixel-dimension
+inconsistency in what `martin` serves -- the coarser-zoom positions
+tested all returned `204` (no content) instead. Given `downsampling_
+covering.py`'s own region-based `simplified_extents` logic (not a
+uniform full-world pyramid at every zoom -- see that script's own
+`get_simplified_extents()`) plus the national build still sitting at
+~77% aggregation at the time of this test, sparse coverage at some
+coarse-zoom positions is expected right now, not obviously a
+migration regression -- MapLibre's terrain code likely surfaces a
+missing raster-dem tile as this specific error message. Not confirmed
+against the old `pmtiles://` path before this session's own change
+(that path no longer exists to A/B against), so this is flagged as a
+real, reproducible, but *not fully attributed* finding -- worth a
+fresh look after aggregation reaches 100% (D45's own resume-prompt
+already asks for a clean post-completion check; re-test the terrain
+toggle at the same time) rather than chased further this session,
+since the default 2D view (this repo's own actual production
+configuration) is unaffected.
+
+**Current state, as of this entry (2026-08-26 21:15 JST)**:
+- `aggregation_run_national`: unaffected throughout, still running
+  (D32) -- 77%+ complete, ETA discussed separately (~2026-08-27
+  evening at the last measured clean pace).
+- No `publish_cycle` running -- Hidenori's own call to hold off until
+  aggregation finishes (see this session's own ETA discussion).
+- Committed and pushed to `mapterhorn-japan-bridge` (docs/viewer repo)
+  -- nothing to change on `slate`'s `hfu-mapterhorn` pipeline side for
+  this one, it's viewer-only.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth; if a retry hangs on "another cloudflared process is
+> already waiting," kill the stale `cloudflared access ssh` process
+> first).
+>
+> Read `DECISIONS.md` D35's closing addendum through D47 in full
+> before touching anything. Skim `PLAN.md` for 号2's own standing
+> design notes.
+>
+> **First**: `screen -ls` for `aggregation_run_national` (D32: never
+> intentionally pause it) and check its `.done` count against 1,979
+> (was 1,979 not yet reached as of this entry -- if it's now at 1,979,
+> that's the actual headline: aggregation finished, decide on
+> `publish_cycle_9` per Hidenori's own "wait for completion" call).
+>
+> **D47's own open thread**: once aggregation is fully done, re-test
+> the GH Pages viewer's 3D terrain toggle (not just the default 2D
+> view) -- confirm whether the `dem dimension mismatch` console error
+> found this session is gone once coverage is complete (supporting the
+> sparse-coverage theory) or persists (meaning it needs real
+> investigation, possibly in `martin`'s own tile-serving behavior or
+> this project's downsampling covering logic).
+>
+> **Also still open from D44/D45**: neither the `bundle.py`
+> `FileNotFoundError`-catch fix nor the `downsampling_run.py`/`utils.py`
+> atomic-write fix has been proven against a *clean* full run yet.
+>
+> **Storage**: D40's ~2.54GB `pmtiles-store` orphan question is still
+> open and untouched.
+>
+> Converse in Japanese, per this repo's own language policy.
