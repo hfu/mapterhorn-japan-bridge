@@ -3582,3 +3582,20 @@ done (65.5%)**. `publish_cycle_8` running (screen session
 > gated on GSI shipping new data with no fixed cadence.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+### Addendum (same session, 2026-08-26 09:38 JST): renamed the published archive to `mapterhorn-japan-bridge.pmtiles` (D46)
+
+After `publish_cycle_8` finished clean (proving out D44/D45's fixes
+live, see above), Hidenori asked to rename the published archive from
+`japan.pmtiles` to `mapterhorn-japan-bridge.pmtiles` everywhere ahead
+of `publish_cycle_9`. Done across both repos plus `stars`: pipeline
+scripts (`merge_japan_bundles.py`, `publish_cycle.py`), the file on
+`stars` (instant same-filesystem `mv`, `martin`'s auto-discovery picked
+it up live with no config/restart needed), the GH Pages viewer's
+`style.json`, and `README.md`/`CLAUDE.md`'s own prose -- full detail
+and every reference found in `DECISIONS.md` D46. Also freed 211GB by
+deleting the now-orphaned old-named `bundle-store/japan.pmtiles` on
+`slate` (verified `lsof`-clear first, per D29's own lesson) -- disk
+free rose to ~546Gi. The resume prompt immediately above this addendum
+is superseded by D46's own resume prompt in `DECISIONS.md` -- read that
+one, not this entry's.

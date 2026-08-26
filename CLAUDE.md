@@ -150,7 +150,7 @@ location for `japan-geotiff-dem`) failed outright and is retired.
 | **Runs on** | `slate` (M4 Mac mini, 16GB, real SSD at `/Volumes/Migrate-2025-04`, reached via `ssh hfu@slate.local`) — `git`-tracked at `/Volumes/Migrate-2025-04/github/japan-geotiff-dem-repo`, not the old Justfile-only working copies | `slate`, same machine, `/Volumes/Migrate-2025-04/github/hfu-mapterhorn/` | Nowhere — static site only |
 | **Why that machine** | `aalto`'s external HDD failed (D12); `slate` already had the fast SSD this needs anyway | Mapterhorn's aggregation stage needs RAM + genuine SSD random access `aalto` never had (D2) | N/A |
 | **Constraints** | See that repo's own `CLAUDE.md` | **Don't add unrelated features** — Hidenori wants this fork to stay close to upstream, bug fixes only (see `FORK_NOTES.md`) | Keep it small: viewer + docs, no pipeline code |
-| **Publishes to** | `smartmaps/japan-geotiff-dem` | (nothing directly) | `smartmaps/mapterhorn-japan-bridge` (README + `japan.pmtiles`) |
+| **Publishes to** | `smartmaps/japan-geotiff-dem` | (nothing directly) | `smartmaps/mapterhorn-japan-bridge` (README + `mapterhorn-japan-bridge.pmtiles`) |
 
 Practical consequence: **everything now runs on `slate` over SSH**
 from whatever machine hosts this conversation — e.g.
@@ -232,26 +232,23 @@ priority" means *base layer*, not *painted-over-first*. See
 `aggregation_merge.py`'s `copy_mask = (merged_tile == -9999) &
 (current_tile != -9999)` and `utils.py`'s `get_grouped_source_items`.
 
-## `japan.pmtiles`: single ever-growing merged archive (D7)
+## `mapterhorn-japan-bridge.pmtiles`: single ever-growing merged archive (D7, renamed D46)
 
 After `bundle.py` produces `planet.pmtiles` + per-region
-`{z}-{x}-{y}.pmtiles` files, merge **all** of them (not just the new
-ones) into one file, always named `japan.pmtiles`, and re-upload it
-over the same key every time. This is a full rebuild each time, not an
-incremental append — accepted cost for a temporary bridge product at
-its current scale (see D7 for the tradeoff). The merge script is
-ad hoc (not a checked-in pipeline script — see `HANDOVER.md` for the
-exact snippet last used); it's a straightforward re-implementation of
-`hfu/mapterhorn`'s own `pipelines/merge_bundles.py`, generalized to
-`glob("bundle-store/*.pmtiles")` instead of that script's
-hardcoded two-file `INPUTS` list.
+`{z}-{x}-{y}.pmtiles` files, `merge_japan_bundles.py` merges **all** of
+them (not just the new ones) into one file, always named
+`mapterhorn-japan-bridge.pmtiles` (`japan.pmtiles` before D46), and
+`publish_cycle.py` `rsync`s it to `stars` over the same key every time.
+This is a full rebuild each time, not an incremental append — accepted
+cost for a temporary bridge product at its current scale (see D7 for
+the tradeoff). `merge_japan_bundles.py` is checked in to `hfu-
+mapterhorn`'s own `pipelines/`, a generalization of `hfu/mapterhorn`'s
+own `pipelines/merge_bundles.py` to `glob("bundle-store/*.pmtiles")`
+instead of that script's hardcoded two-file `INPUTS` list.
 
-Rebuild it, `scp` to wherever `aws` runs, then:
-
-```
-aws s3 cp japan.pmtiles s3://smartmaps/mapterhorn-japan-bridge/japan.pmtiles \
-  --profile source-coop --acl bucket-owner-full-control
-```
+**Hosting is `stars`/`martin`, not Source Cooperative** (D13) — see
+this file's own "Source Cooperative publishing" section below for why,
+and `DECISIONS.md` D46 for the rename this section's own name reflects.
 
 ## Preview
 

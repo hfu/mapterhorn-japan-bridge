@@ -4620,3 +4620,131 @@ race itself, same caveat as D44's own `bundle.py` fix.
 > fixed cadence known.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D46: rename the published archive from `japan.pmtiles` to `mapterhorn-japan-bridge.pmtiles`, everywhere
+
+**Status**: Accepted and executed, 2026-08-26 09:35 JST. Hidenori's own
+request, ahead of routing the live product through `stars`'s
+`martin`+Caddy hosting under a name that matches the project rather
+than a generic `japan.pmtiles` label. `publish_cycle_9` is the first
+cycle to produce the archive natively under the new name (`cycle_8`
+and everything before it still produced `japan.pmtiles`).
+
+**Every reference found and changed, by grepping both repos rather than
+relying on memory of where the name might appear**:
+
+- `hfu-mapterhorn/pipelines/merge_japan_bundles.py`: `OUTPUT` constant
+  (`bundle-store/japan.pmtiles` -> `bundle-store/mapterhorn-japan-
+  bridge.pmtiles`). `INPUTS`'s own self-exclusion logic already
+  compares against `OUTPUT` by path, so no other change was needed
+  there.
+- `hfu-mapterhorn/pipelines/publish_cycle.py`: the `rsync` source path
+  and the module docstring's own filename mention.
+- `stars`: `mv /home/stars/data/{japan,mapterhorn-japan-bridge}.pmtiles`
+  -- same filesystem, instant, byte-identical (211,109,523,151 bytes,
+  mtime preserved). **`martin`'s own `config.yaml` needed no edit** --
+  its `pmtiles.paths: [/home/stars/data]` auto-discovers every
+  `*.pmtiles` file in that directory and derives the source id from the
+  filename stem, confirmed by reading `~/.config/martin/config.yaml`
+  directly rather than assuming (only `z18`/`bvmap` are explicitly
+  pinned there, for reasons unrelated to this rename -- `bvmap` is a
+  remote URL source, not a local file). Confirmed live, no restart
+  needed: `martin`'s own `/catalog` endpoint showed the new
+  `mapterhorn-japan-bridge` source immediately after the `mv`. Likewise
+  `Caddy`'s `/etc/caddy/Caddyfile` just serves whatever's in that same
+  directory (`root * /home/stars/data`, `file_server`) -- no filename-
+  specific config anywhere to update there either.
+- **Both public URLs verified live, not just assumed from config**:
+  `https://depot.optgeo.org/mapterhorn-japan-bridge.pmtiles` returns
+  `Content-Length: 211109523151` (byte-identical to the file on disk);
+  `https://stars.optgeo.org/mapterhorn-japan-bridge` returns a valid
+  TileJSON with `tiles: ["https://stars.optgeo.org/mapterhorn-japan-
+  bridge/{z}/{x}/{y}"]`.
+- `mapterhorn-japan-bridge` (this repo)'s `style.json`: the one live-
+  consuming reference in the GH Pages viewer (`app.js` only fetches
+  `style.json` itself and holds no other hardcoded pmtiles URL, checked
+  directly rather than assumed) -- `pmtiles://https://depot.optgeo.org/
+  japan.pmtiles` -> `.../mapterhorn-japan-bridge.pmtiles`.
+- `README.md`: the two prose mentions of the archive's own filename.
+- `CLAUDE.md`: the three-way-split table's own "Publishes to" cell, and
+  the `japan.pmtiles`-section header/body rewritten (also corrected two
+  points that had gone stale independent of this rename while editing:
+  `merge_japan_bundles.py` is a checked-in pipeline script now, not the
+  "ad hoc, not committed" script an earlier session's note described,
+  and the section's own S3-upload snippet was superseded by D13's own
+  `stars`/`martin` hosting decision -- replaced with a pointer to the
+  "Source Cooperative publishing" section instead of a stale command).
+- **`DECISIONS.md`/`HANDOVER.md`'s own historical entries were
+  deliberately left untouched** -- they're a point-in-time record of
+  what was true when written, not meant to be retroactively rewritten;
+  this entry is the forward-pointing record of the rename itself.
+- `PLAN.md` was checked (grepped) and has no `japan.pmtiles` mentions --
+  nothing to change there.
+
+**Cleanup, verified safe before acting (D29's own lesson: check
+`lsof`, don't assume)**: the old `bundle-store/japan.pmtiles` (211GB,
+`cycle_8`'s own output) is now orphaned -- nothing in the renamed
+pipeline will ever read or write that path again, and its content is
+already the same bytes now living at `bundle-store/mapterhorn-japan-
+bridge.pmtiles`'s own eventual `cycle_9` successor once that runs, plus
+already safely on `stars` (`depot.optgeo.org` verified above). `lsof`
+confirmed zero open handles; deleted. Freed 211GB, disk free rose from
+~345Gi to **546Gi** on `slate`.
+
+**Not changed, deliberately out of scope**: Source Cooperative's own
+`s3://smartmaps/mapterhorn-japan-bridge/` prefix (D13's original
+upload target, not actively used since `stars`/`martin` became the
+primary host) -- no filename-specific artifact exists there to rename,
+and re-attempting that upload path wasn't part of Hidenori's own
+request here.
+
+**Current state, as of this entry (2026-08-26 09:38 JST)**:
+- `aggregation_run_national`: unaffected throughout, kept running
+  continuously (D32) the whole time this rename was carried out.
+- No `publish_cycle_9` started yet -- next one will be the first to
+  produce `mapterhorn-japan-bridge.pmtiles` natively end to end (not
+  just via a post-hoc rename), completing the verification this entry
+  couldn't finish by itself.
+- Both repos' changes committed: `hfu-mapterhorn` (pipeline scripts)
+  and `mapterhorn-japan-bridge` (docs/viewer + this entry).
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth; if a retry hangs on "another cloudflared process is
+> already waiting," kill the stale `cloudflared access ssh` process
+> first).
+>
+> Read `DECISIONS.md` D35's closing addendum through D46 in full before
+> touching anything. Skim `PLAN.md` for 号2's own standing design notes.
+>
+> **First**: `screen -ls` for `aggregation_run_national` (D32: never
+> intentionally pause it) and check its `.done` count against 1,979.
+>
+> **Then**: this session renamed the published archive from
+> `japan.pmtiles` to `mapterhorn-japan-bridge.pmtiles` everywhere (D46)
+> -- if a `publish_cycle` has run since this entry, confirm it actually
+> produced `bundle-store/mapterhorn-japan-bridge.pmtiles` (not a
+> leftover `japan.pmtiles`) and that `https://depot.optgeo.org/
+> mapterhorn-japan-bridge.pmtiles` / `https://stars.optgeo.org/
+> mapterhorn-japan-bridge` are both still live with the current byte
+> count. If neither has been re-verified since this entry, that's the
+> one loose end D46 couldn't close by itself.
+>
+> **Also still open from D44/D45**: neither the `bundle.py`
+> `FileNotFoundError`-catch fix nor the `downsampling_run.py`/`utils.py`
+> atomic-write fix has been proven against a *clean* full run yet --
+> `publish_cycle_8` did exercise the `bundle.py` fix for real (7 race
+> hits, all caught cleanly, D44) but check whether a later cycle's
+> `downsampling_run.py` pass ever actually hit `ChildPmtilesUnavailable`
+> and recovered as designed, not just that nothing crashed.
+>
+> **Storage**: D40's ~2.54GB `pmtiles-store` orphan question is still
+> open and untouched. Disk free was healthy (~546Gi) as of this entry,
+> after D46's own 211GB cleanup of the old-named orphaned bundle.
+>
+> **号2**: still gated on GSI actually shipping new DEM1A data -- no
+> fixed cadence known.
+>
+> Converse in Japanese, per this repo's own language policy.

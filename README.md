@@ -2,7 +2,7 @@
 
 An interim bridge that converts GSI's (国土地理院) 基盤地図情報 DEM data for
 Japan into a [Mapterhorn](https://github.com/mapterhorn/mapterhorn)-format
-terrain PMTiles archive (`japan.pmtiles`), priority-merged from six GSI
+terrain PMTiles archive (`mapterhorn-japan-bridge.pmtiles`), priority-merged from six GSI
 product types (1m, 5m×3, 10m×2) plus a global fallback — until upstream
 Mapterhorn's own Japan source (`jpdem1a`) catches up with the same GSI
 survey updates. Once it does, this whole effort is meant to be retirable.
@@ -15,7 +15,7 @@ This repo is the documentation home and preview viewer only — **no
 data-processing pipeline lives here**. It holds:
 
 - `index.html` / `app.js` / `style.json` — a MapLibre GL viewer for the
-  current `japan.pmtiles` build (3D terrain toggle included).
+  current `mapterhorn-japan-bridge.pmtiles` build (3D terrain toggle included).
 - `CLAUDE.md` — how the pipeline operates day to day.
 - `DECISIONS.md` — architecture decision records (the *why*).
 - `HANDOVER.md` — session-by-session narrative (the *what happened*).
