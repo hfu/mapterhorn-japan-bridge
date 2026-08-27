@@ -4857,3 +4857,141 @@ configuration) is unaffected.
 > open and untouched.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D48: `aggregation_run_national` reaches 1,979/1,979 — full national aggregation complete; a real crash found and fixed on the final 3 items; `publish_cycle_9` launched as the first clean, native run
+
+**Status**: Recorded, 2026-08-27 19:45 JST. 1号's own aggregation stage
+(generation `01M0MWK852631SHCHPA66F21WQ`, started 2026-08-22 per D35's
+own addendum) is now **fully complete** — 1,979/1,979 dirty items done,
+zero remaining. This is the actual completion milestone the whole
+`aggregation_run_national` effort has been running toward since D23's
+real national launch.
+
+**Not a clean finish — a real crash on the final 3 items, found and
+fixed before declaring completion**: a routine status check found
+`aggregation_run_national`'s own `screen` session had exited with
+**1,976/1,979 done**, not 1,979 -- deliberately not assumed to be
+"basically done" (per this file's own standing "don't proceed on
+assumption" discipline, most recently exercised for D44/D45). The
+process had actually crashed:
+
+```
+FileNotFoundError: tmp-store/01M0MWK852631SHCHPA66F21WQ/11-1818-808-16/5-3857.tiff
+```
+
+**Root cause, traced by reading the actual code** (`aggregation_run.py`,
+`aggregation_merge.py`): `aggregation_run.py`'s own `run()` creates each
+item's `tmp_folder` with `os.makedirs(tmp_folder, exist_ok=True)` --
+**never wiped between separate attempts at the same item**. All 3
+remaining items' `tmp_folder`s held a fully-written `merged-3857.tiff`
+(513MB/900MB/895MB) *plus* their original per-group `{i}-3857.tiff`
+inputs, all dated **2026-08-23〜25** -- four days stale, almost
+certainly left over from an attempt interrupted mid-`aggregation_
+merge.py`'s own `merge()` call during D38's own recorded ~7h blackout
+window, after the merge write itself finished but before its own
+cleanup loop or `merge-done` marker touch completed. `merge()`'s own
+`glob(f'{tmp_folder}/*.tiff')` (used to count expected per-group
+inputs) is unscoped -- on a retry, it **also matched `merged-3857.tiff`
+itself**, inflating the input count by one and causing the code to
+look for a "last" per-group tiff (`5-3857.tiff`) that never existed
+(source composition for this item only ever produced groups 0-4).
+
+**Fix, committed to `hfu-mapterhorn`** (`cf857ff`): both globs
+scoped to the real per-group naming pattern (`[0-9]*-3857.tiff`,
+which `merged-3857.tiff` never matches, since it starts with a
+non-digit), plus an explicit early-return: if `merged-3857.tiff`
+already exists when `merge()` is entered, finish the interrupted
+cleanup (remove any leftover per-group tiffs, touch `merge-done`)
+instead of blindly re-running the expensive merge. Verified working
+directly, not just by absence of a second crash: all 3 items' own
+`tmp_folder/merge-done` markers were created within 2 seconds of the
+retry starting (19:17:0x), confirming the new early-return path fired
+correctly rather than falling through to a full re-merge. The 3
+`aggregation_tile.main()` tiling passes that followed (the genuinely
+expensive remaining step for these particular large-composition items)
+then ran for real -- workers observed at 99-100% CPU, ~4 minutes
+accumulated -- and all 3 items completed cleanly (`... start` / `...
+end` pairs, no further errors). Restarted via the same `screen`+`zsh
+-lc` pattern established throughout this session; finished at
+**2026-08-27 19:43 JST, 1,979/1,979**.
+
+**This is the same failure *class* this session already found and fixed
+twice this session** (D44's `bundle.py`, D45's `downsampling_run.py`/
+`utils.create_archive`) -- an uncaught exception from a `Pool.starmap()`
+worker killing the whole batch, this time triggered by a *different*
+mechanism (a resumed item's own tmp-state, not a cross-process race
+with a concurrent generation) but the same underlying lesson: none of
+this pipeline's stages originally assumed they might be resumed
+mid-flight after an interruption, and `tmp_folder`/`bundle-store`/
+`pmtiles-store` are none of them wiped clean between attempts by
+design (D12's own explicit decision to key `tmp_folder` by
+`aggregation_id` rather than wipe it). Worth keeping in mind for 号2:
+any stage that can be interrupted (which is all of them, on a
+single-machine, multi-day pipeline) needs its own resume-safety
+audited, not just assumed from "it worked so far."
+
+**`publish_cycle_9` launched immediately after**, 19:43:39 -- this is
+simultaneously:
+1. The first cycle to produce `mapterhorn-japan-bridge.pmtiles`
+   natively end to end (D46's own rename).
+2. The first `downsampling_run.py` pass with **zero concurrent
+   aggregation activity** -- the actual clean-run validation D45's
+   own resume prompt asked for (does downsampling genuinely converge
+   to complete coverage once nothing is racing it any more?).
+3. The first `bundle.py` pass under the same zero-contention
+   condition -- expected to show **no** `FileNotFoundError`-class
+   race warnings at all now (D44's fix should simply never need to
+   fire, which is itself the confirmation, not a failure if it
+   doesn't).
+
+Full results not yet in -- still running as of this entry. See this
+entry's own addendum (to follow) or the next `DECISIONS.md` entry for
+the outcome.
+
+**Current state, as of this entry (2026-08-27 19:45 JST)**:
+- `aggregation_run_national`: **complete**, 1,979/1,979, `screen`
+  session exited cleanly. No longer running -- nothing left to do at
+  this stage for 1号.
+- `publish_cycle_9`: running, `downsampling_run.py` stage.
+- Disk free: ~535Gi, healthy.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth; if a retry hangs on "another cloudflared process is
+> already waiting," kill the stale `cloudflared access ssh` process
+> first).
+>
+> Read `DECISIONS.md` D35's closing addendum through D48 in full
+> before touching anything -- D44 through D48 are dense and this is
+> 1号's actual completion. Skim `PLAN.md` for 号2's own standing design
+> notes.
+>
+> **1号's `aggregation_run_national` is done** (1,979/1,979, completed
+> 2026-08-27 19:43 JST) -- nothing more to run at that stage. **First**:
+> check whether `publish_cycle_9` (launched immediately after
+> completion, to run clean with zero concurrent aggregation) finished,
+> and whether it validates D44/D45's fixes as expected (zero race
+> warnings in `bundle.py`, `downsampling_run.py` converging to full
+> coverage) -- this is the one open question this session couldn't
+> close by itself if it's still running.
+>
+> **Then**: re-test the GH Pages viewer's 3D terrain toggle (D47's own
+> open item) now that aggregation is fully complete -- confirm whether
+> the `dem dimension mismatch` finding from D47 is gone (supporting the
+> sparse-coverage theory) or persists.
+>
+> **D40's ~2.54GB `pmtiles-store` orphan cleanup**: now safe to
+> re-audit and execute for real -- aggregation will never reprocess/
+> rename any position again, removing the ambiguity that kept this
+> deferred since D40.
+>
+> **What's next for this project**: 1号 itself is functionally
+> complete pending `publish_cycle_9`'s own clean verification above.
+> 号2 stays gated on GSI actually shipping new DEM1A data (D42/PLAN.md)
+> -- no fixed cadence known, don't start it just because 1号 finished.
+> Whether/when to notify Oliver Wipfli about 1号's completion is
+> Hidenori's own call, not something to act on unprompted.
+>
+> Converse in Japanese, per this repo's own language policy.
