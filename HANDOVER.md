@@ -3599,3 +3599,163 @@ deleting the now-orphaned old-named `bundle-store/japan.pmtiles` on
 free rose to ~546Gi. The resume prompt immediately above this addendum
 is superseded by D46's own resume prompt in `DECISIONS.md` -- read that
 one, not this entry's.
+
+## 2026-08-26〜28: viewer migrated to martin's XYZ endpoint (D47), `aggregation_run_national` reaches 100% (D48), a live disk-full near-miss during the first clean `publish_cycle_9` validation (D49)
+
+Long session, full technical detail lives in `DECISIONS.md` D47 through
+D49 (D46 itself -- the `japan.pmtiles` -> `mapterhorn-japan-bridge.pmtiles`
+rename -- was already recorded by the previous session's own entry).
+This entry is the session-level orientation for whoever resumes.
+
+**Where things stand right now** (2026-08-28 14:34 JST): `aggregation_
+run_national` is **done** -- 1,979/1,979, completed 2026-08-27 19:43
+JST. `publish_cycle_9` (launched immediately after, the first cycle
+with zero concurrent aggregation) has cleared `downsampling_run.py` and
+`bundle.py` with **zero** race warnings (`no longer exists`) -- D44/D45's
+fixes hold up under a real clean run. `merge_japan_bundles.py` finished
+(`mapterhorn-japan-bridge.pmtiles`, 2,358,133 tiles) despite a disk-full
+near-miss along the way (see D49). Currently mid-`rsync` to `stars`,
+not yet confirmed finished as of this entry.
+
+**What happened, in order**:
+1. **D47: GH Pages viewer migrated from reading the raw `.pmtiles` file
+   directly (`pmtiles://` protocol against `depot.optgeo.org`) to
+   `martin`'s own XYZ tile endpoint** (`https://stars.optgeo.org/
+   mapterhorn-japan-bridge`), for Cloudflare edge-cache benefit on
+   individual tile requests. Removed the now-dead `pmtiles.js` client
+   library entirely. Verified via a local static-server test: tiles
+   decode to the correct 512x512, default 2D hillshade renders
+   correctly. **Found but not fully attributed**: toggling 3D terrain
+   surfaces a `dem dimension mismatch` MapLibre error at some
+   coarse-zoom positions -- traced to genuine `204` (sparse coverage)
+   responses, likely explained by aggregation still being incomplete
+   at the time (~77%) combined with `downsampling_covering.py`'s own
+   region-based (not uniform-pyramid) overview construction -- flagged
+   for a re-check now that aggregation is 100%, not yet done.
+2. **`aggregation_run_national` crashed silently on its own final 3
+   items** -- found by a routine check (`.done` count stuck at 1,976,
+   `screen` session gone), not assumed clean. Root cause traced to
+   `aggregation_merge.py`: `tmp_folder` is never wiped between attempts
+   at the same item, and all 3 items' folders held 4-day-stale
+   intermediate state from an interrupted earlier run (likely D38's own
+   ~7h blackout window) -- `merge()`'s own unscoped `glob(f'{tmp_folder}
+   /*.tiff')` also matched its own already-written `merged-3857.tiff`
+   output on retry, inflating the input count by one and crashing on a
+   nonexistent "last" group tiff. **Fixed** (`hfu-mapterhorn` `cf857ff`):
+   scoped the glob to the real per-group naming pattern and added an
+   early-return that finishes an interrupted item's cleanup instead of
+   re-merging from scratch. Verified working (all 3 items' own
+   `merge-done` markers appeared within 2s of the retry). Restarted,
+   **finished cleanly at 2026-08-27 19:43 JST, 1,979/1,979** -- D48.
+3. **`publish_cycle_9` launched immediately** as the first cycle with
+   zero concurrent aggregation -- simultaneously the clean-run
+   validation D45's own resume prompt asked for, the first native
+   `mapterhorn-japan-bridge.pmtiles` production run (D46), and another
+   real test of D44's `bundle.py` fix. **Zero race warnings through
+   both `downsampling_run.py` and `bundle.py`** -- both fixes hold.
+4. **D49: `merge_japan_bundles.py` drove disk to 100% full (13Gi free)
+   mid-run** -- root cause traced to the `pmtiles` library's own
+   `Writer.finalize()`: it streams all tile writes into a separate,
+   immediately-unlinked scratch temp file (invisible to `du`/`find`,
+   only visible via `lsof`), then does a single full-file
+   `shutil.copyfileobj` from that temp file into the real output at
+   `finalize()` time -- meaning temp file and growing final output
+   coexist, needing ~2x the final archive's own tile-data size in
+   headroom at peak. This is a structural property of the upstream
+   library, not something this project's own code controls directly.
+   **Resolved live**: confirmed via `lsof` that the temp file had
+   stopped growing (meaning all 23 regional `bundle-store/*.pmtiles`
+   inputs + `planet.pmtiles`, 266GB total, were already fully
+   consumed), verified zero open handles on each with `lsof` before
+   acting (D29's own lesson), and deleted them -- safe because
+   `bundle.py` always does a full fresh rebuild from `pmtiles-store`
+   every cycle regardless, so nothing was actually lost. Freed 266GB,
+   `merge_japan_bundles.py`'s own copy resumed immediately. **Flagged,
+   not fixed this session**: `merge_japan_bundles.py` could delete each
+   input immediately after its own read loop finishes, trading
+   "cheaply regenerable if merge crashes partway" for "never actually
+   at risk of this again" -- a real design tradeoff, not a quick patch,
+   and likely to recur on every future cycle now that the archive is
+   permanently at national-100% scale.
+5. **Built and committed `check_pmtiles_integrity.py`** (`hfu-mapterhorn`
+   `0c45422`), per Hidenori's own request for a comprehensive "no holes"
+   health check on the published archive: walks the PMTiles directory
+   tree only (root through leaf directories), never fetching actual
+   tile image bytes, so it stays cheap even against a 200+GB archive.
+   For every tile at every zoom, confirms a tile exists at
+   `(z-1, x//2, y//2)` -- reports orphans grouped by zoom plus a
+   per-zoom tile-count summary. Validated against a stale `cycle_8`
+   regional bundle (built while aggregation was only ~65-70% complete)
+   -- correctly found thousands of real orphaned tiles there, zero
+   false positives on clean single-zoom test files. **Not yet run
+   against the actual `mapterhorn-japan-bridge.pmtiles`** -- that
+   verification is the next concrete step once `publish_cycle_9`'s own
+   `rsync` finishes.
+6. Session-local 15-minute cron status-check loop ran throughout (as
+   in every prior session this week) -- does not survive this session
+   ending, same caveat as always.
+
+**Next steps, in priority order for whoever resumes**:
+1. **Confirm `publish_cycle_9` actually finished** (`screen -ls`,
+   `grep -a "publish cycle finished\|Traceback" pipelines/
+   publish_cycle_9.log`) -- was still mid-`rsync` as of this entry.
+2. **Run `check_pmtiles_integrity.py bundle-store/mapterhorn-japan-
+   bridge.pmtiles`** (or a local `scp`'d copy if more convenient) --
+   the actual "no holes" verification this whole clean-run effort was
+   building toward. Report tile counts per zoom and any orphans found.
+3. **Re-test the GH Pages viewer's 3D terrain toggle** (D47's own open
+   thread) now that aggregation is 100% complete -- confirm whether the
+   `dem dimension mismatch` finding is gone.
+4. **D40's ~2.54GB `pmtiles-store` orphan cleanup** -- now unambiguously
+   safe to execute (aggregation will never reprocess/rename anything
+   again), still not done.
+5. Consider whether `merge_japan_bundles.py` needs the progressive-
+   input-deletion fix from D49 before the *next* `publish_cycle`, given
+   the disk-full near-miss is expected to recur otherwise.
+6. 号2 stays gated on a real GSI DEM1A update landing (D42/`PLAN.md`) --
+   check `https://service.gsi.go.jp/kiban/app/data_update_info/`
+   periodically, no fixed cadence known. Whether/when to notify Oliver
+   Wipfli about 1号's completion is Hidenori's own call, not something
+   to act on unprompted.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth if idle too long; if a retry hangs on "another
+> cloudflared process is already waiting," kill the stale
+> `cloudflared access ssh` process first; a "context deadline
+> exceeded" / connection-closed error on the first attempt after a
+> long idle period is also normal, just retry once).
+>
+> Read `DECISIONS.md` D35's closing addendum through D49 in full before
+> touching anything -- this is a long, dense stretch (D44 through D49
+> especially) covering 1号's actual completion. Skim `PLAN.md` for
+> 号2's own standing design notes.
+>
+> **1号's `aggregation_run_national` is done** (1,979/1,979, completed
+> 2026-08-27 19:43 JST) -- nothing more to run at that stage, ever,
+> for this generation.
+>
+> **First**: check whether `publish_cycle_9` (`screen -ls`, `tail
+> pipelines/publish_cycle_9.log`) finished cleanly -- look for
+> `publish cycle finished` or a crash, and confirm `depot.optgeo.org/
+> mapterhorn-japan-bridge.pmtiles` / `stars.optgeo.org/mapterhorn-
+> japan-bridge` are both live with the current byte count (Content-
+> Length match against the local `bundle-store/mapterhorn-japan-
+> bridge.pmtiles` file).
+>
+> **Then**: run `check_pmtiles_integrity.py bundle-store/mapterhorn-
+> japan-bridge.pmtiles` (already committed, `0c45422`) -- the actual
+> "does the published archive have holes" verification this session
+> was building toward but hadn't run against the real file yet. Report
+> tile counts per zoom and any orphaned tiles found.
+>
+> **Also open**: D47's 3D-terrain `dem dimension mismatch` re-test;
+> D40's ~2.54GB `pmtiles-store` orphan cleanup (safe now); D49's own
+> `merge_japan_bundles.py` progressive-deletion fix (not yet
+> implemented -- the disk-full near-miss will likely recur on the next
+> cycle without it, though this session's own emergency cleanup is a
+> viable one-off fallback if it happens again).
+>
+> Converse in Japanese, per this repo's own language policy.
