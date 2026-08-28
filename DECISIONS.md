@@ -5327,3 +5327,165 @@ task, with two open sub-questions neither confirmed nor ruled out:
 > fixed cadence known.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D51: `publish_cycle_9`'s rsync retry completes (public URLs restored); root cause of D50's orphan tiles found and fixed -- `downsampling_run.py`'s dirty-filter was silently excluding 68-78% of coarse-zoom items, comparing against an unrelated old test generation
+
+**Status**: Recorded, 2026-08-28 22:35 JST. Continuation of D50's own session,
+resumed later the same day per Hidenori's explicit request to keep working
+in 15-minute report increments while he continued other conversation.
+
+**Part 1 -- `publish_cycle_9_rsync_retry` (D50's own fix) completed
+clean**: 286,089,908,804 bytes, byte-identical to `slate`'s own `bundle-
+store/mapterhorn-japan-bridge.pmtiles`. Both public URLs verified live
+with the new byte count: `depot.optgeo.org/mapterhorn-japan-bridge.pmtiles`
+returns `Content-Length: 286089908804`; `stars.optgeo.org`'s `martin`
+tile endpoint returns `200` on a real tile fetch (`z0/0/0`), not just the
+TileJSON metadata. `publish_cycle.py`'s own D50 fix (delete the `stars`-
+side file before `rsync`) has not yet been exercised by a real
+`publish_cycle.py` invocation -- this retry was still the bare `rsync`
+command run directly, same as D50's own manual recovery. First real test
+of the committed code fix is the next full cycle.
+
+**Part 2 -- found and fixed the actual root cause of D50's 413,925
+orphaned tiles**: re-ran `downsampling_run.py` fresh (screen
+`downsampling_convergence_1`) to observe convergence per D50's own open
+question. It finished in **~90 seconds** touching **zero** new items --
+a dramatically different result from the historical ~9h44m full pass,
+and a clear signal something was wrong beyond "just slow."
+
+Compared this run's own processed-item count against the true on-disk
+backlog, by zoom:
+
+| zoom | items attempted this run | total todo on disk | inclusion rate |
+|---|---|---|---|
+| z9 | 53 | 168 | 31.5% |
+| z10 | 61 | 252 | 24.2% |
+| z11 | 70 | 308 | 22.7% |
+| z12 | 660 | 1,835 | 36.0% |
+| z13 | 1,158 | 1,606 | 72.1% |
+| z14 | 1,619 | 1,942 | 83.4% |
+| z15 | 1,682 | 2,005 | 83.9% |
+
+Coarse zooms were disproportionately excluded from even being attempted.
+Traced to `downsampling_run.py`'s `__main__` block: it filters the
+candidate item list through a "dirty" comparison against
+`utils.get_aggregation_ids()[-2]` (intended for incremental reprocessing
+between two versions of the *same-scope* generation). `get_aggregation_
+ids()` just lists every directory under `aggregation-store/` sorted by
+ULID, so `[-2]` currently resolves to `01M0FNHYXSAMNVTV430XD3XB5T` -- the
+old **Kyushu-scope test generation** (D16/D27/D40), not a genuine prior
+pass over the current national generation. **Confirmed empirically, not
+just by code reading**: ran the actual filter functions against a
+sampled still-incomplete z11 item (`10-862-435-11-downsampling.csv`) --
+both `is_parent_of_dirty_aggregation_tile` and `not_in_previous_
+aggregation` returned `False`, meaning the item was silently dropped
+from the worklist every single run, regardless of how many times
+`downsampling_run.py` was invoked. This is why D50's diagnosis ("just
+needs more throughput") was incomplete: no amount of re-running would
+ever have converged the excluded fraction.
+
+**Fix, committed to `hfu-mapterhorn`** (`a9e05d1`): removed the dirty-
+filter's gating effect on `all_files` -- every `*-downsampling.csv` file
+for the current generation is now always a candidate, matching the old
+`len(aggregation_ids) < 2` branch's behavior. `.done` markers (checked
+inside `main()`) remain the real idempotency guard, so this loses no
+correctness, only a currently-broken optimization. Left the underlying
+functions (`is_parent_of_dirty_aggregation_tile`, `not_in_previous_
+aggregation`, `tiles_intersect`) defined but unused, with a comment
+explaining why and noting this is worth revisiting once a genuine
+second national-scope generation exists (号2) and the optimization's
+own intent becomes applicable again.
+
+**Verified working, not just theorized**: restarted `downsampling_run.py`
+fresh (screen `downsampling_convergence_2`) -- immediately confirmed
+`Total: 8340 files` (up from 5,382), the full on-disk backlog. Over the
+following ~90 minutes (interrupted partway by a Cloudflare Access
+session timeout, see Part 3), z12 climbed 487 -> 1,133 and, critically,
+**previously near-frozen coarse zooms started moving for the first
+time this generation**: z9 1 -> 21, z10 2 -> 51, z11 8 -> 75 -- all
+in roughly the last 30 minutes of observation, well past this
+generation's own 6-day/9-cycle history of the same handful of positions
+(D50's own finding). Direct, real-time confirmation the fix unblocks
+the cascade, not just a plausible-sounding theory.
+
+**Part 3 -- routine Cloudflare Access session timeout, recovered per
+D44's documented procedure**: mid-session, `slate-via-spacex` started
+failing with `Connection timed out during banner exchange` after a
+stale `cloudflared access ssh` process was already waiting for
+re-auth (`another cloudflared process is already waiting`) --
+exactly the pattern D44's resume prompt already warned about. Killed
+the stale processes (`pkill -f "cloudflared access ssh"`), asked
+Hidenori to complete the browser-based Cloudflare Access re-auth
+(cannot be done headlessly), and resumed cleanly once approved.
+`rsync` and `downsampling_run.py` on `slate` were both unaffected
+throughout (independent `screen` sessions, not tied to any one SSH
+connection) -- confirmed via accumulated CPU time on both processes
+across the outage window.
+
+**Not yet done**: `bundle-store/mapterhorn-japan-bridge.pmtiles` (the
+archive just finished pushing to `stars`, verified live above) still
+reflects the **pre-fix** downsampling state -- it was built before this
+session's `downsampling_run.py` fix, so its own 413,925 orphaned tiles
+(D50) have **not yet actually decreased** in what's publicly served.
+Confirming the real-world improvement requires a future `bundle.py` +
+`merge_japan_bundles.py` + `rsync` pass once `downsampling_convergence_2`
+(or its successors) has meaningfully progressed, followed by a fresh
+`check_pmtiles_integrity.py` run -- per the original plan's own step 6.
+
+**Current state, as of this entry (2026-08-28 22:35 JST)**:
+- `publish_cycle_9`: fully complete, both public URLs live and verified
+  with the current byte count.
+- `downsampling_convergence_2`: still running (screen session), coarse
+  zooms actively converging for the first time this generation.
+- D40's ~2.54GB orphan cleanup: done this session (`cleanup_kyushu_
+  generation.sh`, ~3GB freed, safety check passed).
+- `publish_cycle.py`'s own rsync-headroom fix (D50, `21a4c7e`): committed
+  but not yet exercised by a real `publish_cycle.py` invocation.
+- D49's `merge_japan_bundles.py` progressive-deletion fix: still not
+  done, per the plan's own ordering (after downsampling shows real
+  convergence).
+- A 15-minute Monitor-based report loop (this session only, rsync bytes/
+  ETA, `slate` load average, z9-z12 `.done` counts) has been running
+  throughout -- does not survive this session ending, same caveat as
+  every previous session's own monitoring loop.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- Cloudflare Access sessions have been
+> timing out roughly every 2 hours this session; if a connection hangs
+> with "another cloudflared process is already waiting," run `pkill -f
+> "cloudflared access ssh"` then retry -- the retry itself will print a
+> browser re-auth URL that needs Hidenori to open and approve, this
+> cannot be done headlessly).
+>
+> Read `DECISIONS.md` D35's closing addendum through D51 in full before
+> touching anything -- D50 found the orphan-tile symptom, D51 found and
+> fixed its actual root cause (a dirty-filter bug, not just slow
+> throughput) and verified the fix is working in real time.
+>
+> **First**: check `downsampling_convergence_2` (or whatever screen
+> session superseded it)'s progress -- `.done` counts by zoom in
+> `aggregation-store/01M0MWK852631SHCHPA66F21WQ/*-{Z}-downsampling.done`
+> for Z in 9-15, compared against this entry's own snapshot (z9=21,
+> z10=51, z11=75, z12=1133) to gauge how far coarse-zoom convergence has
+> progressed. If it's plateaued again well short of each zoom's own
+> total todo count, the fix may need a second look (though the fix
+> itself is verified correct via direct code testing, not just
+> plausible).
+>
+> **Once convergence looks meaningfully complete** (or genuinely
+> plateaued for a real reason, not the D51 bug): run a full `bundle.py`
+> + `merge_japan_bundles.py` + `rsync` cycle (via `publish_cycle.py`,
+> which now also exercises D50's own rsync-headroom fix for the first
+> time) and re-run `check_pmtiles_integrity.py` against the fresh
+> `bundle-store/mapterhorn-japan-bridge.pmtiles` -- comparing its orphan
+> count against D50's own 413,925 baseline is the real proof this
+> session's fix actually improved the published product, not just the
+> `aggregation-store` bookkeeping.
+>
+> **Still open, per the original session plan**: D49's `merge_japan_
+> bundles.py` progressive-deletion fix (deliberately deferred until
+> downsampling convergence is confirmed).
+>
+> Converse in Japanese, per this repo's own language policy.
