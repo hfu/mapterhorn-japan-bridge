@@ -4995,3 +4995,117 @@ the outcome.
 > Hidenori's own call, not something to act on unprompted.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D49: `publish_cycle_9`'s `merge_japan_bundles.py` step drove disk to 100% full (13Gi free) mid-run -- root cause traced to the `pmtiles` library's own temp-file design, resolved live by deleting already-consumed regional bundle inputs
+
+**Status**: Recorded, 2026-08-28 13:10 JST. Live incident, resolved while
+`publish_cycle_9` (D48's own clean-validation run) was still in its
+`merge_japan_bundles.py` stage.
+
+**What happened**: routine monitoring found free space on `slate` had
+fallen from a healthy 214Gi to **13Gi (100% capacity)** within about an
+hour, entirely during `merge_japan_bundles.py`'s own run -- no crash
+yet, but clearly on a collision course with `ENOSPC`.
+
+**Root cause, traced by reading the actual `pmtiles` library source
+(`pmtiles.writer.Writer.finalize`), not assumed**: `Writer` streams
+every `write_tile()` call's deduplicated tile bytes into a **separate
+scratch temp file** (`self.tile_f`, e.g. `/Volumes/Migrate-2025-04/tmp/
+tmpip7i8vae` -- immediately unlinked from its directory entry per
+standard `tempfile` behavior, so it's invisible to `du`/`find`, only
+visible via `lsof`). At `finalize()`, it writes the header/directory/
+metadata to the *real* output file, then does a single
+`shutil.copyfileobj(self.tile_f, self.f)` -- a full byte-for-byte copy
+of the entire scratch file into the final archive. **This means the
+scratch temp file and the growing final output coexist on disk
+simultaneously for the whole copy**, needing roughly **2x the final
+archive's own tile-data size** in temporary headroom at peak -- not
+something `merge_japan_bundles.py`'s own code controls (it only calls
+`write_tile()`/`finalize()`); a structural property of the upstream
+`pmtiles` library itself. Confirmed directly via `lsof`: the temp file
+reached **286,084,810,886 bytes (266GiB)** and stopped growing (all
+`INPUTS` fully read), while the final output was still climbing through
+the 160-180GB range when free space bottomed out at 13Gi.
+
+**Resolved live, not by guessing**: since the temp file had stopped
+growing, that meant `merge_japan_bundles.py`'s own read loop over
+`INPUTS` (the 23 regional `bundle-store/{z}-{x}-{y}.pmtiles` files plus
+`planet.pmtiles`, 266GB total) had **already fully completed** -- every
+byte needed from them was already inside the temp file. Verified with
+`lsof` on each input file individually (per this file's own D29 lesson:
+check before deleting, don't assume) -- zero open handles, confirming
+nothing was still reading them. Deleted all 23 regional files +
+`planet.pmtiles`, freeing 266GB -> disk free jumped from 13Gi to 278Gi.
+`merge_japan_bundles.py`'s own `finalize()` copy resumed climbing
+immediately (output size actively growing again within the same
+monitoring cycle). **Safe because these files are fully, deterministically
+regenerable**: `bundle.py` always does a complete fresh rebuild from
+`pmtiles-store` every cycle (`dirty_only = False`, D44's own comment) --
+deleting them costs nothing beyond needing that rebuild next cycle,
+unlike `pmtiles-store` or `source-store`, which would have been
+genuine, expensive-to-recover data loss and were never touched.
+
+**Why this didn't bite `publish_cycle_6`/`cycle_8`**: those cycles'
+`japan.pmtiles` topped out at 159.6GB and 211.1GB respectively (D43,
+D46) -- large, but apparently still under whatever margin existed at
+the time. This cycle's own final archive is on track to be
+substantially larger (aggregation is now 100% national, vs. ~55-68%
+during those earlier cycles), pushing the same 2x-temp-space structural
+cost past the available headroom for the first time. **Likely to recur
+on every future cycle** now that the archive has permanently grown to
+national-100% scale, not a one-off.
+
+**Worth a real fix, not done this session (merge still in flight,
+D45's own "don't edit code a live process has already loaded"
+discipline applies)**: `merge_japan_bundles.py` could delete each
+`INPUTS` file immediately after that file's own read loop finishes
+(freeing space progressively rather than needing all-at-once headroom
+at the end) -- trades "regenerate cheaply if merge crashes partway" for
+"never let bundle-store integrity be actually at risk," a real design
+tradeoff to weigh deliberately, not a quick patch. Flagging as a
+concrete next-session item.
+
+**Current state, as of this entry (2026-08-28 13:10 JST)**:
+- `aggregation_run_national`: complete, 1,979/1,979 (D48), unaffected.
+- `publish_cycle_9`: `merge_japan_bundles.py` resumed normally after
+  the cleanup, output climbing toward its own final size (temp file's
+  266GB is the practical ceiling). Zero `no longer exists` race
+  warnings through `downsampling_run.py` and `bundle.py` (D44/D45's own
+  clean-run validation holding up so far).
+- Disk free: ~262Gi and stable, healthy margin restored.
+- `check_pmtiles_integrity.py` (built and committed this session,
+  `0c45422`) is ready to run against `bundle-store/mapterhorn-japan-
+  bridge.pmtiles` once this merge finishes.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth; if a retry hangs on "another cloudflared process is
+> already waiting," kill the stale `cloudflared access ssh` process
+> first).
+>
+> Read `DECISIONS.md` D35's closing addendum through D49 in full before
+> touching anything -- 1号's aggregation is complete (D48) and this
+> entry (D49) covers a live near-miss during its first clean
+> `publish_cycle_9` validation run.
+>
+> **First**: check whether `publish_cycle_9` finished (`screen -ls`,
+> `tail pipelines/publish_cycle_9.log` for `publish cycle finished` or
+> a crash) and whether disk stayed healthy through `rsync`. If it
+> crashed on `ENOSPC` again despite this session's cleanup, the real
+> fix (progressive input deletion in `merge_japan_bundles.py`, see this
+> entry's own "worth a real fix" section) needs to actually happen
+> before retrying blindly.
+>
+> **Then**: run `check_pmtiles_integrity.py bundle-store/mapterhorn-
+> japan-bridge.pmtiles` (built this session, `0c45422`) -- confirms
+> every tile has a parent one zoom coarser, no downsampling holes.
+> Report tile counts per zoom and any orphans found.
+>
+> **Also still open**: D47's 3D-terrain-toggle `dem dimension mismatch`
+> re-test (should this cycle's 100%-complete coverage resolve it);
+> D40's ~2.54GB `pmtiles-store` orphan cleanup (now unambiguously safe
+> to execute, aggregation will never reprocess again).
+>
+> Converse in Japanese, per this repo's own language policy.
