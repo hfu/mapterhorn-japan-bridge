@@ -5489,3 +5489,129 @@ Confirming the real-world improvement requires a future `bundle.py` +
 > downsampling convergence is confirmed).
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D52: D51's dirty-filter fix converges to a real fixed point within two passes; the remainder traces to items missing entirely from `downsampling_covering.py`'s own original covering, not a `downsampling_run.py` throughput problem
+
+**Status**: Recorded, 2026-08-28 23:18 JST. Direct continuation of D51's
+own session, same evening.
+
+**Pass 2 results (`downsampling_convergence_2`, 19:33-22:19, ~46min)**:
+full before/after by zoom, confirming D51's fix converts into real,
+substantial completion gains, not just a larger candidate list:
+
+| zoom | done/todo after pass 2 | rate |
+|---|---|---|
+| z9 | 21/168 | 12.5% |
+| z10 | 51/252 | 20% |
+| z11 | 75/308 | 24% |
+| z12 | 1,133/1,835 | 62% |
+| z13 | 1,511/1,606 | 94% |
+| z14 | 1,928/1,942 | 99.3% |
+| z15 | 1,998/2,005 | 99.7% |
+
+z13-z15 are now essentially complete; z9-z12 improved by roughly an
+order of magnitude over D50's own pre-fix numbers (z9 1->21, z10 2->51,
+z11 8->75, z12 487->1,133) in a single 46-minute pass -- direct
+confirmation D51's fix was the real unlock, not a coincidence.
+
+**Pass 3 (`downsampling_convergence_3`, launched immediately after)
+finished in ~1.1 seconds, touching zero new items** -- every one of
+the 8,340 candidates was either already `.done` or hit `DOWNSAMPLING_
+STRICT`'s skip (referenced child file still missing). Re-checked the
+same zoom-level done/todo counts immediately after: **byte-for-byte
+identical to pass 2's own end state** (21/51/75/1,133/1,511 unchanged).
+This is a genuine fixed point, not a stall mid-computation -- D51's fix
+already extracted everything currently extractable from the existing
+covering; running `downsampling_run.py` a fourth, fifth, ... time would
+not be expected to change anything further on its own.
+
+**Traced one concrete blocked item to find out why, rather than assuming
+"more passes would eventually help"**: `10-864-440-12-downsampling.csv`
+(still not `.done`) references 10 child `-13.pmtiles` files; checked
+each against `pmtiles-store` directly (not assumed) -- 9 of 10 exist,
+but `11-1728-880-13.pmtiles` does not. Followed the chain one level
+further: `11-1728-880-13-downsampling.csv` -- the item that would have
+to produce that missing file -- **does not exist on disk at all**, in
+either `.csv` or `.done` form. This is not a `downsampling_run.py`
+concern (there is nothing for it to skip or retry; the work item was
+never created in the first place). It traces back to `downsampling_
+covering.py`'s own one-shot `write_downsampling_items()` run, early in
+this generation's life (per `PLAN.md`'s own D37 note that this step is
+manual, one-time, and easy to forget to re-run) -- either a genuine gap
+in that covering computation's own logic, or this specific position
+legitimately has no underlying source coverage at all (e.g. open ocean
+with zero elevation data) and was correctly never enumerated. **Not yet
+determined which** -- this is the concrete next investigation, not
+something this session resolved.
+
+**Current state, as of this entry (2026-08-28 23:18 JST)**:
+- `downsampling_run.py`'s own dirty-filter bug (D51): fixed, verified,
+  and has now converged to its own natural fixed point -- no further
+  action expected to help from this angle alone.
+- z9-z15 completion, final snapshot this session: z9 21/168, z10
+  51/252, z11 75/308, z12 1,133/1,835, z13 1,511/1,606, z14 1,928/1,942,
+  z15 1,998/2,005. z0-z8 still mostly empty (1/1, 0/1, 0/1, 0/4, 1/6,
+  1/13, 4/34, 9/57, 14/107) -- expected, given they sit above the still-
+  incomplete z9-z12 tier in the same dependency chain.
+- `bundle-store/mapterhorn-japan-bridge.pmtiles` (the currently-published
+  archive) still reflects the pre-fix state -- none of this session's
+  downsampling gains have been bundled/merged/published yet.
+- Next concrete step, explicitly deferred to a future session (Hidenori's
+  own call): investigate whether `downsampling_covering.py`'s own
+  covering computation has a real gap (worth a targeted code read /
+  cross-reference against source coverage, similar in spirit to D29's
+  own position-based verification discipline) versus genuinely empty
+  source positions being correctly excluded. Only after that's
+  understood does it make sense to decide whether `downsampling_
+  covering.py` needs a fix and a re-run, or whether the current
+  fixed-point state is actually as complete as this generation's real
+  source data allows.
+- D49's `merge_japan_bundles.py` progressive-deletion fix: still
+  deliberately not done (per the session's own plan, gated on
+  downsampling showing real convergence -- which it has, but the
+  `downsampling_covering.py` question above should probably be resolved
+  first, since another `bundle.py`/`merge` cycle mainly makes sense
+  once it's clear whether more downsampling gains are still reachable).
+- D40's ~2.54GB orphan cleanup: done this session.
+- `publish_cycle.py`'s rsync-headroom fix (D50): committed, not yet
+  exercised by a real `publish_cycle.py` run.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- Cloudflare Access sessions were timing
+> out roughly every ~2h in the prior session; if a connection hangs with
+> "another cloudflared process is already waiting," `pkill -f
+> "cloudflared access ssh"` then retry, and ask Hidenori to complete the
+> browser re-auth -- cannot be done headlessly).
+>
+> Read `DECISIONS.md` D35's closing addendum through D52 in full before
+> touching anything -- D50 found the orphan-tile symptom, D51 found and
+> fixed the dirty-filter root cause (verified working), D52 found that
+> fix converges to a real fixed point and traced the remainder to a gap
+> in `downsampling_covering.py`'s own original covering, not a
+> `downsampling_run.py` throughput issue.
+>
+> **The concrete next step**: determine whether `downsampling_
+> covering.py`'s covering computation has a real bug causing positions
+> like `11-1728-880-13` to never be enumerated, or whether those
+> positions genuinely have no underlying source data (correctly
+> excluded). This entry's own example chain (`10-864-440-12-
+> downsampling.csv` -> missing `11-1728-880-13.pmtiles` -> missing
+> `11-1728-880-13-downsampling.csv` entirely) is a concrete starting
+> point -- don't re-derive it from scratch, but do verify it's still
+> accurate before trusting it (aggregation-store contents could have
+> changed if anyone re-ran `downsampling_covering.py` since this entry).
+>
+> **Only after that's resolved**, decide whether to re-run `downsampling_
+> covering.py` (D37's own manual, easy-to-forget step) and then another
+> `downsampling_run.py` pass, before finally running a full `publish_
+> cycle.py` (which exercises both D50's rsync fix and this generation's
+> real downsampling gains for the first time) and re-checking `check_
+> pmtiles_integrity.py`'s own orphan count against D50's 413,925
+> baseline.
+>
+> **Still open**: D49's `merge_japan_bundles.py` progressive-deletion
+> fix (deliberately deferred).
+>
+> Converse in Japanese, per this repo's own language policy.
