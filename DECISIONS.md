@@ -5109,3 +5109,221 @@ concrete next-session item.
 > to execute, aggregation will never reprocess again).
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D50: `stars`-side ENOSPC near-miss during `publish_cycle_9`'s rsync retry (D49's same failure class, receiving end this time); `check_pmtiles_integrity.py`'s first real run found 413,925 orphaned tiles, traced to coarse-zoom downsampling throughput, not a covering-logic bug
+
+**Status**: Recorded, 2026-08-28 18:48 JST. Resuming per D49's own resume
+prompt, via SSH from `aalto`.
+
+**Part 1 -- `publish_cycle_9`'s rsync was still mid-transfer, not stalled,
+and about to hit a second, distinct disk-space incident**: `screen -ls`
+confirmed the `publish_cycle_9` session and its `rsync` process (started
+13:18, D49's own merge output) were both still alive -- not crashed, not
+finished. `depot.optgeo.org`/`stars.optgeo.org` were still serving
+`cycle_8`'s old bytes (211,109,523,151), unchanged, since rsync hadn't
+reached its atomic rename yet.
+
+Checked `stars`'s own disk directly rather than assuming rsync would just
+finish: `df` showed only ~124GiB free, with the in-progress temp file
+(`/home/stars/data/.mapterhorn-japan-bridge.pmtiles.DXPvU6`) already at
+~131.7GB and growing ~1.6GB/min toward a ~266GiB final size, while the
+**old `mapterhorn-japan-bridge.pmtiles` (211GB) was still on disk,
+untouched, coexisting with the growing temp file** -- the same structural
+2x-space problem D49 diagnosed on `slate`'s own local disk during
+`merge_japan_bundles.py`, this time on the *receiving* end during
+`rsync`. Projected ENOSPC in ~70-80 minutes, ~20GB short of completion.
+
+**First mitigation attempt found a real gotcha, not just a fix**:
+deleted the old `mapterhorn-japan-bridge.pmtiles` on `stars` (Hidenori's
+own call, after being warned this would take the live public URLs down
+during the swap) expecting to free ~211GB immediately. It didn't --
+`df` showed no meaningful change (124.66GB -> 124.65GB). Root cause,
+confirmed via `fuser` (no `lsof` on this Debian box): the receiving-side
+`rsync --server` process itself still held the old file open as its
+own delta-transfer basis file (standard rsync algorithm: read matching
+blocks from the existing destination file to reduce bytes-over-the-wire,
+even though this specific transfer had little in common between old/new
+content). **Standard POSIX behavior, not a bug**: `unlink()` on a file
+with an open fd removes the directory entry but does not free blocks
+until the last fd closes -- `rm` "succeeding" is not the same as space
+being reclaimed. Side effect confirmed live: `depot.optgeo.org` started
+returning 404 (Caddy couldn't re-open the now-unlinked path for new
+requests) and `stars.optgeo.org`'s tile endpoint also went to 404 for
+actual tile requests (TileJSON metadata alone stayed 200) -- real,
+if brief, public downtime for zero space benefit at that point.
+
+**Corrected fix**: killed the client-side `rsync` process (`kill -TERM`)
+on `slate`, which closed the connection and let the receiving-side
+process exit too, finally releasing its fd on the unlinked old file.
+Confirmed via `df`: free space jumped from ~124.7GB to **476GB**
+(rsync's own interrupt handling also cleaned up its own incomplete temp
+file). Since `bundle-store/mapterhorn-japan-bridge.pmtiles` on `slate`
+was already complete and untouched (D49's own merge had already
+finished before this session started), there was no need to re-run the
+full `publish_cycle.py` (downsampling + bundle + merge, over an hour) --
+just re-ran the bare `rsync` command directly in a fresh `screen`
+session (`publish_cycle_9_rsync_retry`). No basis file to delta against
+this time (old file genuinely gone), so no repeat of the 2x-space
+problem is possible for this retry. Still running as of this entry
+(~137GB/286GB, ~340GB free, healthy pace, no ENOSPC risk).
+
+**Worth carrying forward**: this is the same underlying `pmtiles`-
+library-adjacent "growing output + still-present prior file" pattern
+D49 already flagged as "likely to recur on every future cycle" --
+except D49 only analyzed the `slate`-side `merge_japan_bundles.py`
+leg. **`rsync`'s own default delta-transfer algorithm has the identical
+structural cost on the `stars`-side leg**, now confirmed empirically,
+not just by analogy. `--inplace` (write directly into the destination,
+no separate temp+basis-file copy) would avoid this doubling but trades
+away rsync's own crash-safety (a killed `--inplace` transfer leaves a
+corrupt destination, not an untouched original) -- a real tradeoff,
+not evaluated further this session. Not fixed; flagging as a
+publish_cycle.py-level design question alongside D49's own open
+"progressive input deletion" item.
+
+**Part 2 -- `check_pmtiles_integrity.py` (built and committed last
+session per D49, never yet run against a real archive) run for the
+first time**, against `bundle-store/mapterhorn-japan-bridge.pmtiles`
+(2,358,133 tiles, z0-z16) while the rsync retry above ran in parallel
+(read-only, seek+read only, safe to run concurrently). Completed in
+56s:
+
+| zoom | tiles | orphans (no parent at z-1) |
+|---|---|---|
+| z0-z1 | 1, 1 | 0 |
+| z2-z8 | 0 | -- |
+| z9 | 4 | 4 (100%) |
+| z10 | 32 | 16 (50%) |
+| z11 | 140 | 12 (9%) |
+| z12 | 41,671 | 41,113 (98.7%) |
+| z13 | 23,144 | 10,556 (46%) |
+| z14 | 95,872 | 20,592 (21%) |
+| z15 | 373,120 | 28,544 (7.6%) |
+| z16 | 1,805,568 | 313,088 (17.3%) |
+
+**Total 413,925 orphaned tiles (17.6% of the archive)**. The archive
+itself is **not corrupted** -- header, directory tree, and every tile
+id enumerated cleanly with zero read errors; this is a genuine data
+*gap*, not a broken file.
+
+**Root cause traced empirically against `aggregation-store`'s own
+`.done`-marker counts and mtimes, not assumed from re-reading
+`downsampling_covering.py` alone** (an initial code-only read of
+`get_simplified_extents()`'s `num_overviews`-based zoom-skipping logic
+looked like a plausible "intentional pyramid gap by design" explanation
+-- ruled out by the evidence below):
+
+```
+downsampling.csv done/todo by parent_zoom (target zoom built), this generation:
+  z15: 1,682/2,005 (84%)   z12: 487/1,835 (27%)
+  z14: 1,612/1,942 (83%)   z11:   8/308   (2.6%)
+  z13: 1,131/1,606 (70%)   z10:   2/252   (0.8%)
+                            z9:   1/168   (0.6%)
+                          z1-z8:  0/223   (0%)
+```
+
+`aggregation.csv` (native, pre-downsampling source resolution) only has
+entries at child_zoom 12/13/14/16 -- **z12, z13, z14, and z16 each get
+tile coverage from two independent sources**: direct native-resolution
+output from `aggregation_tile.py` (already 100% complete per D48, no
+downsampling dependency at all) *and* whatever `downsampling_run.py`
+itself manages to build. **z11 and everything coarser has zero native
+fallback** -- it exists only if the downsampling cascade actually
+produces it, and each level strictly requires all 4 finer-zoom children
+to exist first. Since z12 (the first fully downsampling-dependent
+input z11 needs) is only 27% complete, z11's own completion (needing
+all 4 quadrants simultaneously) drops far below a naive 27% -- and this
+compounds at every level above it, producing the near-total emptiness
+observed at z9-z11 and complete emptiness at z1-z8.
+
+Checked whether this is a permanent stall (D45's own feared "silent and
+permanent" variant) or just slow, ongoing progress: `.done` marker
+mtimes at z9-z11 show **most of the existing 11 completions (8+2+1)
+happened during this very session's own cycle_9 downsampling pass
+(05:26-27 JST today)**, not accumulated steadily since generation start
+(2026-08-22, 6 days / 9 cycles prior). Progress is real but has been
+extremely slow at this tier -- not visibly stuck, but nowhere near
+converging within any cycle count seen so far.
+
+**Directly resolves D47's own open question**: the "dem dimension
+mismatch" console error found there at z8-z11 was tentatively attributed
+to "sparse coverage while aggregation is still incomplete" -- **that
+theory is now falsified** (aggregation has been 100% complete since
+D48, and this orphan-check ran against a `bundle-store` archive built
+entirely after that completion). The real cause is specifically
+**coarse-zoom downsampling throughput**, not aggregation incompleteness.
+
+**Not fixed this session** -- flagging as the concrete next engineering
+task, with two open sub-questions neither confirmed nor ruled out:
+1. Does simply running `downsampling_run.py` many more times (now safe,
+   zero concurrent aggregation per D48) eventually converge z9-z11 to
+   full coverage, just slowly? Or
+2. Is there a structural I/O bottleneck specific to coarse-zoom items --
+   analogous to D44's own finding that a single large `pmtiles-store`
+   region file can take `bundle.py` "well over an hour" to read -- that
+   would make convergence impractically slow without a design change
+   (e.g. `downsampling_run.py`'s own per-item `create_tile()` reads
+   likely reopen the same few enormous archives repeatedly across many
+   nearby coarse-zoom outputs)?
+
+**Current state, as of this entry (2026-08-28 18:48 JST)**:
+- `publish_cycle_9`'s rsync retry: running clean in `screen` session
+  `publish_cycle_9_rsync_retry` (~137GB/286GB transferred, ~340GB free
+  on `stars`, no space risk this time).
+- Public URLs (`depot.optgeo.org`, `stars.optgeo.org` tile endpoint):
+  still 404 until this retry completes and renames into place.
+- `bundle-store/mapterhorn-japan-bridge.pmtiles` on `slate`: complete,
+  structurally valid, unaffected by any of the above.
+- Orphan-tile root cause identified but **not fixed** -- 413,925
+  tiles (17.6%) still missing their z-1 parent in the archive
+  currently being pushed to `stars`.
+- D40's ~2.54GB `pmtiles-store` orphan cleanup: still untouched.
+- D49's "worth a real fix" (progressive input deletion in
+  `merge_japan_bundles.py`): still not done, and this entry adds a
+  sibling open item on the `rsync` leg (`--inplace` tradeoff, above).
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- may need a fresh Cloudflare Access
+> browser re-auth; if a retry hangs on "another cloudflared process is
+> already waiting," kill the stale `cloudflared access ssh` process
+> first).
+>
+> Read `DECISIONS.md` D35's closing addendum through D50 in full before
+> touching anything -- D50 covers a live `stars`-side ENOSPC near-miss
+> (resolved) and the first real orphan-tile finding against a production
+> archive (root cause identified, not yet fixed).
+>
+> **First**: check whether `publish_cycle_9_rsync_retry`'s `rsync`
+> (screen session of that name on `slate`) finished, and whether
+> `depot.optgeo.org`/`stars.optgeo.org`'s tile endpoint are back to
+> `200` with the new byte count (`286,089,908,804` bytes on `bundle-
+> store/mapterhorn-japan-bridge.pmtiles` as of this entry -- confirm the
+> `stars` copy matches). If it crashed on `ENOSPC` again despite this
+> session's fix, something else is wrong -- don't assume it's the same
+> already-diagnosed cause without checking `df`/`fuser` fresh.
+>
+> **The real open item**: 413,925 orphaned tiles (17.6%), concentrated
+> at z9-z11 (near-total) and z1-z8 (completely empty), caused by
+> `downsampling_run.py` not having converged at coarse zoom levels --
+> see this entry's own root-cause section for the full evidence chain.
+> Two open sub-questions to resolve before deciding a fix: does running
+> `downsampling_run.py` many more times just slowly converge this, or
+> is there a structural I/O bottleneck (analogous to D44's `bundle.py`
+> finding) making that impractical? Don't re-derive the diagnosis from
+> scratch -- this entry's `aggregation-store` `.done`-count table and
+> mtime check are the load-bearing evidence, re-verify against current
+> counts rather than re-theorizing from the covering code alone.
+>
+> **`rsync`'s own 2x-space-during-transfer problem** (this entry, Part 1)
+> is a sibling to D49's `merge_japan_bundles.py` finding -- both still
+> open design questions (progressive cleanup / `--inplace`), not fixed.
+>
+> **Storage**: D40's ~2.54GB `pmtiles-store` orphan cleanup is still
+> open and untouched.
+>
+> **号2**: still gated on GSI actually shipping new DEM1A data -- no
+> fixed cadence known.
+>
+> Converse in Japanese, per this repo's own language policy.
