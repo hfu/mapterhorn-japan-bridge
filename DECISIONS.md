@@ -5615,3 +5615,138 @@ something this session resolved.
 > fix (deliberately deferred).
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D53: a third, larger cause of D50's orphan tiles found -- 1,016 `.done` markers point to `pmtiles-store` files that no longer exist at their expected filename (pre-completion aggregation-rename race, D37/D44/D45's own historical concern, now safe to clear)
+
+**Status**: Recorded, 2026-08-28 23:58 JST. Direct continuation of D52's
+own investigation into `downsampling_covering.py`'s apparent gap.
+
+**Trigger**: investigating the one concrete example D52 traced
+(`11-1728-880-13-downsampling.csv` never existing on disk at all) led to
+checking whether that was representative. Cross-referenced that example's
+own geographic bounds (123.75-123.93E, 24.37-24.53N -- the Iriomote/
+Yaeyama island area) against `aggregation-store`'s native `*-aggregation.
+csv` entries at every resolution (z12/z13/z14/z16) under its full
+descendant footprint: **zero matches at any zoom**. This one example does
+look like a genuine no-source-coverage gap (consistent with this
+project's own prior finding, `[[project_mapterhorn_japan_bridge_slate]]`-
+adjacent memory, that Yonaguni/Hateruma-area meshes lack even 5m/10m
+national floor coverage) -- not a `downsampling_covering.py` bug. But
+sampling two more still-incomplete z12 items to check whether this
+generalized surfaced something different and much bigger.
+
+**The real finding**: one sampled item's missing reference
+(`11-1758-825-13.pmtiles`) turned out to **exist on disk under a
+different maxzoom suffix** (`pmtiles-store/7-109-51/11-1758-825-16.
+pmtiles`) -- classic D37/D44/D45 race signature (`aggregation_run.py`'s
+own in-place stale-file cleanup renamed this position's file after the
+downsampling item that referenced the old name had already been marked
+`.done`). Its own `.done` marker's mtime: **2026-08-23 15:17** -- three
+days before D45's atomic-write fix (2026-08-26) even existed.
+
+**Quantified across the entire generation, not assumed from one sample**:
+wrote a small audit script (`check_pmtiles_integrity`-adjacent, one-off,
+not committed) that, for every `*-downsampling.done` marker, recomputes
+the exact filepath `downsampling_run.py`'s own `main()` would have
+written (`utils.get_pmtiles_folder(extent_x, extent_y, extent_z)` +
+`{extent_z}-{extent_x}-{extent_y}-{parent_zoom}.pmtiles` -- note the
+folder is keyed by the extent's own zoom, not `parent_zoom`; an initial
+run of this same check used the wrong zoom there and produced a
+nonsensical 90% failure rate, corrected before trusting the result) and
+checks whether that file actually exists:
+
+```
+total .done markers: 6,747
+healthy (file exists): 5,731 (85.0%)
+stale (done, but referenced file missing): 1,016 (15.1%)
+```
+
+**Newest stale marker: 2026-08-28 04:20:23 -- before `aggregation_run_
+national` finished (2026-08-27 19:43, D48). No stale markers created
+after that point**, consistent with the race requiring concurrent
+aggregation reprocessing, which stopped for good at D48's own
+completion. This means the population of stale markers is now **fixed
+and fully safe to repair** -- no new ones can appear from this
+mechanism going forward, and the underlying content these markers
+"cover" was, in every sampled case, later rebuilt correctly at its own
+new filename by `aggregation_run.py` itself before it finished (D48's
+own crash-and-fix on the final 3 items is the same class of evidence:
+the pipeline's actual source data is fine, only this specific
+downsampling-side bookkeeping went stale).
+
+**Why this matters more than D51's dirty-filter bug or D52's genuine
+gaps**: 1,016 is a much larger number than the ~150 items D51's fix
+unblocked, and unlike D52's genuine-gap example, these are recoverable
+-- the moment their stale `.done` marker is removed, `downsampling_
+run.py` will rebuild them for real (their references now correctly
+resolve to the renamed file, or that file's own successor once rebuilt
+this pass) instead of skipping forever.
+
+**Fix, applied live (not a code change -- data repair)**: with
+Hidenori's explicit approval, deleted all 1,016 stale `.done` markers
+(`aggregation-store/01M0MWK852631SHCHPA66F21WQ/*-downsampling.done`,
+full path list captured for the record, not committed to git since it's
+generation-local runtime state, not source). Confirmed count dropped
+6,747 -> 5,731 (exactly the 1,016 removed, no double-counting). Launched
+`downsampling_run.py` again (screen `downsampling_convergence_4`) to
+rebuild them -- already showing real movement in the first few minutes
+(z12: 1,133 -> 977 immediately after the deletion, as expected -- the
+stale ones were removed from the done-count -- with rebuilding
+starting from item 551/8,340 as of this entry).
+
+**Not yet known**: whether all 1,016 will successfully rebuild this pass
+(their own dependencies need to be ready, same cascade logic as D51/D52),
+or whether some fraction reveals yet another distinct issue. This
+entry's own resume prompt should check the actual outcome, not assume
+success.
+
+**Current state, as of this entry (2026-08-28 23:58 JST)**:
+- `downsampling_convergence_4`: running, rebuilding the 1,016 freed
+  positions plus whatever else remains from D52's own fixed point.
+- z9-z12 done counts at launch (post-deletion): to be tracked via this
+  session's own 15-minute Monitor loop, restarted for this purpose.
+- D49's `merge_japan_bundles.py` fix (`b680704`) and D51's rsync fix
+  (`21a4c7e`): both committed, still awaiting their first real exercise
+  via a full `publish_cycle.py` run -- deliberately still deferred until
+  downsampling looks genuinely complete (or as complete as real source
+  coverage allows).
+- The one confirmed genuine no-coverage example (`11-1728-880-13`,
+  D52) is untouched -- no fix attempted or needed for it specifically,
+  pending broader confirmation of the "legitimate gap" theory.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- Cloudflare Access sessions timed out
+> roughly every ~2h in the prior session; `pkill -f "cloudflared access
+> ssh"` then retry if you see "another cloudflared process is already
+> waiting", and ask Hidenori to complete the browser re-auth).
+>
+> Read `DECISIONS.md` D35's closing addendum through D53 in full before
+> touching anything. D50 found the orphan symptom, D51 fixed the
+> dirty-filter bug (verified), D52 found the fix's own natural
+> fixed-point and one genuine no-coverage example, D53 found and
+> repaired a third, larger cause (1,016 stale `.done` markers from the
+> pre-completion aggregation-rename race) and relaunched `downsampling_
+> run.py` to rebuild them.
+>
+> **First**: check `downsampling_convergence_4`'s own outcome -- did it
+> finish, and how many of the freed 1,016 positions (plus whatever
+> D52-era backlog remained) actually completed? Compare z9-z16 `.done`
+> counts against this entry's own launch-time snapshot. If a similar
+> stale-marker audit hasn't been re-run since, consider running it again
+> after this pass -- new stale markers should NOT appear (aggregation is
+> permanently finished), but worth confirming rather than assuming.
+>
+> **Once downsampling looks as complete as it's going to get** (either
+> fully converged, or a stable, understood residue of genuine no-coverage
+> positions like D52's own Iriomote-area example): run a full `bundle.py`
+> -> `merge_japan_bundles.py` (now with D49's progressive-deletion fix,
+> `b680704`, exercised for the first time) -> `rsync` (now with D51's
+> pre-delete fix, `21a4c7e`, exercised for the first time) via `publish_
+> cycle.py`, then re-run `check_pmtiles_integrity.py` against the fresh
+> `bundle-store/mapterhorn-japan-bridge.pmtiles` and compare its orphan
+> count against D50's own 413,925 baseline -- this is the real proof all
+> of tonight's fixes actually improved the published product.
+>
+> Converse in Japanese, per this repo's own language policy.
