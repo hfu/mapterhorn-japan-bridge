@@ -51,6 +51,14 @@ scheduled check (not just an ad hoc one, as this entry itself was)
 given the now-confirmed quarterly cadence, independent of whether 2号
 itself starts soon.
 
+**Hidenori's own decision, 2026-08-29**: once 1号 reaches mission
+complete (see section 4's disk5 detach procedure), 2号 will
+deliberately wait for the *next* quarterly DEM1A update rather than
+starting immediately — given the observed cadence, that's expected
+around **end of October 2026**, not a fixed date yet. This also sets
+the natural point to re-attach disk5 (currently planned to be detached
+once 1号 is done — see section 4).
+
 ## 2. Scope: what actually needs refreshing
 
 - `jpnational1`/`jpnational5`/`jpnational10`/`jpnationalsea` all need
@@ -134,6 +142,48 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
     Verified with a fresh iostat sample right after: disk5 picked up
     real sustained I/O (23-57 tps / 6-7MB/s) that was previously
     landing on disk4. See D61 for the full record.
+  - **Disk5's role, clarified 2026-08-29**: Hidenori intends 1号 to be
+    the mission this disk finishes, then wants it physically
+    detached — disk5 is a removable "auxiliary tank," attached only
+    when actually needed, not permanent infrastructure. 2号 itself is
+    now planned to wait for GSI's next quarterly DEM1A update (see
+    section 1 — most recently 2026-07-31, next expected roughly
+    end of October 2026), so there's a real dormant gap where nothing
+    needs disk5 attached at all.
+  - **Detach procedure (planned, not yet executed — run only once 1号
+    is fully verified complete: aggregation backfill 6,373/6,373,
+    downsampling done, a publish cycle succeeds end to end, and
+    `check_pmtiles_integrity.py` comes back clean)**:
+    1. Confirm nothing is still writing to `pmtiles-store`/`tmp-store`
+       (`aggregation_run.py` etc. all stopped/finished).
+    2. Delete `pipelines/pmtiles-store.old-internal-disk` first (frees
+       ~284GB on disk4 — by this point it's a stale snapshot from the
+       Phase 2 cutover moment anyway, fully superseded by the real,
+       complete copy about to be made).
+    3. `rsync` `/Volumes/pmtiles-store`'s current full contents back
+       onto disk4 as a real directory (projected final size ~400-450GB
+       at 6,373/6,373, extrapolated from the 66MB/item average
+       measured at 4,515/6,373 on 2026-08-29 — comfortably fits disk4's
+       ~683Gi headroom once the old snapshot above is freed).
+    4. Swap `pipelines/pmtiles-store` from symlink back to the real,
+       freshly-copied directory. `tmp-store` needs no data preserved
+       (transient, should be empty by completion) — just remove its
+       symlink and `mkdir` a fresh empty one on disk4.
+    5. Re-run `check_pmtiles_integrity.py` once more against the
+       disk4-hosted copy to confirm the copy-back didn't drop or
+       corrupt anything.
+    6. Only then `diskutil eject disk5` and physically disconnect.
+    Confirmed via `grep` that no pipeline script hardcodes
+    `/Volumes/pmtiles-store` anywhere — everything goes through the
+    relative `pmtiles-store`/`tmp-store` symlinks from the `pipelines/`
+    working directory, so this swap is a pure filesystem operation,
+    zero code changes needed either direction.
+  - **Re-attach procedure for whenever disk5 is needed again** (2号's
+    own start, most likely): exactly the mirror of D58-D61's own
+    procedure this session — reformat if needed, graceful stop,
+    symlink `pmtiles-store`/`tmp-store` back onto it, relaunch. Nothing
+    new to design; this session's own D58-D61 entries are the
+    reference implementation.
 - **D37's `downsampling_covering.py` preflight gap**: **fixed
   2026-08-29 (D56)** — now runs automatically as part of `publish_
   cycle.py`'s own preflight, idempotently, every cycle. No longer a
