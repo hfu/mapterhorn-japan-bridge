@@ -6386,3 +6386,22 @@ D22が実測した15-35倍の遅延は、aggregation_merge.pyが同じ巨大な�
 ### Resume prompt
 
 > ディスク分割の増速効果について再確認する際は、D65のベースライン数値(280〜840件/時の自然変動幅)と比較すること。数時間分のtickデータが溜まったら、ディスク分割前後で平均ペースに意味のある差(自然変動幅を超える差)があるかを見る。
+
+## D66: `aggregation_run_backfill`完走 -- D57が発見した6,373件全件のnative aggregationが真に完了
+
+**Status**: Recorded, 2026-08-29 20:28 JST。
+
+09:07 JSTにD57で開始した backfill(D57時点で発見された、真の国内総数6,373件に対する4,394件の未処理分、うち2,343件は一度もビルドされたことがなかったポジション)が、約11時間20分のwall-clockで完走。
+
+- `.done`マーカー: **6,373/6,373**、現行世代(`01M0MWK852631SHCHPA66F21WQ`)の全ポジションが揃った。
+- `aggregation_run_backfill`のscreenセッションは自然終了(プロセス自体が正常終了、`Traceback`/`Error`の出力ゼロ、`grep`で確認済み)。
+- 途中、D58〜D61でストレージを新ディスクへ移行(`pmtiles-store`本体+`tmp-store`)する作業のためgraceful stopを2回挟んだが、いずれも`KeyboardInterrupt`で安全に中断・再開できており、データ破損は一切なし。
+- `pmtiles-store`最終サイズ: **283GB**(新ディスク`/Volumes/pmtiles-store`上)。
+
+**D48〜D57で辿ってきた「1号のaggregationは完了している」という認識の、最終的な正しい姿がここで確定した**: D48時点の「1,979/1,979 完了」は誤った母数に基づく誤認、D57でその誤りと真の母数(6,373)が判明し、今回そのフルスコープが実際に完了した。
+
+**次のステップ(D57の resume prompt通り)**: `downsampling_covering.py`→`downsampling_run.py`のフルパス、その後`bundle.py`→`merge_japan_bundles.py`→starsへのrsyncを含む完全な`publish_cycle`を1回走らせ、最後に`check_pmtiles_integrity.py`をD50の413,925件オーファン基準と比較する、という一連の検証が1号の真のミッションコンプリートの最終確認になる。現在進行中の`publish_retry_rsync`(D59の復旧、古いビルドの再送信)が完走してから着手する。
+
+### Resume prompt
+
+> aggregation本体は完了(6,373/6,373)。次はdownsampling_covering→downsampling_run→bundle→merge→publish_cycleのフルパス実行と、`check_pmtiles_integrity.py`による最終検証。`publish_retry_rsync`(D59、古いビルドの再送信)の完走を待ってから着手すること。完了後はD65の「1号ミッションコンプリート後にdisk5を取り外す」手順(PLAN.md参照)に進める。
