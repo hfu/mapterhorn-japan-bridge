@@ -6435,3 +6435,31 @@ orphaned tiles (親タイル不在): 183,847 (11ズームレベル)
 ### Resume prompt
 
 > `check_pmtiles_integrity.py`の結果: 183,847孤立タイル(D50の413,925から55.6%改善)。z16/z12に集中。次回のpublish_cycleで再チェックし、傾向が減り続けているか確認すること。ゼロを目指すなら、残存する孤立タイルの具体的な位置(z16の130,048件)を個別にaggregation/downsamplingの状態と突き合わせる追加調査が必要。
+
+## D69: 「欠けているタイル」の実地調査 -- D53の`check_downsampling_done_integrity.py`が今日のbackfillで大量発生したstale `.done`マーカー(1,265件)を検出・修復
+
+**Status**: Recorded, 2026-08-30 05:50 JST。Hidenoriから「aggregationが100%完了した今、欠けている場所は確定論的に決められるはず、リストが現実的か確認して、狙い撃ちのdownsamplingをすべきか」という問いを受けて調査。
+
+**手順1 -- `check_downsampling_readiness.py`で現況を確認**: publish_cycle_11のdownsampling_run.py完走直後の状態は「done: 7,903 / ready-not-run: 0 / not-ready: 437」。**ready-not-run が0ということは、単純に同じrunをもう一度回しても何も進まない**ことを意味する(直前のrunが実際にreadyだったもの全てを処理し切っていたため)。
+
+**手順2 -- 具体例を1件深掘り**: `10-863-435-11-downsampling.csv`(1/10 children missing)を追跡。欠けていた子`12-3454-1742-12.pmtiles`は、実際には対応する`12-3454-1742-12-downsampling.csv`(別の、より細かいdownsamplingステップ)自体の`.done`マーカーが**2026-08-28 22:00**(今日のbackfillより前)に存在するにもかかわらず、実体のpmtiles-storeファイルが存在しないという状態だった。これはD53が発見したのと同じ「stale `.done`マーカー」のバグクラス(`aggregation_run.py`の既存ファイル置き換えが、そのファイルを参照するdownsampling完了マーカーより後に発生すると、マーカーだけが取り残される)。
+
+**手順3 -- 既存ツールで規模を確認・修復**: `check_downsampling_done_integrity.py 01M0MWK852631SHCHPA66F21WQ`(dry-run)を実行したところ、
+```
+total .done markers: 7,903
+healthy: 6,638
+stale (done, but referenced file missing): 1,265 (16%)
+oldest stale marker: 2026-08-28 19:41:35
+newest stale marker: 2026-08-29 08:48:18
+```
+全てのstaleマーカーが**今日のaggregation backfill開始(09:07)より前**の日付であり、ツール自身が定めた安全条件(「aggregation完全終了後にのみ`--fix`してよい」)に合致することを確認した上で`--fix`を実行、1,265件を削除。
+
+**手順4 -- 削除したマーカーの再構築**: `downsampling_run.py`を単独で再実行(screenセッション`downsampling_repair`)。この操作は`bundle-store`・`pmtiles-store`のダウンサンプル出力・`aggregation-store`の各csvにのみ触れ、**`bundle-store`の完成済みファイルや進行中のstars向けrsyncには一切触れない**ため、転送中でも安全に並行実行できると判断し実施。
+
+**Hidenoriの問いへの回答**:
+- 「狙い撃ちのdownsamplingツールを新設すべきか」→ **不要と判断**。既存の`downsampling_run.py`自体が`.done`チェック→readiness チェックの2段構えで、既に「実際にやるべきことだけをやる」設計になっている。今回の停滞は「チェーンが単に未完成」ではなく「stale markerというバグ」が原因で、これは専用の既存ツール(D53/`check_downsampling_done_integrity.py`)で対処するのが正しい選択だった。
+- 「タイミング(転送完了を待つべきか)」→ **待つ必要はなかった**。「開始時点で古いプロダクトを削除する」設計は`publish_cycle.py`が新しいサイクル全体(bundle+merge+rsync)を開始する時にのみ発動するもので、`downsampling_run.py`単独の再実行は`bundle-store`に一切触れないため、進行中のrsync(cycle_11自身の本番転送)と完全に独立して安全に実行できた。
+
+### Resume prompt
+
+> D69で1,265件のstale downsampling `.done`マーカーを削除・`downsampling_run.py`を再実行中(`downsampling_repair`スクリーン)。完了後、`check_downsampling_readiness.py`で not-ready の数がどれだけ減ったか再確認すること。さらに次回のpublish_cycleで`check_pmtiles_integrity.py`のorphan数(D68: 183,847)がどれだけ減るかも追跡すること。
