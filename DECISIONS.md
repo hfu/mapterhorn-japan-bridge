@@ -6405,3 +6405,13 @@ D22が実測した15-35倍の遅延は、aggregation_merge.pyが同じ巨大な�
 ### Resume prompt
 
 > aggregation本体は完了(6,373/6,373)。次はdownsampling_covering→downsampling_run→bundle→merge→publish_cycleのフルパス実行と、`check_pmtiles_integrity.py`による最終検証。`publish_retry_rsync`(D59、古いビルドの再送信)の完走を待ってから着手すること。完了後はD65の「1号ミッションコンプリート後にdisk5を取り外す」手順(PLAN.md参照)に進める。
+
+## D67: `publish_retry_rsync`が完走 -- starsへの再送信成功、Martinのカタログにも反映済み
+
+**Status**: Recorded, 2026-08-29 21:59 JST。
+
+D59のクラッシュ後に開始した`publish_retry_rsync`が完走。starsに`mapterhorn-japan-bridge.pmtiles`(307,895,883,486バイト、bundle-storeのローカルファイルと一致)が正式名で配置された。20:42に転送バイト数自体は100%に達していたが、その後実際にファイルが正式名にリネームされるまで約1時間17分かかった。原因を`lsof`/`iostat`で特定: rsync送信側プロセスがソースファイル全体(307.9GB)を再度読み込んで最終チェックサムを計算しており(disk4で1,680-1,700 tps・60-66MB/sの持続読み込みを確認)、ハングではなく正常な最終検証だった。
+
+Martin(`http://localhost:3000/catalog`、stars上で稼働中)のカタログに`mapterhorn-japan-bridge`が既に反映されていることを確認 -- config.yamlに個別記載がないことから、ディレクトリスキャン方式で自動検出されたとみられ、追加の再起動は不要だった。
+
+**これでaggregation(D66)とstars公開(D67)の両方が完了し、1号の現在の到達点が揃った。** 次はdownsampling_covering→downsampling_run→bundle→merge→publish_cycleのフルパスと`check_pmtiles_integrity.py`による最終検証(D57のresume prompt通り)。
