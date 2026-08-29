@@ -6301,3 +6301,31 @@ rsync error: unexplained error (code 255) at io.c(949) [sender=3.5.0]
 > D61で`tmp-store`も新ディスク(`/Volumes/pmtiles-store/tmp-store`)へのシンボリックリンクに切り替わっている。`pipelines/tmp-store`が通常のディレクトリに戻っていたら何か巻き戻っている(要調査)。
 >
 > `pmtiles-store.old-internal-disk`(D59、旧ディスク上、約284GB)は依然未削除 -- D59/D60/D61を通じて繰り返し記録している通り、安定稼働を確認してから削除しストレージを回収する判断がまだ残っている。
+
+## D62: Phase C2 -- `publish_cycle_10`の実測ステージ別所要時間を記録、24時間cadence前提の再検証。あわせてcron/launchd未設定であることを確認
+
+**Status**: Recorded, 2026-08-29 14:10 JST。改善プラン(rustling-napping-pond.md)のPhase C2として、待ち時間を使って実施。
+
+**`publish_cycle_10.log`から実測したステージ別タイミング**:
+
+```
+05:15:21  publish cycle starting
+05:15:21  $ uv run python3 downsampling_run.py       -- 開始
+05:15:22  $ uv run python3 bundle.py 1                -- downsampling終了(約1.5秒)
+06:47:28  $ uv run python3 merge_japan_bundles.py      -- bundle終了(1時間32分)
+08:18:23  $ ssh stars@stars.local rm -f ...            -- merge終了(1時間31分)
+08:18:28  $ rsync -av --progress ... stars.local:...   -- rsync開始
+12:30ごろ crash(D59参照、56%地点でネットワーク瞬断)
+```
+
+**downsampling_run.pyの「約1.5秒」について、誤解を避けるための注記**: このcycle_10は05:15開始で、D57のaggregation欠落発見・backfill開始(09:07)より前に走っている。つまりこの時点ではまだ多くのポジションが未整備で、`DOWNSAMPLING_STRICT=1`のreadiness gateがほぼ全ての候補をスキップした結果の「1.5秒」であり、**downsampling自体が本質的に高速という意味ではない**。D57のbackfill(6,373件中の欠落4,394件)が完了した後の次サイクルでは、大量の新規レディ項目が発生し、downsampling_run.pyの実行時間は今回よりずっと長くなる見込み。この数字を「downsamplingは無視できるコスト」と一般化しないこと。
+
+**rsyncステージの実測(部分)と推定**: 実際のクラッシュ地点(56%、174GB)までの平均転送速度は約11MB/s。この速度が最後まで続くと仮定すると、307.9GB全体で約7.4時間(444分)。
+
+**cadence再検証**: downsampling(実質ゼロ、ただし上記の注記通り次回は増える可能性大)+ bundle(92分)+ merge(91分)+ rsync(推定444分)を合算すると約10.4時間。**クラッシュがなければ、全国規模のフルサイクルでも24時間cadenceには十分収まる**計算になる。ただし今回のように途中でネットワーク瞬断が起きると(D59)、`--partial`修正後でも再開にはさらに時間がかかるため、実運用上のマージンは計算上の余裕ほど大きくない。
+
+**cron/launchd自動スケジューリングは未設定であることを確認**(`crontab -l`は"no crontab"、`launchctl list`にpublish関連のジョブなし、`~/Library/LaunchAgents`/`/Library/LaunchDaemons`にもpublish関連のplistなし)。`publish_cycle.py`自身のdocstringが述べる「cadence is set by whatever schedules this script, not by this file」は正しいが、**実際には何もスケジュールしておらず、cycle_1〜cycle_10まですべて手動起動**だったことを確認した。号2に向けて、この「毎日1回」という前提を本当に実現したいなら、cron/launchdの実設定が必要 -- 現状は前提が机上のものにとどまっている。
+
+### Resume prompt
+
+> D62はPhase C2(cadence再検証)の実測記録。号2を検討する際は、(1) downsampling_run.pyの実測1.5秒はD57 backfill前の非代表値である点、(2) cron/launchdが今も未設定である点、の2つを踏まえること。
