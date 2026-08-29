@@ -6010,3 +6010,212 @@ in parallel rather than blocking on it).
 > check `PLAN.md`'s own infrastructure-prerequisites section.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D58: procured and formatted a second same-model external disk (APFS) for `pmtiles-store`, worked through a Screen Sharing/TCC troubleshooting saga to reach slate's physical console, and launched a two-phase rsync migration while `aggregation_run_backfill` (D57) keeps running
+
+**Status**: In progress, 2026-08-29 11:10 JST. Recorded ahead of a
+planned `/compact` so this state survives a context reset even if the
+compact somehow disrupts anything (it did not disrupt anything the
+first time tonight -- see below).
+
+**Storage decision (asked and answered this session)**: of the three
+big stores (`source-store` 342G, `pmtiles-store` 286G, `bundle-store`
+287G peak), **`pmtiles-store` alone** is the one worth moving to the
+new disk, not all three. Reasoning: `pmtiles-store` is the one under
+concurrent read+write contention across multiple pipeline stages
+(`aggregation_run.py` writes it while reading `source-store`;
+`downsampling_run.py` reads+writes it exclusively; `bundle.py` reads it
+while writing `bundle-store`) -- splitting it onto its own physical
+disk actually separates contending I/O. Moving all three back onto one
+new disk would just relocate the existing single-disk contention
+without solving it. Also frees ~286G of headroom on the original disk
+immediately, directly easing D57's own flagged ENOSPC risk.
+
+**Filesystem choice**: the new disk arrived pre-formatted for
+Raspberry Pi use (Linux `bootfs`). Reformatted as **APFS** (GUID
+Partition Map, case-insensitive, default journaling) rather than
+matching the *existing* `Migrate-2025-04` disk's own format, which
+turned out to be legacy **HFS+** (Journaled) -- discovered by directly
+checking (`diskutil info disk4s2`), not assumed. APFS was chosen over
+sticking with HFS+ for real SSD-era advantages (TRIM, small-file/
+metadata performance relevant to `pmtiles-store`'s tens of thousands of
+individual files) and over exFAT since no actual cross-platform
+(Linux/macOS) sharing is needed -- the disk only ever needs to be read
+by `slate` (macOS). Volume named `pmtiles-store` directly at format
+time.
+
+**A real physical-console side-quest**: getting this new disk mounted
+on `slate` and clicking through any "allow this accessory" dialogs
+required physical/GUI access, which `slate` (a headless Mac mini,
+USB-C only) didn't have on hand tonight. Chain of troubleshooting,
+each step verified rather than assumed:
+- Screen Sharing (`vnc://slate.local`) failed with "Screen Sharing is
+  not permitted" even after `sudo launchctl enable system/com.apple.
+  screensharing` + `bootstrap` (confirmed via `launchctl print` +
+  `netstat` that the daemon *was* listening on 5900, on-demand/socket-
+  activated -- so the daemon-level enable genuinely worked, but that's
+  a different layer from ARD's own access-control list).
+- `kickstart -activate -configure -access -on -privs -all -users hfu
+  -restart -agent` fixed the access-control layer (this is the
+  documented correct way to enable Screen Sharing *with* the access
+  list configured, vs. the raw `launchctl` approach which only starts
+  the daemon) -- but printed two TCC warnings: "Screen recording might
+  be disabled" / "Screen control might be disabled."
+- Those TCC warnings were real: Screen Sharing still failed. **TCC
+  privacy grants (Screen Recording, Accessibility) for Remote
+  Management are protected by SIP and cannot be granted via SSH/sudo at
+  all** -- this needed physical/GUI confirmation, which is exactly the
+  chicken-and-egg problem Screen Sharing was meant to solve. Confirmed
+  directly: `screencapture -x` over SSH also failed ("could not create
+  image from display"), same TCC gate.
+- Physical peripherals were the fallback, but `slate` being a USB-C-
+  only Mac mini limited what Hidenori had on hand. A USB-C hub
+  eventually supplied a wireless keyboard/mouse receiver (recognized
+  fine via `ioreg`, and `pmset -g assertions` confirmed real HID
+  tickle events reaching `WindowServer`) and, once connected via the
+  Mac mini's own **native HDMI port** (bypassing the hub's own video
+  path, which wasn't syncing), a real display image.
+- Landed on a **lock screen** (session was locked, not logged out --
+  confirmed background production processes kept running unaffected
+  throughout this entire saga, since locking never stops running
+  processes). The lock screen's own input-source menu ("ABC") only
+  offers language switching, not "Show Keyboard Viewer" -- that
+  accessibility affordance is a login-window-only feature, not present
+  on the simpler lock screen. **Net result: stuck at "Enter Password"
+  with a trackball but no keyboard, and no way to conjure one without
+  either a physical keyboard or a full logout/restart to reach the
+  richer login window.**
+- Hidenori's own keyboard was left at his workplace -- not available
+  until Monday (2026-08-31) at the earliest, or a cheap replacement
+  purchase. **Decided: not worth forcing tonight** -- a restart to
+  reach the full login window would sacrifice `publish_cycle_10`'s
+  rsync progress (no `--partial` flag on that command, confirmed by
+  reading `publish_cycle.py`; a kill mid-transfer discards all
+  progress, not just pauses it) and abandon whatever `aggregation_run_
+  backfill` items were in flight, for a benefit (Screen Sharing/TCC
+  fixed) that isn't actually needed tonight -- see below, the disk
+  migration itself doesn't need GUI access after all.
+
+**The GUI detour turned out to be unnecessary for the actual goal**:
+once the USB-C hub was reconnected (trackball removed) and the new
+disk plugged in, `diskutil list` via plain SSH showed it mounted
+cleanly as `/dev/disk5` -> `disk6` -> APFS volume `pmtiles-store`,
+**with no accessory-permission dialog blocking it at all**, lock screen
+and all. Whatever "allow this accessory" gate exists on this machine
+either doesn't cover storage devices the way it covers Remote
+Management's screen/input access, or was already satisfied by the
+existing `Elements SE SSD`'s own prior approval extending to the same
+USB subsystem. Either way: **the disk mounted, and the actual migration
+work proceeded entirely over SSH, no GUI needed after all.** Screen
+Sharing remains broken and unresolved (stuck on the TCC/SIP wall,
+pending a real keyboard), but this no longer blocks anything tonight.
+
+**Migration plan, two-phase to minimize production downtime**:
+Hidenori's own proposal (simplest form: move `pmtiles-store`'s content
+onto the new disk, then symlink `pmtiles-store` -> `/Volumes/pmtiles-
+store` in `pipelines/`) was adopted, split into two rsync passes so
+`aggregation_run_backfill` doesn't have to stop for the whole multi-
+hour bulk transfer:
+
+- **Phase 1 (production stays running)**: bulk `rsync -av --progress`
+  of the entire current `pmtiles-store` (285G at start) into `/Volumes/
+  pmtiles-store/`, in a detached `screen -S pmtiles_migrate_phase1`
+  session, logging to `/tmp/pmtiles_migrate_phase1.log`. Launched
+  2026-08-29 ~10:33 JST. Confirmed the trailing-slash convention on the
+  *source* path before running (`pmtiles-store/` not `pmtiles-store`)
+  specifically to avoid nesting a redundant `pmtiles-store/pmtiles-
+  store/` on the destination -- checked, not assumed, since Hidenori
+  asked directly. Progress tracked by periodic `du -sh /Volumes/
+  pmtiles-store` readings against elapsed time (local SSD-to-SSD copy,
+  observed ~45-60MB/s, much faster than tonight's stars-bound network
+  rsync): 6.2G at 10:35:51 -> 96G at 11:08:49, ETA re-estimated each
+  check, currently ~1 hour remaining.
+- **Phase 2 (not yet started -- the actual downtime window)**: once
+  Phase 1's bulk copy finishes, (a) gracefully stop `aggregation_run_
+  backfill` (Ctrl-C to the screen session is safe at any point --
+  confirmed by reading `aggregation_run.py`'s `run()` directly: the
+  `.done` marker is written via `os.rename()` as the *last* step, after
+  the real pmtiles output is already safely and atomically written per
+  D45, so an interrupt mid-item can never leave corrupt output, only
+  abandon that one item's in-flight compute and possibly leave an
+  orphaned `tmp-store/{generation}/{item}` scratch folder, harmless and
+  cleanable); (b) run a short final incremental `rsync -av` pass to
+  catch whatever `aggregation_run_backfill` wrote during Phase 1's own
+  multi-hour window; (c) replace the local `pmtiles-store` directory
+  with a symlink to `/Volumes/pmtiles-store`; (d) relaunch
+  `aggregation_run.py` in a fresh screen session -- it will resume via
+  the symlink transparently, picking up remaining `.todo` items.
+
+**Confirmed independent of `publish_cycle_10`'s own rsync**: that
+rsync's source is the already-fully-built local `bundle-store/
+mapterhorn-japan-bridge.pmtiles` (built by `merge_japan_bundles.py`
+well before rsync starts) -- it never touches `pmtiles-store` during
+the transfer, so this entire migration (Phase 1 and Phase 2) has zero
+interaction with the in-flight stars publish. Verified by re-reading
+`publish_cycle.py`'s actual command sequence, not assumed from memory.
+
+**Phase D groundwork (upstream sync), look-only, not executed**:
+`git fetch upstream` on `hfu-mapterhorn` shows 13 commits on `upstream/
+main` since D22's last sync (2026-08-21), through `8eaef05`. Checked
+which touch files this session already modified (`aggregation_run.py`,
+`aggregation_covering.py`, `downsampling_run.py`, `bundle.py`,
+`utils.py`): **two commits directly touch `pipelines/aggregation_run.
+py`** -- `57f8481` ("Update worker, reduce memory usage", #285) and
+`8eaef05` (also touches `utils.py`). Given tonight's own observed load
+average (consistently 6-7) and low free memory pages, an upstream
+worker/memory change to the exact file `aggregation_run_backfill` is
+currently running is worth real attention -- **deliberately deferred
+to a dedicated pass, not attempted mid-migration/mid-backfill tonight**,
+per D22's own established discipline (read commit-by-commit when not
+mid-flight on the same files). Next session: read `57f8481` and
+`8eaef05` in full before deciding whether/how to merge.
+
+**Current state, as of this entry (2026-08-29 11:10 JST)**:
+- `aggregation_run_backfill`: running, ~2600/6,373 done, pace has been
+  volatile between ~270-720 items/hour across recent 15-min windows.
+- `publish_cycle_10`'s rsync to stars: ~118GB/287GB (~39%), ~11MB/s,
+  ETA ~4.5h, unaffected by anything in this entry.
+- `pmtiles_migrate_phase1`: ~96GB/285GB copied, ETA ~1h.
+- Screen Sharing: still not functional (TCC/SIP-gated), no keyboard
+  on hand until Monday 2026-08-31 or a replacement purchase -- **not
+  currently blocking anything**, since the disk migration proceeded
+  entirely over SSH.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` via SSH from
+> `aalto` (`slate-via-spacex`).
+>
+> Read D57 (the aggregation dirty-filter fix + backfill) and this entry
+> (D58, the disk migration) before touching storage or `aggregation_
+> run_backfill`.
+>
+> **Check first**: `screen -ls` on slate for `aggregation_run_backfill`,
+> `publish_cycle_10`, `pmtiles_migrate_phase1` -- which are still
+> running vs. finished? If `pmtiles_migrate_phase1` finished cleanly
+> (compare `du -sh` on the old `pmtiles-store` path and `/Volumes/
+> pmtiles-store` -- should match), **Phase 2 is the next real action**:
+> stop `aggregation_run_backfill` gracefully (Ctrl-C is safe, see
+> above), run the final incremental rsync, symlink-swap, relaunch. Do
+> NOT symlink-swap before confirming Phase 1's `rsync` process has
+> actually exited (check `screen -ls` / `ps aux | grep rsync`), and do
+> NOT skip the final incremental pass -- Phase 1 was deliberately run
+> *while* the backfill kept writing, so new files landed in the OLD
+> path only, mid-copy.
+>
+> If Phase 2 is already done (symlink in place), verify it actually
+> resolves correctly (`ls -la pipelines/pmtiles-store`,
+> `readlink pipelines/pmtiles-store`) before assuming anything about
+> it, and check whether `aggregation_run_backfill` was actually
+> relaunched afterward or is still sitting stopped.
+>
+> Screen Sharing is still broken (TCC/SIP-gated, needs a real physical
+> keyboard at `slate`'s console -- Hidenori's own is at his workplace,
+> expected back 2026-08-31). Not urgent unless a future task genuinely
+> needs GUI access; the disk work itself did not.
+>
+> Phase D (upstream sync) has a concrete next step queued: read
+> `57f8481` and `8eaef05` (both touch `pipelines/aggregation_run.py`,
+> the memory/worker-tuning ones) in full before merging anything.
+>
+> Converse in Japanese, per this repo's own language policy.
