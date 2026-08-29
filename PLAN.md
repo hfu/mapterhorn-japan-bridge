@@ -19,22 +19,37 @@ for the live numbers, don't trust this snapshot once it's stale).
 (`DECISIONS.md` D42)**: our own refresh cadence should be anchored to
 GSI actually shipping new DEM1A data (check
 `https://service.gsi.go.jp/kiban/app/data_update_info/` periodically —
-no fixed schedule is documented anywhere; Japan's 1m tier is
-characterized as still early-stage with unusually large *quarterly*
-updates, and the one real data point on record is a ~1-year gap between
-the 2025-07 and 2026-07 announcements, which is thin evidence, not a
-committed cadence). **Do not wait passively for a signal from
-Mapterhorn's own release cycle** — Oliver's own release trigger is
-demand-aggregated across 130+ terrain sources and he only cuts a
-release when someone actively tells him fresh data is ready. The
-correct posture is: refresh proactively when GSI moves, then tell
-Oliver, and let his own release timing be entirely his call.
+no fixed schedule is documented anywhere). **Update (2026-08-29,
+checked live)**: the earlier note here claiming only a "thin,
+~1-year-gap" data point was itself stale/wrong — a fresh check of the
+update-info page found a real, materializing quarterly-ish cadence:
+1mメッシュDEM(航空レーザ測量)updates on **2025-07-31, 2025-10-31,
+2026-02-27, and 2026-07-31**. That's 3 real updates in the ~13 months
+since the previous note was written, not the single ~1-year gap
+assumed then. **The most recent one (2026-07-31) is now roughly a
+month old and its trigger status against `japan-geotiff-dem`'s own
+ingestion has not been checked from this session** — before treating
+it as a live 2号 trigger, check whether `japan-geotiff-dem`'s own
+pipeline (a separate repo, on `aalto`) already ingested it (memory
+note from that repo mentions a "JCI 2026-09" 1m update cycle completing
+across all 11 zones, which may or may not be the response to this
+same 2026-07-31 GSI update — not verified here, check that repo's own
+`DECISIONS.md`/`HANDOVER.md` directly rather than assuming). **Do not
+wait passively for a signal from Mapterhorn's own release cycle** —
+Oliver's own release trigger is demand-aggregated across 130+ terrain
+sources and he only cuts a release when someone actively tells him
+fresh data is ready. The correct posture is: refresh proactively when
+GSI moves, then tell Oliver, and let his own release timing be
+entirely his call.
 
-**Practical implication**: someone (Hidenori, or a scheduled check)
-needs to periodically watch GSI's update-info page. Not automated as
-of this writing — worth considering for 2号's own scope (a cheap
-periodic check, not a full pipeline trigger) if this becomes a
-recurring cadence rather than a one-off.
+**Practical implication**: given the cadence now looks like roughly
+once per quarter rather than once per year, the periodic-check need is
+more real than the original note assumed. Someone (Hidenori, or a
+scheduled check) needs to periodically watch GSI's update-info page.
+Still not automated as of this writing — worth making this a real
+scheduled check (not just an ad hoc one, as this entry itself was)
+given the now-confirmed quarterly cadence, independent of whether 2号
+itself starts soon.
 
 ## 2. Scope: what actually needs refreshing
 
