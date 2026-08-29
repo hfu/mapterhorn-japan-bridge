@@ -6219,3 +6219,49 @@ mid-flight on the same files). Next session: read `57f8481` and
 > the memory/worker-tuning ones) in full before merging anything.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D59: `publish_cycle_10`のrsyncが56%でネットワーク瞬断によりクラッシュ(`--partial`を追加して再送信)、`pmtiles-store`の新ディスク移行Phase 2(生産のgraceful stop→差分取り込み→シンボリックリンク切替→再起動)を完了
+
+**Status**: Recorded, 2026-08-29 13:25 JST。
+
+**Phase 1完了(前提)**: D58で開始した`pmtiles-store`→新APFSディスク(`/Volumes/pmtiles-store`)への一括コピーは12:24 JSTに正常終了(`sent 306503176268 bytes ... speedup is 1.00`、エラーなし)。
+
+**publish_cycle_10のクラッシュ**: Phase 1完了後の監視中、`publish_cycle_10`のscreenセッションが12:30頃に消失していたことに気づき調査。ログ(`publish_cycle_10.log`)を確認したところ、stars向けrsyncが56%(174GB/307.9GB)まで転送した時点で
+
+```
+Read from remote host stars.local: No route to host
+client_loop: send disconnect: Broken pipe
+rsync: [sender] write error: Broken pipe (32)
+rsync error: unexplained error (code 255) at io.c(949) [sender=3.5.0]
+```
+
+で異常終了していた。`stars.local`へのping/ssh到達性を再確認したところ、その時点では正常に復旧しており、一時的なネットワーク瞬断だったと判断(コード側のバグではない)。
+
+**影響**: `publish_cycle.py`はrsync開始前にstars側の旧ファイルを削除する設計(D51)のため、クラッシュ後は**stars上に`mapterhorn-japan-bridge.pmtiles`が存在しない状態**が継続していた(他の公開ファイル群は無事)。ローカルの`bundle-store/mapterhorn-japan-bridge.pmtiles`(307.9GB、08:18 JSTビルド完了済み)はそのまま残っていたため、downsampling→bundle→mergeを含む数時間規模のフルサイクル再実行は不要と判断。
+
+**修正**(`hfu-mapterhorn` `a81478b`): `publish_cycle.py`のstars向けrsyncコマンドに`--partial`を追加。従来は中断されると転送済み分が完全に破棄され0%からやり直しになる設計(既に把握していたリスクだったが、今回のインシデントで実際に顕在化)。`--partial`により、次回以降の同種の瞬断ではrsync自身の差分転送で再開できるようになる。
+
+**復旧**: ビルド済みファイルをそのまま`rsync -av --partial --progress`でstarsへ再送信(screenセッション`publish_retry_rsync`)。転送は最初から(0%)開始(今回のクラッシュ自体は`--partial`適用前だったため、送信先に再開可能な部分ファイルが残っていなかった)。13:25時点で約2%、約11MB/sで安定進行中、ETA約7時間強。
+
+**Phase 2(`pmtiles-store`ディスク移行の仕上げ)実行**、Hidenoriの明示的な承認(「どちらも実行して良い」)を得て実施:
+
+1. `aggregation_run_backfill`のscreenセッションへSIGINT送信 → `aggregation_run.py`が`KeyboardInterrupt`で正常終了したことをログのトレースバックで確認(D45設計通り、途中の実データ破損なし)。screenセッション自体もシェルごと終了して消滅。
+2. Phase 1完了後に新規追加された差分を`rsync -av --progress pmtiles-store/ /Volumes/pmtiles-store/`で最終取り込み(3.25GB追加転送、正常終了、`speedup is 93.99`)。
+3. `pipelines/pmtiles-store`を`pmtiles-store.old-internal-disk`にリネーム(即削除はせず安全のため一時保持)、`/Volumes/pmtiles-store`へのシンボリックリンクとして`pmtiles-store`を新規作成。
+4. `aggregation_run.py`を新しいscreenセッション(`aggregation_run_backfill`)で再起動。正常に4ワーカーで再開し、シンボリックリンク経由で新ディスクへの書き込みが実際に進んでいることを`.done`カウントの増加(3753→3857)で確認。
+
+**現状(このエントリ時点)**:
+- `pmtiles-store`は新ディスク(`/Volumes/pmtiles-store`, APFS, 1.5Ti空き)上で稼働中。旧内蔵ディスク側のコピー(`pmtiles-store.old-internal-disk`, 約284GB)は安全確認のため一時的に残置 — 数日程度の安定稼働を見てから削除しMigrate-2025-04の空き容量(現在397Gi)に還元する判断を別途行う。
+- `publish_retry_rsync`が進行中(starsへの再送信、ETA約7時間)。
+- `aggregation_run_backfill`が新ディスク経由で正常に再開、進捗継続中。
+
+### Resume prompt
+
+> `mapterhorn-japan-bridge`/`hfu/mapterhorn`再開時、まずこのD59とD58を読むこと。
+>
+> **確認すべき状態**:
+> - `publish_retry_rsync`(screen)が完走したか、stars上に`mapterhorn-japan-bridge.pmtiles`が復活しているか(`ssh stars@stars.local ls -la /home/stars/data/mapterhorn-japan-bridge.pmtiles`)。完走していなければ`--partial`が効いて再開されているはずなので、クラッシュしていた場合はログを見て要因を判断。
+> - `aggregation_run_backfill`が新ディスク(`/Volumes/pmtiles-store`)経由で問題なく進捗しているか、新ディスクの空き容量(元々1.5Ti超)。
+> - `pmtiles-store.old-internal-disk`(旧内蔵ディスク上の退避コピー、約284GB)をまだ削除していなければ、安定稼働が数日続いたことを確認してから削除しストレージを回収する判断をすること — Hidenori未確認のまま一存で削除しない。
+>
+> Screen Sharing(TCC/SIP起因の未解決問題、D58参照)は今回のディスク移行そのものには一切不要だったため、これ以上急ぐ理由はない。
