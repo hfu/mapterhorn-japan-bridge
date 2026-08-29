@@ -6329,3 +6329,28 @@ rsync error: unexplained error (code 255) at io.c(949) [sender=3.5.0]
 ### Resume prompt
 
 > D62はPhase C2(cadence再検証)の実測記録。号2を検討する際は、(1) downsampling_run.pyの実測1.5秒はD57 backfill前の非代表値である点、(2) cron/launchdが今も未設定である点、の2つを踏まえること。
+
+## D63: Phase D -- upstream `mapterhorn/mapterhorn`の`aggregation_run.py`関連2コミットを読了。単純マージ不可と判断(分散ワーカー化+D22が否定したLERC採用が同梱されているため)
+
+**Status**: Recorded, 2026-08-29 14:20 JST。D22以来の同期規律(コミット単位で読み、fork固有ロジックとの衝突可能性があるものは慎重に読む)に従い、`aggregation_run.py`に触れる2コミットを読了。**マージは実施していない、読解のみ**。
+
+**`git fetch upstream`時点で13コミット遅れ**(前回D22の同期、2026-08-21以降)。うち`aggregation_run.py`に触れるのは以下の2件。
+
+**`57f8481`「Update worker, reduce memory usage」(#285, 2026-08-12)**: 見た目のコミット名に反し、実態は**分散ワーカー化への大きなアーキテクチャ変更**。
+- `aggregation_run.py`の`run()`が、実処理の前に`tmp-store/queue/{filename}`へジョブを書き出し、別プロセス(新設の`downloader.py`)が`tmp-store/ready/{filename}`を作るまで`while`ループでポーリング待機する設計に変更されている。**この`ready`ファイルを作る主体(downloader)が存在しない限り、この版の`aggregation_run.py`はこのfork環境では永久に待機してハングする** -- `source-store`から直接読む今のfork構成とは根本的に非互換。
+- `aggregation_reproject.py`の入力ファイルリストも`source-store/{source}/{filename}`から`tmp-store/source/{source}/{filename}`に変更 -- 上記downloaderが事前にステージングする前提の変更で、単独では動かない。
+- **`aggregation_merge.py`と`aggregation_reproject.py`の両方でLERC圧縮を新規採用**(`compress='LERC', max_z_error=0.001`)。**これはD22がこのfork自身で実測・却下した変更と正面から矛盾する**: D22は同じ「短命で繰り返しウィンドウ読み込みされる集約中間ファイル」に対してLERCを試し、`aggregation_merge.py`自身の再読み込みパターンのせいで15〜35倍遅くなることを確認して却下している。Oliver側の環境・ワークロードが違う(あるいは前述のdownloader分散構成で読み込みパターン自体が変わった)可能性はあるが、**このfork向けに無条件採用すると同じ退行を再現する危険が高い**。
+- 一方で`gdal_translate`のメモリ設定変更(`GDAL_CACHEMAX=64 GDAL_NUM_THREADS=1 --config GDAL_MAX_DATASET_POOL_SIZE 1`、旧`GDAL_CACHEMAX=512`)は、コミット名通りの純粋なメモリ削減策で、**分散ワーカー化ともLERCとも独立して評価可能**。`slate`(16GBのM4 Mac mini)はこのセッション中もmemory free pageが低い水準で推移しており、これ単体は将来ベンチマークする価値がありそうだが、今夜は未検証。
+- `create_virtual_raster`への`heterogeneous projection`検出例外は、小さく独立した防御的修正で、そのまま採用しても副作用はなさそうに見える(未検証)。
+
+**`8eaef05`「Minor pipeline changes」(#303, 2026-08-26)**: 前コミットの延長線上の変更。
+- ログメッセージの体裁変更(`item`をprefixに含めるよう統一)のみで実質的な挙動変化なし。
+- `.done`マーカーの付け方が`os.rename(f'{filepath}.todo', f'{filepath}.done')`から`with open(f'{filepath}.done', 'w') as f: f.write('')`(`.todo`を消さない単純な新規作成)に変更されている -- upstream側は「`.todo`は残ったままでよい」という設計に舵を切ったように見え、このfork自身がD57で発見した「`.todo`が消えないと再実行のたびに全件再チェックされる」問題と同じ形。**このfork自身の直近の教訓(D57)と矛盾する方向の変更**であり、採用しない。
+- `aggregation_merge.py`からdtype変換の安全策(`output_tile.astype(dst_dtype)`)が削除されている -- 理由不明、正しさへの影響が読めないため、これも単独では採用しない。
+- `utils.py`の`save_terrarium_tile()`に`np.seterr(all='raise', under='ignore')`(アンダーフローを例外にしない)を追加 -- 小さく独立した防御的修正、副作用なさそうに見える。
+
+**結論・今夜の対応**: **この2コミットはマージしない**。採用するとしても、(a) `heterogeneous projection`例外、(b) `np.seterr(under='ignore')`、(c) 未検証だがGDALメモリ設定、の3点だけを個別に手動移植する形が現実的で、queue/ready分散ワーカー化とLERC採用は、このforkの現在のアーキテクチャ(単一マシン、`source-store`直接読み込み)とは別物として扱うべき。号2設計時に、upstream側が分散ワーカー方向に進化していること自体は認識しておく価値がある(将来複数マシンでの並列処理を検討する際の参考実装になりうる)。
+
+### Resume prompt
+
+> Phase D再開時、`57f8481`/`8eaef05`は読了済み・マージ未実施。安全に個別採用できそうなのは3点のみ(D63本文参照)、それ以外(queue/ready分散ワーカー化、LERC採用、`.done`マーカー方式の変更、dtype変換削除)はこのforkの設計・過去の実測結果(D22, D45, D57)と衝突するため、採用するなら個別に再検証してから。`git fetch upstream`はまだ13コミット遅れの残り11件が未読(`aggregation_run.py`以外のファイルのみ触れるもの)。
