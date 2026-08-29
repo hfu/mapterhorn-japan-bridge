@@ -6415,3 +6415,23 @@ D59のクラッシュ後に開始した`publish_retry_rsync`が完走。starsに
 Martin(`http://localhost:3000/catalog`、stars上で稼働中)のカタログに`mapterhorn-japan-bridge`が既に反映されていることを確認 -- config.yamlに個別記載がないことから、ディレクトリスキャン方式で自動検出されたとみられ、追加の再起動は不要だった。
 
 **これでaggregation(D66)とstars公開(D67)の両方が完了し、1号の現在の到達点が揃った。** 次はdownsampling_covering→downsampling_run→bundle→merge→publish_cycleのフルパスと`check_pmtiles_integrity.py`による最終検証(D57のresume prompt通り)。
+
+## D68: `check_pmtiles_integrity.py`をpublish_cycle_11のローカル成果物(`bundle-store/mapterhorn-japan-bridge.pmtiles`)に対して実行 -- D50基準(413,925孤立タイル)から55.6%改善、183,847件まで減少
+
+**Status**: Recorded, 2026-08-30 05:07 JST。stars向けrsync進行中(D67のスコープ外、cycle_11自身の本番rsync)と並行して、ローカルにある完成済みマージ出力に対して整合性チェックを実施(directory-onlyの軽量な走査のみ、実タイルデータは読まないため12秒で完了、rsyncと競合しない)。
+
+**結果**:
+```
+total tiles: 2,507,680
+orphaned tiles (親タイル不在): 183,847 (11ズームレベル)
+  z4:1 z6:8 z7:10 z8:20 z9:46 z10:118 z11:3,149
+  z12:43,843 z13:4,684 z14:1,920 z16:130,048
+```
+
+**D50基準(413,925件)から230,078件減少、55.6%の改善**。aggregation backfill(D57)の完走とdownsampling_run.pyのフルパス実行(D66/publish_cycle_11)の効果が直接反映された結果。
+
+**残存する183,847件の内訳**: z16(ネイティブ最細ズーム)が130,048件(71%)、次いでz12が43,843件で大半を占める。ログ上でも`0-0-0-0`/`1-1-0-1`/`2-3-1-2`など複数の粗いグローバルタイルが今回のdownsampling実行で"children not all ready, skipping"となっており、この残存分と符合する。ゼロにはなっていないが、根本原因(D45のrace/D57のdirty-filter)は既に修正済みであり、残りは「まだ全ての依存関係が揃っていない」ことによる一時的な未整備であって、恒久的なバグではないとみられる。次のpublish_cycleでさらに減る可能性が高い。深堀りした根本原因分析はまだ行っていない -- 必要なら個別に追跡する。
+
+### Resume prompt
+
+> `check_pmtiles_integrity.py`の結果: 183,847孤立タイル(D50の413,925から55.6%改善)。z16/z12に集中。次回のpublish_cycleで再チェックし、傾向が減り続けているか確認すること。ゼロを目指すなら、残存する孤立タイルの具体的な位置(z16の130,048件)を個別にaggregation/downsamplingの状態と突き合わせる追加調査が必要。
