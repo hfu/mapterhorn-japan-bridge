@@ -90,17 +90,36 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
 
 - **D41's storage-tiering split** (`source-store`/`bundle-store` →
   slow storage, `tmp-store` → fast internal disk): Hidenori was
-  procuring slow-storage hardware as of D41. If it's landed by the
-  time 2号 starts, this is the natural moment to migrate — a fresh
-  generation with no in-flight aggregation to disturb is a much safer
-  window than doing it mid-burn. If it hasn't landed, 2号 can still
-  start on the current single-volume setup; this isn't a hard blocker.
-- **D37's `downsampling_covering.py` preflight gap**: still not
-  automated into `publish_cycle.py` as of this writing — every new
-  generation needs someone to remember to run it by hand once before
-  the first publish cycle, or downsampling silently produces nothing
-  forever (D37's own finding). **Fix this before 2号's first publish
-  cycle**, not after rediscovering the same gap again.
+  procuring slow-storage hardware as of D41. **Update (2026-08-29)**:
+  a same-model second disk has actually been located; Hidenori is
+  deciding whether it goes to this project or to a different one
+  (`kaga0`) first. If/when it's attached to `slate`, migrate at a
+  natural pause point — **not while `aggregation_run_backfill` (D57)
+  is actively writing to `pmtiles-store`**, same "don't restructure
+  storage a live process is writing to" discipline as D45's own
+  "don't edit code a live process has already loaded." Investigate and
+  design the symlink layout ahead of time so the actual cutover is a
+  short, well-rehearsed *graceful* stop-and-move, not an open-ended
+  live migration.
+- **D37's `downsampling_covering.py` preflight gap**: **fixed
+  2026-08-29 (D56)** — now runs automatically as part of `publish_
+  cycle.py`'s own preflight, idempotently, every cycle. No longer a
+  2号-specific concern; carries forward automatically.
+- **D57's dirty-tracking trade-off, a real open design question for
+  2号**: `aggregation_covering.py`'s own cross-generation "skip if
+  unchanged from last generation" optimization was removed entirely
+  (2026-08-29, D57) after being found to silently skip positions the
+  *previous* generation itself never finished building — 2,343 native
+  positions across 1号 were never built at all as a result, discovered
+  and backfilled that same session. The fix that's live now makes
+  every generation reprocess everything from zero, sacrificing the
+  real efficiency D42's own estimate implies 2号 could have used
+  (~2/3 of positions expected unchanged between real GSI update
+  cycles). **Before 2号 starts**, decide whether to accept full
+  reprocessing (simpler, safe, but potentially very slow at 2号's own
+  scale) or design a safer version of dirty-tracking that also
+  verifies the referenced `pmtiles-store` output actually exists
+  before trusting "unchanged" as a skip signal — not decided yet.
 - **D37/D44's `bundle.py` pmtiles-store race, now fixed** (`hfu-
   mapterhorn` `8b4a50c`): 1号 hit this 3 times out of 8 publish
   cycles (37.5% — see D44's full audit). `bundle.py` now catches the
