@@ -89,18 +89,45 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
 ## 4. Infrastructure prerequisites
 
 - **D41's storage-tiering split** (`source-store`/`bundle-store` →
-  slow storage, `tmp-store` → fast internal disk): Hidenori was
-  procuring slow-storage hardware as of D41. **Update (2026-08-29)**:
-  a same-model second disk has actually been located; Hidenori is
-  deciding whether it goes to this project or to a different one
-  (`kaga0`) first. If/when it's attached to `slate`, migrate at a
-  natural pause point — **not while `aggregation_run_backfill` (D57)
-  is actively writing to `pmtiles-store`**, same "don't restructure
-  storage a live process is writing to" discipline as D45's own
-  "don't edit code a live process has already loaded." Investigate and
-  design the symlink layout ahead of time so the actual cutover is a
-  short, well-rehearsed *graceful* stop-and-move, not an open-ended
-  live migration.
+  slow storage, `tmp-store` → fast internal disk): **Update
+  (2026-08-29, D58/D59/D60)**: the same-model second disk went to this
+  project, not `kaga0`. `pmtiles-store` itself (not `tmp-store`, which
+  D41 originally targeted) has been fully migrated to it, formatted
+  APFS, mounted at `/Volumes/pmtiles-store`, symlinked in from
+  `pipelines/pmtiles-store` — done via a graceful two-phase migration
+  (bulk copy while production kept running, then a short stop-and-
+  swap: SIGINT to `aggregation_run_backfill`, final incremental
+  rsync, symlink swap, relaunch). The old in-place copy
+  (`pipelines/pmtiles-store.old-internal-disk`, ~284GB, on the old
+  disk) is deliberately still present as a safety net as of this
+  writing — **not yet deleted, don't forget it** — delete only after
+  confirming the new disk has run stably for a while, reclaiming disk4
+  headroom (397Gi free at time of writing) once done.
+  - **`tmp-store` itself has NOT moved yet, and D41's original idea of
+    sending it to the internal SSD should probably be reconsidered**:
+    D60 measured real iostat access patterns after the pmtiles-store
+    move and found the OLD disk (`disk4`/`Migrate-2025-04`, hosting
+    `source-store`, `tmp-store`, `bundle-store`, `aggregation-store`,
+    and the code itself) still sustains 200-1,400 tps / 12-30MB/s
+    continuously, while the NEW disk (`disk5`/`pmtiles-store`) sits
+    essentially idle (0-2 tps) except brief per-item completion
+    spikes. Checked the internal SSD's own headroom at the same time:
+    only **~77Gi free** (`/dev/disk3s1s1`, shared with macOS itself) —
+    too thin and too shared to be a comfortable target. `tmp-store`'s
+    actual footprint is tiny and self-cleaning (measured 4.1GB in use
+    at the time, 8 leftover per-item scratch folders from prior
+    graceful stops, harmless per D45) despite being the dominant
+    *I/O* consumer on disk4 (aggregation's own reproject/merge/tile
+    scratch work). **The new external disk (`/Volumes/pmtiles-store`)
+    -- not the internal SSD -- now looks like the better `tmp-store`
+    target**: ample free space (1.5Ti), essentially zero current I/O
+    to contend with, and moving `tmp-store` off disk4 would separate
+    aggregation's write-heavy scratch churn from `source-store`'s own
+    342GB of read traffic, which currently share the same physical
+    queue. Not yet decided or executed — flagged here for a real
+    decision, and would be a much smaller/faster migration than
+    `pmtiles-store`'s own 285GB move (tmp-store's real footprint is
+    single-digit GB).
 - **D37's `downsampling_covering.py` preflight gap**: **fixed
   2026-08-29 (D56)** — now runs automatically as part of `publish_
   cycle.py`'s own preflight, idempotently, every cycle. No longer a
