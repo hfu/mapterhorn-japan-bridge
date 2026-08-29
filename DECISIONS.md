@@ -6463,3 +6463,23 @@ newest stale marker: 2026-08-29 08:48:18
 ### Resume prompt
 
 > D69で1,265件のstale downsampling `.done`マーカーを削除・`downsampling_run.py`を再実行中(`downsampling_repair`スクリーン)。完了後、`check_downsampling_readiness.py`で not-ready の数がどれだけ減ったか再確認すること。さらに次回のpublish_cycleで`check_pmtiles_integrity.py`のorphan数(D68: 183,847)がどれだけ減るかも追跡すること。
+
+## D70: downsampling完全収束を確認 -- strict修復のみで8,340/8,340完了、非strict仕上げパスは変更なし(何もすることがなかった)
+
+**Status**: Recorded, 2026-08-30 08:05 JST。D69で合意した「更新版プラン」(stale marker修復 → 新規stale再チェック → readiness収束確認 → 非strict仕上げ → 整合性再検証)を実行。
+
+**手順1 -- `downsampling_repair`(strict、1,265件の再構築)完走**: 05:47開始、08:03完了(約2時間16分)。screenセッション正常終了。
+
+**手順2 -- `check_downsampling_done_integrity.py`を再実行(新規stale確認)**: `total .done markers: 8,340 / healthy: 8,340 / stale: 0`。**repair自体が新たなstaleを生んでいないことを確認**(D69で懸念していたリスクは顕在化しなかった)。
+
+**手順3 -- `check_downsampling_readiness.py`で収束確認**: `already .done: 8,340 / ready, not yet run: 0 / not ready: 0`。**全8,340件の候補downsamplingアイテムが実際に完成しており、依存関係で詰まっているものは1件も残っていない。**
+
+**手順4 -- 非strict仕上げパスを実行**: 全件が既に`.done`のため即座に終了、変更なし。当初懸念していた「本当に永久に埋まらない穴(海など)」は、downsampling候補の中には実質存在しなかった、あるいは今回のstale marker修復だけで全て解消したことになる。
+
+**手順5 -- 整合性の再検証は次回publish_cycle待ち**: 現在stars向けに転送中のローカルビルド(`bundle-store/mapterhorn-japan-bridge.pmtiles`)は、この一連の修復より**前**に作られたものであり、今回の改善を反映していない。D68の183,847孤立タイルがどこまで減ったかは、次回のpublish_cycle(bundle+merge+`check_pmtiles_integrity.py`の再実行)で初めて確認できる。
+
+**結論**: `aggregation_covering.py`/`downsampling_run.py`双方の設計上到達可能な範囲では、1号のdownsamplingピラミッドは完全に収束した。残る不確実性は、check_pmtiles_integrity.pyが検出する範囲外の項目(親子整合性チェックの対象にすらならない、真にカバレッジがない領域)のみで、これはバグではなくデータの実際の範囲を反映するものと考えられる。
+
+### Resume prompt
+
+> downsamplingは8,340/8,340で完全収束(D70)。次のpublish_cycleで`check_pmtiles_integrity.py`を再実行し、D68の183,847孤立タイルからどれだけ改善したかを確認すること。大幅に減っていれば(理想はゼロに近づいていれば)、1号の「タイル抜けなし」達成が実証される。
