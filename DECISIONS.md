@@ -6279,3 +6279,25 @@ rsync error: unexplained error (code 255) at io.c(949) [sender=3.5.0]
 **新ディスク(disk5)には十分な余力がある**ため、新ディスクがボトルネックになる懸念は当面ない。逆にdisk4の負荷が今後の律速要因になる可能性がある場合、PLAN.mdのD41節が元々提案していた「`tmp-store`を高速な内蔵ディスクへ」という、まだ未実施の最適化が実際の候補として残っている(今回は着手せず、実測結果の記録のみ)。
 
 **Hidenoriへの継続的な注意事項**: `pmtiles-store.old-internal-disk`(disk4上、約284GBの退避コピー)は安定稼働確認後に削除してdisk4の空き容量を回収する予定 -- まだ削除していない。D59のResume promptと合わせてこの2点(退避コピーの削除判断、disk4の実I/O集中)を次回セッションで必ず確認すること。
+
+## D61: `tmp-store`を新ディスク(`/Volumes/pmtiles-store`)へ移設 -- D60の実測に基づく判断、graceful stop→移動→シンボリックリンク化→再起動で完了
+
+**Status**: Recorded, 2026-08-29 13:47 JST。D60の実測(disk4が持続的に200〜1,400 tps/12〜30MB/s、disk5がほぼアイドル)を踏まえたHidenoriの依頼で実施。
+
+**判断根拠**: PLAN.mdのD41は当初`tmp-store`の移設先として内蔵SSDを想定していたが、内蔵ディスクの空きは実測約77Gi(macOS自体と共有)のみで狭すぎると判断。一方`tmp-store`自体の実フットプリントは小さく(移設直前の実測で5.6GB、進行中アイテムのスクラッチのみで自己クリーニングされる)、`pmtiles-store`本体の285GB移行とは規模が全く違う。新ディスク(`/Volumes/pmtiles-store`)は空き1.5Ti・I/Oほぼゼロで、`source-store`(342GB、読み込み専用でdisk4に残置)の読み込みトラフィックと競合していた`tmp-store`のスクラッチ読み書きを分離するのに適任と判断。
+
+**実施手順**(D59のPhase 2と同じ型):
+1. `aggregation_run_backfill`のメインプロセスへ`kill -INT`で直接SIGINT送信(前回screenの`stuff`経由での送信が一度反応しなかった経験を踏まえ、今回は直接PIDへ送信 — 即座に`KeyboardInterrupt`で正常終了、screenセッションもシェルごと終了して消滅したことを確認)。
+2. `mv tmp-store /Volumes/pmtiles-store/tmp-store`(5.6GB、異なるボリューム間のためコピー+削除だが、規模が小さく数秒で完了)。
+3. `ln -s /Volumes/pmtiles-store/tmp-store tmp-store`でシンボリックリンク化。
+4. `aggregation_run.py`を新しいscreenセッション(`aggregation_run_backfill`)で再起動、4ワーカーで正常再開を確認。
+
+**効果を実測で確認**(`iostat -d -c 5 -w 3 disk4 disk5`、再起動直後):disk5に実際に23〜57 tps/6〜7MB/sの持続的なI/Oが乗るようになった(移設前はほぼ0)。disk4は引き続き200〜270 tps程度(`source-store`の読み込みと`aggregation-store`/コード分)で稼働しているが、`tmp-store`分の書き込み競合が分離された形。
+
+**現状**: `pipelines/tmp-store`は`/Volumes/pmtiles-store/tmp-store`へのシンボリックリンク。旧内蔵ディスク上に`tmp-store`の残置コピーは作っていない(`mv`のため、移動元は既に存在しない -- `pmtiles-store`移行時のような`.old-internal-disk`退避コピーは今回は無し、regenerateされる性質のディレクトリなので不要と判断)。`pmtiles-store.old-internal-disk`(D59由来、約284GB)は引き続き削除せず残置中 -- 変わらず要注意。
+
+### Resume prompt
+
+> D61で`tmp-store`も新ディスク(`/Volumes/pmtiles-store/tmp-store`)へのシンボリックリンクに切り替わっている。`pipelines/tmp-store`が通常のディレクトリに戻っていたら何か巻き戻っている(要調査)。
+>
+> `pmtiles-store.old-internal-disk`(D59、旧ディスク上、約284GB)は依然未削除 -- D59/D60/D61を通じて繰り返し記録している通り、安定稼働を確認してから削除しストレージを回収する判断がまだ残っている。
