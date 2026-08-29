@@ -8,10 +8,17 @@ document until 2号 actually kicks off, at which point its outcomes
 belong in `DECISIONS.md` as usual.
 
 Started 2026-08-25, while 1号 (`01M0MWK852631SHCHPA66F21WQ`, the first
-full national generation) is still finishing its own aggregation run
-(840/1,979 done at time of writing, ETA late 2026-08-27 to early
-2026-08-28 at current pace — see `DECISIONS.md`'s own recent entries
-for the live numbers, don't trust this snapshot once it's stale).
+full national generation) was still finishing its own aggregation run.
+**Update (2026-08-30)**: aggregation is now 100% complete (6,373/6,373,
+D66) and the downsampling pyramid has fully converged (8,340/8,340
+done, 0 not-ready, D69/D70 — see those entries for the stale-`.done`-
+marker bug found and fixed along the way). The only remaining step for
+1号's own mission-complete milestone is running one more full
+`publish_cycle` (bundle→merge→rsync) against this now-converged
+`pmtiles-store` and re-checking `check_pmtiles_integrity.py`'s orphan
+count against D68's 183,847 baseline — see `DECISIONS.md`'s own recent
+entries for the live status, don't trust this snapshot once it's
+stale.
 
 ## 1. What triggers 2号
 
@@ -150,10 +157,27 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
     section 1 — most recently 2026-07-31, next expected roughly
     end of October 2026), so there's a real dormant gap where nothing
     needs disk5 attached at all.
-  - **Detach procedure (planned, not yet executed — run only once 1号
-    is fully verified complete: aggregation backfill 6,373/6,373,
-    downsampling done, a publish cycle succeeds end to end, and
-    `check_pmtiles_integrity.py` comes back clean)**:
+  - **Detach procedure (planned, not yet executed)**. Preconditions,
+    updated 2026-08-30: aggregation backfill 6,373/6,373 — **done**
+    (D66); downsampling pyramid fully converged, 8,340/8,340 done, 0
+    not-ready — **done** (D69/D70, after finding and fixing 1,265
+    stale `.done` markers created by today's backfill renaming
+    pmtiles-store files out from under already-marked-done downsampling
+    items — same bug class as D53, formalized tool reused, not a new
+    one); a publish cycle succeeding end to end reading `pmtiles-store`
+    via the new disk — **already demonstrated once** by `publish_cycle_11`
+    (still mid-rsync as of this update, but its own bundle+merge stages
+    already completed reading from `/Volumes/pmtiles-store` without
+    errors, which is the actual thing this precondition cared about).
+    **Only remaining precondition**: run one more full `publish_cycle`
+    against the now-fully-converged `pmtiles-store` (downsampling_
+    covering/run will be near-instant since already converged; the real
+    time cost is bundle+merge+rsync again) and confirm
+    `check_pmtiles_integrity.py`'s orphan count has dropped from D68's
+    183,847 baseline (ideally substantially, though zero isn't
+    necessarily the right target — see D68/D70 on genuine no-data
+    zones vs. real gaps). Once that lands clean, this detach procedure
+    itself is unblocked:
     1. Confirm nothing is still writing to `pmtiles-store`/`tmp-store`
        (`aggregation_run.py` etc. all stopped/finished).
     2. Delete `pipelines/pmtiles-store.old-internal-disk` first (frees
@@ -203,6 +227,17 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
   scale) or design a safer version of dirty-tracking that also
   verifies the referenced `pmtiles-store` output actually exists
   before trusting "unchanged" as a skip signal — not decided yet.
+  **New supporting evidence (2026-08-30, D69)**: found 1,265 real,
+  live instances of exactly the failure mode this design question
+  worries about — `aggregation_run.py` renaming a `pmtiles-store`
+  file (maxzoom suffix changes on reprocessing) out from under a
+  downsampling item that had already marked itself `.done` against
+  the old filename, leaving a permanently-stale marker no future run
+  would ever retry on its own. This wasn't hypothetical risk; it
+  happened at real scale during 1号's own backfill. Any 2号 dirty-
+  tracking redesign should treat this as the concrete failure case to
+  design against, not just D57's own aggregation-level version of the
+  same pattern.
 - **D37/D44's `bundle.py` pmtiles-store race, now fixed** (`hfu-
   mapterhorn` `8b4a50c`): 1号 hit this 3 times out of 8 publish
   cycles (37.5% — see D44's full audit). `bundle.py` now catches the
