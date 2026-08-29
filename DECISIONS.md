@@ -5750,3 +5750,263 @@ success.
 > of tonight's fixes actually improved the published product.
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## D56: `publish_cycle_10` improvement session -- `downsampling_covering.py` wired into the preflight, dead `.todo` code removed, coarse-zoom I/O fixed with a persistent worker Pool + per-worker Reader cache (verified byte-identical rebuilds)
+
+**Status**: Recorded, 2026-08-29 09:07 JST. While `publish_cycle_10`'s
+rsync (D50/D51's own fixes exercised for the first time end-to-end)
+ran in the background, worked through the improvement backlog Hidenori
+selected from this session's own earlier list, plus items surfaced
+while reading `DECISIONS.md` for still-open threads (D25, D31, D37's
+own "next fix" note).
+
+**A1 -- `downsampling_covering.py` wired into `publish_cycle.py`'s
+preflight** (`hfu-mapterhorn` `5d30424`): D37 (2026-08-23) flagged this
+as the concrete next fix and it was never done -- a new generation
+silently downsamples nothing until someone remembers to run this by
+hand once. `write_downsampling_items()` is a full, idempotent
+regenerate (`rm *-downsampling.csv` first), measured ~13-20s at this
+generation's current scale, so safe to run every cycle. Also dropped
+the call to `write_downlsampling_todos()` in the same script: grepped
+every `.py` file in the repo and confirmed its own `.csv.todo` output
+is never read anywhere (only `aggregation_run.py`'s own, unrelated
+`.csv.todo` mechanism is real) -- the function stays defined, just
+unused, for a future real consumer.
+
+**A2 -- `check_downsampling_done_integrity.py`** (`0923ae0`): formalized
+D53's ad hoc stale-`.done` audit into a real, reusable tool
+(`--dry-run` default, `--fix` to delete). Reuses `utils.get_pmtiles_
+folder()` rather than re-deriving it (an earlier ad hoc version got the
+`z`/`parent_zoom` argument order wrong on first try -- see below, same
+mistake almost repeated in this session's own C1 diagnostic).
+
+**B1 -- coarse-zoom I/O, the actual fix for D44's original flag**
+(`26ab4ac`): `downsampling_run.py`'s `main()` used to create a brand
+new `Pool` (and therefore brand-new worker processes) for every single
+downsampling item -- thousands of process spawns across a run, and it
+meant no cache could ever help across items even though the slow
+segments observed live (D50/D52, 3-4 minutes per item) were dominated
+by the *same* large `pmtiles-store` archive being reopened across
+consecutive-but-separate items. Two changes: (1) one `Pool` for the
+whole `main()` invocation, created once outside the per-item loop --
+`pool.starmap()` exceptions (`ChildPmtilesUnavailable`) still propagate
+without killing the pool, so the existing skip-and-retry handling is
+unchanged; (2) `get_cached_reader()`, a small per-worker-process LRU
+(bounded at 16 open archives) of already-opened pmtiles `Reader`s --
+safe under `spawn` (fresh module state per worker, no cross-process
+sharing) and does not weaken `ChildPmtilesUnavailable`'s own race
+detection, since callers already re-check `os.path.isfile()` fresh
+before every read and this pipeline's filename convention never
+reoccupies a path with different content (D37).
+
+**Verified, not just reasoned about**: cleared 3 real `.done` markers
+(80MB/119MB/234MB outputs), reran them through the new code (a first
+attempt crashed every spawned worker because the *test harness* itself
+wasn't guarded by `if __name__ == '__main__':` -- spawn re-executes a
+script's top-level code in each worker, so the harness's own setup
+assertions fired inside every child; fixed and reran cleanly) -- all 3
+rebuilt byte-identical to the pre-change originals.
+
+**B2 -- checked `bundle.py`'s own `create_archive()` for repeated
+re-reads** (D31's own open question, re-examined): simulated the exact
+tile-id sort against the real largest parent group (`planet`, 2,018
+files, 55,424 tile entries) -- zero files reopened in a non-contiguous
+run. D31's own largest-first scheduling fix already fully addresses the
+practical concern; no code change needed (measured, not assumed, same
+discipline as D24's own "measured, no fix needed" precedent).
+
+**B3 -- `DOWNSAMPLING_WORKERS` tuning -- deliberately deferred**: no
+real "ready, not yet run" backlog exists right now to A/B test worker
+counts against without artificially clearing more real production
+`.done` markers (already did this once for B1's own correctness test;
+repeating it purely for a performance experiment carries more
+operational risk than the marginal tuning insight is worth tonight).
+Revisit once 号2 has a genuine backlog to test against.
+
+**C1 -- sampled D52's "covering gap" more broadly, and found something
+much bigger** (see D57, next entry) -- this is where the session's
+own scope expanded significantly beyond the original 8-item plan.
+
+**Housekeeping**: removed a stray untracked `check_stale_done.py`
+(this session's own first-draft ad hoc script, superseded by A2) and
+several one-off diagnostic scripts used only to produce the
+measurements above (`check_bundle_reread.py`, `check_covering_gaps.py`,
+`check_aggregation_dirty_gap.py`, `test_downsampling_restructure.py`)
+-- none committed, deleted after use, per this session's own
+established practice of not leaving one-off scratch scripts in the
+production tree.
+
+**Current state, as of this entry**: `publish_cycle_10`'s rsync still
+running (D50/D51's fixes both exercised live: rsync pre-delete headroom
+fix worked, D49's progressive merge-input deletion confirmed working
+live -- `bundle-store` dropped from 23 regional files to 1 during
+`merge_japan_bundles.py`, disk recovering from a 107Gi dip back to
+~390Gi+ without intervention). See D57 for what happened next.
+
+## D57: `aggregation_covering.py` had the same dirty-filter bug class as D51, with a far larger blast radius -- `aggregation_run_national`'s own "1,979/1,979 done" (D48) was 100% of an undercounted denominator; 2,343 native positions across Japan were never built at all. Fixed and a full backfill launched.
+
+**Status**: Recorded, 2026-08-29 09:07 JST. Found while broadening D52's
+own "covering gap" sample from 1 example to 20, as part of D56's own
+C1 task.
+
+**How it was found**: sampling 20 "referenced-but-missing, and no
+`downsampling.csv` exists for it either" positions (D52's own category)
+to check the genuine-no-coverage-vs-real-bug ratio at scale, 12 of 20
+(60%) turned out to have real native aggregation coverage underneath
+them -- contradicting D52's own tentative "probably mostly legitimate
+gaps" read from its single example. Tracing one concretely
+(`12-3450-1742-12`, an Okinawa/Sakishima-area position): its own native
+`12-3450-1742-12-aggregation.csv` genuinely exists in the current
+national generation's `aggregation-store` -- but has no `.todo`, no
+`.done`, and zero `pmtiles-store` output. **Root cause**: `aggregation_
+covering.py`'s `write_aggregation_todos()` compares the current
+generation's own aggregation.csv content against `aggregation_ids[-2]`
+(the old Kyushu-scope test generation, `01M0FNHYXSAMNVTV430XD3XB5T`)
+via `utils.get_dirty_aggregation_filenames()`, and skips writing a
+`.todo` for any item judged "unchanged" -- on the assumption that
+unchanged content means the position is already correctly built.
+Confirmed directly: this exact position's aggregation.csv *does* exist,
+byte-identically, in the old Kyushu generation too -- so it was judged
+"not dirty" and never queued. **The assumption is false whenever the
+older generation itself never finished that position**: `pmtiles-store`
+is flat, not generation-scoped, so "unchanged since Kyushu" silently
+inherited every one of Kyushu's own incomplete positions forward,
+permanently, into every later generation that ever compared against
+it -- the exact same dirty-filter-against-an-unrelated-baseline pattern
+D51 found and removed from `downsampling_run.py`, independently
+reimplemented here in the aggregation-covering stage with a much larger
+practical impact.
+
+**Quantified on the real 1号 generation, not assumed from one example**
+(`check_aggregation_dirty_gap.py`, one-off, not committed):
+
+```
+total current-generation native aggregation.csv items: 6,373
+dirty (got a .todo, D48's own "1,979" denominator):     1,979
+NOT dirty (never got a .todo, assumed already-built):    4,394 (69%)
+  of those, zero pmtiles-store output at all:            2,343
+```
+
+**This means D48's own "`aggregation_run_national` reaches 1,979/1,979
+-- full national aggregation complete" was 100% correct about its own
+denominator, but that denominator was itself wrong** -- 1,979 was
+already the dirty-filtered (undercounted) subset, not the true national
+total of 6,373. Every entry from D48 through D56 that treated
+aggregation as "done" was building on this same undercount. **2,343
+native positions across Japan -- roughly a third of the true national
+total -- have never been built**, silently assumed-complete by this
+filter rather than genuinely finished.
+
+**Fix, committed** (`hfu-mapterhorn` `3dd734a`): removed the dirty
+comparison from `write_aggregation_todos()` entirely -- it now writes a
+`.todo` for every current-generation aggregation.csv item,
+unconditionally. `aggregation_run.py`'s own `run()` already checks
+`os.path.isfile(f'{filepath}.done')` before doing any real work (D48's
+own established idempotency guard), so writing a redundant `.todo` for
+an already-`.done` item costs nothing beyond a fast no-op skip --
+verified this is the case by reading `aggregation_run.py` directly
+before relying on it, not assumed.
+
+**Deliberate trade-off, flagged for 号2 rather than solved tonight**:
+this fix sacrifices the *original intent* of dirty-tracking as a
+genuine efficiency optimization -- letting a future generation skip
+reprocessing the (per D42's own estimate) roughly two-thirds of
+positions that don't actually change between real GSI update cycles.
+The safe fix applied tonight makes every generation start from zero
+tracking benefit; a more surgical version (skip only if unchanged *and*
+the referenced `pmtiles-store` output is confirmed present) is possible
+but not attempted this session, since 号2 itself is still gated on GSI
+shipping new data and this decision doesn't block 1号's own repair. See
+`PLAN.md`'s own infrastructure-prerequisites section, updated to flag
+this before 号2 designs its own incremental-refresh strategy.
+
+**Regenerated `.todo` markers for the current generation directly**
+(`aggregation_covering.write_aggregation_todos()`, not `main()`, which
+would have created an unwanted new generation): 6,373 total `.todo`
+files now present (redundant ones for the 1,979 already-`.done` items
+are harmless clutter, correctly no-op'd by `run()`).
+
+**Launched `aggregation_run.py` for real** (screen session
+`aggregation_run_backfill`, `AGGREGATION_WORKERS=4`, the existing D38/
+D39-established default), to actually build the 4,394-item backlog.
+Confirmed live, not just launched-and-assumed: `.done` count climbed
+1,979 -> 2,013 within the first minute of observation.
+
+**Storage risk, flagged before launch, per Hidenori's own explicit
+"proceed being mindful of storage/memory limits" instruction**:
+`pmtiles-store` currently holds 287GB for the 1,979 already-built
+items (~145MB/item average). Of the 4,394 backlog items, ~2,051
+already have `pmtiles-store` output (inherited from Kyushu, will be
+overwritten in place at no net storage cost, same self-healing
+mechanism D29/D40 already established) -- but the 2,343 genuinely-empty
+positions represent real net-new growth, extrapolated at roughly
+**~340GB** using the same per-item average, against **~392GB** free at
+launch time. This is a real, not-fully-resolved risk of hitting ENOSPC
+partway through a run expected to take on the order of days (linear
+extrapolation from the original 1,979-item build's own ~140-hour/5.8-
+day wall-clock cost suggests very roughly a week-plus for 4,394 more,
+though per-item cost for these specific never-built positions is
+unverified and could differ). **Mitigation**: the session's own 15-
+minute Monitor loop now includes a disk-free threshold check (warns
+below 100GB) so this can be caught and reacted to before it becomes a
+live incident, rather than discovered after the fact the way D49/D50
+were. No proactive storage-freeing was done before launch (Hidenori's
+own explicit call: start the work that should start, handle storage
+in parallel rather than blocking on it).
+
+**Current state, as of this entry (2026-08-29 09:07 JST)**:
+- `aggregation_run_backfill`: running, 2,013/6,373 `.done` and
+  climbing (34 new completions in the first ~1 minute observed).
+- `publish_cycle_10`'s rsync: still in progress separately (D50/D51's
+  fixes both exercised live and confirmed working), unaffected by the
+  aggregation backfill starting (different stage, no resource
+  contention beyond shared CPU/disk).
+- `pmtiles-store`: 287GB, expected to grow substantially over the
+  backfill's own multi-day run -- disk headroom now the primary
+  watch item via the Monitor's own threshold check.
+- **1号's own "complete" status needs re-framing**: it is not, and
+  was never, actually 100% complete at the native-aggregation level --
+  this entry is the first accurate accounting of the true remaining
+  scope. Downstream stages (downsampling, bundling, the published
+  archive) all inherit this same undercount and will keep improving
+  as the backfill's own output becomes available to them.
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`, via SSH from
+> `aalto` (`slate-via-spacex` -- Cloudflare Access sessions have been
+> timing out periodically this session; `pkill -f "cloudflared access
+> ssh"` then retry if you see "another cloudflared process is already
+> waiting", and ask Hidenori to complete the browser re-auth).
+>
+> Read `DECISIONS.md` D35's closing addendum through D57 in full before
+> touching anything -- D57 is a major correction to the "1号 aggregation
+> is 100% complete" narrative established in D48 and relied on through
+> D49-D56. The true native-aggregation total is 6,373 positions, not
+> 1,979; a dirty-filter bug in `aggregation_covering.py` (same class as
+> D51's `downsampling_run.py` bug, fixed the same way) silently skipped
+> 4,394 of them, 2,343 with zero output ever built.
+>
+> **First**: check `aggregation_run_backfill`'s own progress (`screen
+> -ls`, `.done` count against 6,373) and, critically, **disk free space
+> on `slate`** -- this entry flagged a real risk of running low
+> (~340GB of projected net-new growth against ~392GB free at launch).
+> If free space dropped below a safe margin at any point, check whether
+> the Monitor's own threshold warning fired and what was done about it;
+> don't assume it's fine without checking.
+>
+> **Once the backfill completes**: re-run `downsampling_covering.py`
+> (now automated into `publish_cycle.py`'s own preflight, D56) and a
+> fresh `downsampling_run.py` pass -- the newly-built aggregation
+> positions should unlock real new downsampling progress, particularly
+> at the coarse zooms (z9-z11) that D52 found still mostly empty. Then
+> a full `publish_cycle.py` run and a fresh `check_pmtiles_integrity.py`
+> check against D50's own 413,925-orphan baseline is the real end-to-
+> end verification this entire D50-D57 arc has been building toward.
+>
+> **Flagged, not solved**: the dirty-tracking efficiency trade-off
+> (see this entry's own "deliberate trade-off" section) needs a real
+> decision before 号2 designs its own incremental-refresh strategy --
+> check `PLAN.md`'s own infrastructure-prerequisites section.
+>
+> Converse in Japanese, per this repo's own language policy.
