@@ -6565,3 +6565,22 @@ positions with stale duplicate files: 3,493 (50.1%)
 ### Resume prompt
 
 > D74でpmtiles-store全体の50%の位置にstale child_z重複ファイル(212GB)を発見・削除、bundle_merge_z8plus_v2としてクリーン再実行中。完了後、check_pmtiles_integrity.pyで再検証し、D72の「孤立タイル0件」がこの汚染除去後も維持されているか、また中国・四国沿岸の市松模様が実際に解消されたかを確認すること。なぜcleanupロジックが半数で機能しなかったかの根本原因はまだ未特定——号2設計の参考にすること。
+
+## D75: D74の削除ロジックに欠陥あり -- downsampling層では同一z-x-y位置に複数の正当なchild_zが共存しうることを見落とし、4,396件を誤って過剰削除。check_downsampling_done_integrity.py --fixで修復
+
+**Status**: Recorded, 2026-08-30 23:20 JST。D74の対応として実行したbundle+merge(`bundle_merge_z8plus_v3`)が完走し、総タイル数512,570(cycle_12実績2,568,241から想定を大幅に超えて激減)という異常な結果になったことから発覚。
+
+**根本原因**: D74で書いた「stale判定」スクリプトは、`aggregation-store/{gen}/*-downsampling.csv`のファイル名から`(z,x,y) -> child_z`の対応表を1つずつ構築していたが、**downsampling層では同じ(z,x,y)位置に複数の異なるchild_zを持つcsvが正当に共存しうる**(ズーム遷移ごとに別アイテムとして生成されるため、例: `10-862-435-10-downsampling.csv`と`10-862-435-11-downsampling.csv`が両方とも現行で必要)ことを見落としていた。dict構築時に後から読んだ方で上書きされ、結果として「本来複数必要なうちの1つ」以外を全て「stale」と誤判定・削除してしまった。
+
+**被害範囲の確認**:
+- aggregation層(6,373件)は複数child_z共存ゼロ件 -- **無傷、影響なし**(D74の元々の判定はaggregation層に対しては正しかった)
+- downsampling層は3,991ポジション中2,302件(57.7%)が複数の正当なchild_zを持っており、ここが誤判定の温床だった
+- `check_downsampling_done_integrity.py`で確認したところ、8,340件の`.done`マーカーのうち**4,396件(52.7%)が誤削除によりstale化**していた
+
+**対応**: `check_downsampling_done_integrity.py --fix`で4,396件のstaleマーカーを削除(D53/D69と全く同じ既存ツール・既存手順で対応できた)。`downsampling_run.py`を再実行して再構築中。aggregation層は無傷のため、高コストな再aggregationは一切不要——downsamplingの再構築のみで済む見込み。
+
+**教訓**: 「同じz-x-y位置に複数ファイルがある = 重複・stale」という前提は、生成レイヤー(aggregation)には成り立つが、ダウンサンプリングレイヤー(複数のズーム遷移が同じ座標に落ちうる)には成り立たない。今後同様のクリーンアップを行う際は、レイヤーごとに「1ポジション1ファイル」という前提が実際に成り立つか、対象コードの生成ロジック(`downsampling_covering.py`のループ構造など)を先に確認してから判定基準を作るべきだった。
+
+### Resume prompt
+
+> D75でD74の削除ロジックの欠陥(downsampling層の複数child_z共存を見落とし)を修正中。aggregation層は無傷、downsampling層の4,396件のstaleマーカーを削除し`downsampling_run.py`で再構築中。完了後、`check_downsampling_readiness.py`で0 not-readyを確認してから、改めて`bundle.py`+`merge_japan_bundles.py`を実行し直すこと(bundle_merge_z8plus_v4)。タイル総数がcycle_12実績(2,568,241、z0-7除く分を差し引いた数)に近い値に戻ることを確認するのが成功の目安。
