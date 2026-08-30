@@ -6584,3 +6584,23 @@ positions with stale duplicate files: 3,493 (50.1%)
 ### Resume prompt
 
 > D75でD74の削除ロジックの欠陥(downsampling層の複数child_z共存を見落とし)を修正中。aggregation層は無傷、downsampling層の4,396件のstaleマーカーを削除し`downsampling_run.py`で再構築中。完了後、`check_downsampling_readiness.py`で0 not-readyを確認してから、改めて`bundle.py`+`merge_japan_bundles.py`を実行し直すこと(bundle_merge_z8plus_v4)。タイル総数がcycle_12実績(2,568,241、z0-7除く分を差し引いた数)に近い値に戻ることを確認するのが成功の目安。
+
+## D76: D74/D75のさらなる訂正 -- aggregation層とdownsampling層の座標名前空間の衝突により、3,344件の正当なaggregation出力を誤削除。再aggregationで復旧中
+
+**Status**: Recorded, 2026-08-31 05:15 JST。
+
+**発覚の経緯**: D75でdownsampling再構築が完走した後、`check_downsampling_readiness.py`で203件が「依存する子タイルが見つからない」まま収束しないことが判明。九州修正タイル`10-881-411`がこの203件に含まれていたため深掘りしたところ、`10-881-411-15-downsampling.csv`が参照する`10-881-411-16.pmtiles`(aggregation層の出力、九州修正で今日再生成したばかりのファイル)がpmtiles-store上に存在しないことが分かった。
+
+**根本原因**: D74で書いたstale判定スクリプトは、aggregation層の`(z,x,y)->child_z`とdownsampling層の`(z,x,y)->child_z`を**同一の辞書に統合**していた。aggregation層の座標(例: z=10,x=881,y=411、これは元データの粒度に基づく)と、downsampling層の座標(同じz=10,x=881,y=411だが、これは別のズーム遷移の出力位置としてたまたま同じ数値になっている)が**偶然一致する**ケースがあり、この場合downsampling側のchild_z値でaggregation側のエントリが上書きされてしまっていた。
+
+**被害範囲の確認**: aggregation全6,373件・downsampling全3,991件のうち、座標が衝突する位置は**3,344件**。これらの位置ではaggregation層の正しい出力ファイルが軒並み欠落していることを確認した(3,344件全て)。D74で「aggregation層は無傷」と報告したのは誤りで、実際には全体の52.5%が影響を受けていた。
+
+**対応**: 3,344件の`aggregation-store/*-aggregation.csv.done`マーカーを削除(該当する`.todo`が無いもの1,635件は新規作成)、`aggregation_run.py`(`aggregation_repair_3344`スクリーン)で再aggregation中。既存の九州修正(1件)と全く同じ仕組みで対応可能だったが、規模が3,344倍——九州の1件が約30分かかった実績を踏まえると非常に長時間を要する見込み。
+
+**教訓(D75に続く)**: 複数のデータ生成レイヤーが同じ命名規則(`{z}-{x}-{y}-{child_z}`)を共有している場合、**座標タプルだけでは一意にレイヤーを識別できない**。今回のような横断的なクリーンアップスクリプトを書く際は、必ずレイヤーごとに独立した名前空間で処理し、決して1つの辞書に統合しないこと。今後の号2設計では、pmtiles-storeのファイル名にレイヤー種別(aggregation/downsampling)を明示的に含めるか、別ディレクトリに分離するなど、名前空間衝突自体を構造的に防ぐ設計を検討する価値がある。
+
+**現在の理解**: 元々のD74の発見(pmtiles-store全体の50%の位置に古いchild_z重複ファイルが残存)自体は事実であり、市松模様の説明として今も有力な仮説。しかし対応スクリプトの欠陥により、意図せず大規模な追加ダメージ(3,344件のaggregation出力喪失)を生んでしまった。今は「本来あるべきだった状態」への復旧作業中であり、復旧完了後に初めて、当初の仮説(stale重複ファイルの除去が市松模様を解消するか)を実際に検証できる。
+
+### Resume prompt
+
+> D76で3,344件のaggregation再生成を`aggregation_repair_3344`スクリーンで実行中(非常に長時間かかる見込み)。完了後の手順: (1) downsampling層の再収束確認(`check_downsampling_readiness.py`で0 not-readyになるまで`downsampling_run.py`を繰り返す)、(2) `bundle.py`+`merge_japan_bundles.py`で新しいjapan-z8plus.pmtilesを作成、(3) `pmtiles merge`でglobal-overview.pmtiles(z0-7、Mapterhorn由来)と結合し最終成果物を作る、(4) `check_pmtiles_integrity.py`で孤立タイル0件を確認、(5) 実際に倉橋島・中国四国沿岸の市松模様が解消されたか目視確認する(これが今回一連の作業の本来の検証ゴール)。
