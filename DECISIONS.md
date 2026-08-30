@@ -6541,3 +6541,27 @@ publish_cycle_12(downsampling→bundle→merge→rsync)が19:53:38に完走。st
 ### Resume prompt
 
 > D73でpublish_cycle_12が完走、stars本番反映も完了。1号の「タイル抜けなし」ミッションは実証済み(D72のCLEAN確認+本エントリの転送完了)。PLAN.mdのdisk5デタッチ前提条件は全て満たされているので、Hidenoriが実施を希望すればいつでも着手できる状態。2号は10月末のGSI更新まで着手しない方針(既存合意通り)。
+
+## D74: pmtiles-store全体の50%の位置でstale child_zファイルが未削除のまま残存 -- 212GBの汚染データを発見・削除、市松模様の最有力原因候補
+
+**Status**: Recorded, 2026-08-30 22:50 JST。中国・四国沿岸の市松模様アーティファクト調査の一環として発見。
+
+**発見の経緯**: 倉橋島(呉市付近)のタイル`10-889-408`のpmtiles-store出力を直接調べたところ、同じz-x-y位置に**child_z(最大ズーム)が異なる4つの別々のファイル**(`-13`, `-14`, `-15`, `-16`.pmtiles)が同時に存在していた。`aggregation_tile.py`/`downsampling_run.py`はどちらも「同じz-x-y位置の古いchild_zファイルを削除する」というstale cleanupロジック(`for stale_filepath in glob(f'{out_folder}/{z}-{x}-{y}-*.pmtiles'): if stale_filepath != out_filepath: os.remove(stale_filepath)`)を持っているが、これが機能していない事例。
+
+**規模の確認**: pmtiles-store全体をスキャンした結果:
+```
+total pmtiles-store files: 14,411
+distinct z-x-y positions: 6,972
+positions with stale duplicate files: 3,493 (50.1%)
+```
+現在のaggregation-store/downsampling-storeの`*-aggregation.csv`/`*-downsampling.csv`ファイル名(child_zを含む)を「正解」として突き合わせたところ、**7,440ファイル・212.62GBが不要な古いchild_z違いの重複**と判明。0件が「該当するcsvが一切ない」孤立ファイルだった(=全て「正しいバージョンは別に存在する、古い重複」)。
+
+**影響**: `bundle.py`はpmtiles-store全体を素朴にglobするため、この新旧混在した重複ファイルを全て拾い集めて`bundle-store`にマージしていた。これにより、tile_idの重複や、古い(不完全/別ソース構成だった可能性がある)データが最終成果物に混入していた可能性が高い——中国・四国沿岸の市松模様アーティファクトの最有力な説明。
+
+**対応**: 7,440件・212.62GBを削除。ちょうど並行して実行中だった`bundle_merge_z8plus`(z8+専用の新方式ビルド)はこの汚染データを巻き込んでいたため中断し、削除後にクリーンな状態で`bundle_merge_z8plus_v2`として再実行した。
+
+**未解決**: なぜ半数の位置でstale cleanupロジックが機能しなかったのかは未特定。可能性としては、(a) 複数の異なるスクリプト実行(手動での個別修復や過去の中断されたrun)が、`aggregation_tile.py`本来のクリーンアップパスを経由しない形で新しいchild_zファイルを直接生成した、(b) cleanup自体はaggregation実行時にのみ働き、downsampling側の同名パターンの重複には元々効かない設計だった、等が考えられる。今後の号2設計では、この「stale child_z重複」を定期的に検出・除去する仕組み(今回使ったスクリプトと同じロジック)を`check_downsampling_done_integrity.py`等と並ぶ標準ツールとして正式化する価値がある。
+
+### Resume prompt
+
+> D74でpmtiles-store全体の50%の位置にstale child_z重複ファイル(212GB)を発見・削除、bundle_merge_z8plus_v2としてクリーン再実行中。完了後、check_pmtiles_integrity.pyで再検証し、D72の「孤立タイル0件」がこの汚染除去後も維持されているか、また中国・四国沿岸の市松模様が実際に解消されたかを確認すること。なぜcleanupロジックが半数で機能しなかったかの根本原因はまだ未特定——号2設計の参考にすること。
