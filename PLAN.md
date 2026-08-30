@@ -169,33 +169,34 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
     (still mid-rsync as of this update, but its own bundle+merge stages
     already completed reading from `/Volumes/pmtiles-store` without
     errors, which is the actual thing this precondition cared about).
-    **Only remaining precondition**: run one more full `publish_cycle`
-    against the now-fully-converged `pmtiles-store` (downsampling_
-    covering/run will be near-instant since already converged; the real
-    time cost is bundle+merge+rsync again) and confirm
-    `check_pmtiles_integrity.py`'s orphan count has dropped from D68's
-    183,847 baseline (ideally substantially, though zero isn't
-    necessarily the right target — see D68/D70 on genuine no-data
-    zones vs. real gaps). Once that lands clean, this detach procedure
-    itself is unblocked:
+    **All preconditions now satisfied, 2026-08-30 update**: `publish_cycle_12`
+    ran end to end (downsampling/bundle/merge/rsync) reading `pmtiles-store`
+    via the new disk and completed successfully (D73); its local output
+    was verified with `check_pmtiles_integrity.py` at **zero orphaned
+    tiles (CLEAN)**, down from D68's 183,847 baseline (D72) — a much
+    cleaner result than "substantially dropped," so the detach
+    procedure below is fully unblocked. Mid-cycle, `pipelines/
+    pmtiles-store.old-internal-disk` (284GB) was already deleted (D71,
+    Hidenori's explicit approval) to relieve disk pressure during the
+    cycle's larger-than-usual merge output (311.4GB) — so step 2 below
+    is **already done**, not merely planned. `/Volumes/Migrate-2025-04`
+    currently has 680Gi free.
     1. Confirm nothing is still writing to `pmtiles-store`/`tmp-store`
        (`aggregation_run.py` etc. all stopped/finished).
-    2. Delete `pipelines/pmtiles-store.old-internal-disk` first (frees
-       ~284GB on disk4 — by this point it's a stale snapshot from the
-       Phase 2 cutover moment anyway, fully superseded by the real,
-       complete copy about to be made).
+    2. ~~Delete `pipelines/pmtiles-store.old-internal-disk` first~~ —
+       **done, D71** (284GB already freed on disk4).
     3. `rsync` `/Volumes/pmtiles-store`'s current full contents back
        onto disk4 as a real directory (projected final size ~400-450GB
-       at 6,373/6,373, extrapolated from the 66MB/item average
-       measured at 4,515/6,373 on 2026-08-29 — comfortably fits disk4's
-       ~683Gi headroom once the old snapshot above is freed).
+       at 6,373/6,373 aggregation items, extrapolated from the 66MB/item
+       average measured at 4,515/6,373 on 2026-08-29 — comfortably fits
+       disk4's current 680Gi headroom).
     4. Swap `pipelines/pmtiles-store` from symlink back to the real,
        freshly-copied directory. `tmp-store` needs no data preserved
        (transient, should be empty by completion) — just remove its
        symlink and `mkdir` a fresh empty one on disk4.
     5. Re-run `check_pmtiles_integrity.py` once more against the
        disk4-hosted copy to confirm the copy-back didn't drop or
-       corrupt anything.
+       corrupt anything (expect it to stay CLEAN, matching D72).
     6. Only then `diskutil eject disk5` and physically disconnect.
     Confirmed via `grep` that no pipeline script hardcodes
     `/Volumes/pmtiles-store` anywhere — everything goes through the
