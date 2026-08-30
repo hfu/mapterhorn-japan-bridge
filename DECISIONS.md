@@ -6483,3 +6483,19 @@ newest stale marker: 2026-08-29 08:48:18
 ### Resume prompt
 
 > downsamplingは8,340/8,340で完全収束(D70)。次のpublish_cycleで`check_pmtiles_integrity.py`を再実行し、D68の183,847孤立タイルからどれだけ改善したかを確認すること。大幅に減っていれば(理想はゼロに近づいていれば)、1号の「タイル抜けなし」達成が実証される。
+
+## D71: `pmtiles-store.old-internal-disk`(284GB)を削除 -- publish_cycle_12のmerge中にディスク枯渇リスクが顕在化し、Hidenoriの明示的承認を得て実施
+
+**Status**: Recorded, 2026-08-30 12:10 JST。
+
+**背景**: publish_cycle_12のbundleステージで、D69/D70のdownsampling修復により新規カバレッジ領域が多数見つかり、archive数がcycle_11の7個→21個に増加(生成pmtiles 23ファイル)。これに伴いmerge_japan_bundles.pyの出力(`bundle-store/mapterhorn-japan-bridge.pmtiles`)がcycle_11実績(283GB)を上回るペースで成長し、`/Volumes/Migrate-2025-04`の空き容量が11:50時点で294GB(85%使用)まで低下、マージ完走前のディスク枯渇が現実的リスクとなった。
+
+**対応**: 同じディスク上に存在していた`pipelines/pmtiles-store.old-internal-disk`(disk5移行前の旧内蔵ディスク上pmtiles-storeの安全コピー、実測284GB)を削除。PLAN.mdに記録済みの削除前提条件(「新ディスク経由での読み込み成功実績」)はpublish_cycle_11で既に満たされており、cycle_12進行中でさらに実証されていたため、削除は安全と判断。Hidenoriの明示的な承認(「そうだ、今こそ、pmtiles-store.old-internal-diskを削除しよう。」)を得て実施。
+
+**結果**: `rm -rf`実行、exit code 0。空き容量294GB→554GB(71%使用)に回復。以降merge出力が順調に成長を続けても十分な余裕を確保。
+
+**教訓**: cycle-over-cycleでdownsamplingが収束するほど、bundle/mergeの出力サイズは前回より大きくなる(=ディスク使用量が単調増加とは限らず、むしろ「直る」ことで一時的に急増しうる)という点は、今後のディスク容量計画で考慮すべき。disk5移行後の安全コピーのような「もう不要だが削除判断が先送りされていたデータ」が、まさにこのタイミングで役立った。
+
+### Resume prompt
+
+> D71でpmtiles-store.old-internal-disk(284GB)を削除、Migrate-2025-04の空き容量を554GBまで回復。publish_cycle_12のmerge完走後、check_pmtiles_integrity.pyで再検証すること。disk5のdetach手順(PLAN.md記載)は、この削除でold-internal-diskへの依存が完全に無くなったことも追記しておくとよい。
