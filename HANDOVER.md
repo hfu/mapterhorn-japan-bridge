@@ -3759,3 +3759,137 @@ not yet confirmed finished as of this entry.
 > viable one-off fallback if it happens again).
 >
 > Converse in Japanese, per this repo's own language policy.
+
+## 2026-08-31 06:25 JST 時点の状況(compact直前のスナップショット)
+
+このセクションは、セッションのcompact(コンテキスト圧縮)直前に書かれた、
+最新かつ最も詳細な引き継ぎ。過去の「Resume prompt」より新しい情報は
+すべてこちらを優先すること。
+
+### 今まさに進行中の作業
+
+**`aggregation_repair_3344`**(slate上、screenセッション名同じ)が実行中。
+背景: D74(pmtiles-store全体の50%の位置にstale child_z重複ファイル発見・
+212GB削除)の対応中に、D75(downsampling層の複数child_z共存を見落として
+過剰削除)・D76(aggregation層とdownsampling層の座標名前空間衝突で
+3,344件のaggregation出力を誤削除)という2段階の追加事故が発覚し、現在は
+**この3,344件の再aggregationで復旧中**。
+
+- 進捗確認コマンド: `ssh slate-via-spacex "cd /Volumes/Migrate-2025-04/github/hfu-mapterhorn/pipelines && ls aggregation-store/01M0MWK852631SHCHPA66F21WQ/*-aggregation.csv.done 2>/dev/null | wc -l"`
+- 06:23時点: 3,060/6,373(ベースライン3,029 + 復旧済み31件、目標3,344件の復旧)
+- ペースは不安定(九州級の重いアイテムが点在、1件で最大29分かかった実績あり)。
+  ETAは都度計算すること(MONITORING_REQUIREMENTS.md参照)
+- ワーカー: `AGGREGATION_WORKERS`既定4、ログは`aggregation_repair_3344.log`
+  (標準出力バッファリングでリアルタイムには見えないことが多い、
+  `.done`ファイル数で進捗を追うこと)
+
+### 復旧完了後にやるべきこと(順番厳守)
+
+1. `check_downsampling_readiness.py`で downsampling層の再収束を確認
+   (前回は`not ready: 203`が2回連続で変化しなかった——本当に子タイルが
+   無い項目か、`downsampling_run.py`をもう一度回して変化するか確認)
+2. `bundle.py` + `merge_japan_bundles.py`を実行し、`japan-z8plus.pmtiles`
+   を作り直す(**必ず`TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/`
+   を明示すること**——publish_cycle.py経由でない単独実行はTMPDIRの
+   既定が内蔵SSDの手薄な領域を指すためENOSPCになる、PIPELINE_DESIGN.md
+   3.10節参照)
+3. `/Volumes/Migrate-2025-04/global-overview-backup.pmtiles`
+   (z0-7、tiles.mapterhorn.com由来、13,524タイル、検証済み)を
+   `bundle-store/global-overview.pmtiles`に戻す
+4. `pmtiles merge bundle-store/global-overview.pmtiles bundle-store/japan-z8plus.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles`
+   (go-pmtilesの`merge`コマンド、`/opt/homebrew/bin/pmtiles`)で最終結合
+5. `check_pmtiles_integrity.py`で孤立タイル0件を確認
+6. **本来の目的である中国・四国沿岸の市松模様が解消されたか目視確認**
+   (これが今回の一連の作業全体の検証ゴール)
+7. 問題なければ`publish_cycle.py`相当の手順でstarsへrsync
+
+### 新規リポジトリ: `hfu/mapterhorn-monitor`(Open MCTベースの生産モニタ)
+
+藤村さんの指示で新規作成(2026-08-31)。ローカルパス`/Users/hfu/mapterhorn-monitor`、
+`git init`済み・リモート`git@github.com:hfu/mapterhorn-monitor.git`設定済みだが
+**まだ1度もcommit/pushしていない**。
+
+構成はsas0(`/Users/hfu/sas0`、DWG7のOpen MCT実装、詳細はそのDECISIONS.md/
+HANDOVER.md参照)のパターンを踏襲。
+
+**作成済みファイル**:
+- `docs/index.html` — sas0と同じCDN固定(`openmct@4.3.0-rc1`, `maplibre-gl@5.24.0`)、
+  `window.SharedWorker = undefined`のワークアラウンド込み
+- `docs/core.js` — sas0の`core.js`を移植(namespace: `mjbmon`、window.MJBMON)
+- `docs/config.js` — データソースURL設定(現状は相対パス、将来的には
+  raw.githubusercontent.com経由の専用ブランチ配信に切り替える想定)
+- `docs/data/progress.json` — 現在のステージ・ETA材料・資源状況・
+  aggregation/downsampling件数のスナップショット(手動更新、実データ)
+- `docs/data/agg_tiles.json` — aggregation全6,373件の座標+done状態(実データ、
+  164KB)——状況図インスツルメントの材料
+- `docs/data/build_log.json` — D71〜D76の実際の記録(実データ)
+
+**まだ作っていないファイル(次にやること)**:
+- `docs/instruments/current-stage.js` — 現在のステージ・ETA表示
+- `docs/instruments/status-map.js` — MapLibreベースの空間モニタ(agg_tiles.json
+  を色分け表示、藤村さんが最も期待している「状況図」相当)
+- `docs/instruments/build-log.js` — build_log.jsonのタイムライン表示
+  (sas0の「更新情報」パターン参考)
+- `docs/instruments/resources.js` — ディスク/メモリ/load average表示
+  (Open MCTネイティブのPlot APIは使わない——sas0が実地で「+Createを経ない
+  登録では描画されない」壁にぶつかった、自前のSVG/DOM表示にする)
+- `docs/boot.js` — `MJBMON.start()`を呼ぶだけ
+- `docs/style.css` — 最低限のレイアウト
+- ローカルでの動作確認(`cd docs && python3 -m http.server 8000`)
+- 初回commit・push
+
+**他セッションへの相談実績**:
+- `sas0-9e`(sas0担当セッション)に実装上の勘所を相談、非常に詳細な回答を
+  得た: SharedWorkerのクロスオリジン問題、Plot/Telemetry APIの壁、
+  キオスクモードのCSS+Fullscreen APIパターン、独立リポジトリ推奨の理由、
+  raw.githubusercontent.com(CORS `*`)を使ったバックエンドレス配信の裏技
+- `zukaku`(製図/印刷アトラスツール担当セッション)にSave Paper(eject)
+  機能について相談——直接の転用は不可(印刷ページ除外専用)だが、
+  「位置から機械的に決まるID設計」「セル中央の小さなトグルでドラッグ操作と
+  共存させるUIパターン」は進捗マップに応用可能とのアドバイス
+
+### 新設ドキュメント(`mapterhorn-japan-bridge`リポジトリ)
+
+- `PIPELINE_DESIGN.md`(新規) — パイプライン各段階・状態遷移・環境変数・
+  7段階ソース優先合成・既知の構造的落とし穴を網羅。D74-D76の事故を機に
+  「ドキュメント化→自己レビュー→コード照合→バグ修正→ドキュメント反映」
+  というプロセスで作成(藤村さんの提案)。実際にこのプロセス中にbundle.pyの
+  振り分け条件の記述ミスを1件発見・修正済み
+- `MONITORING_REQUIREMENTS.md`(新規) — 15分ごとのtick報告・ETA算出方法・
+  資源逼迫判定基準・並行作業時の注意点を明文化
+
+### 藤村さんからの標準運用指示(48時間規模、2026-08-31 06:24時点で発令)
+
+「生産管理、ダッシュボード設計開発、ロジック&コードレビュー。これらの3つを
+バランスよく、自律的に、48時間ほど続けてほしい。確認したいことがあれば
+確認してくれていい。」——この3本柱を自律的に回すのが現在の標準運用。
+
+- **生産管理**: 15分ごとの標準Monitorタスク(`bb37v4xay`、
+  「mapterhorn-japan-bridge: グローバルMapterhorn z0-7スプライス作業の進捗・
+  slateの空き容量・メモリを15分ごとに報告」)が動き続けている。tickが来る
+  たびにディスク・メモリ・load averageを確認し、変化があれば報告
+- **ダッシュボード開発**: 上記`hfu/mapterhorn-monitor`の残タスクを進める
+- **コードレビュー**: `PIPELINE_DESIGN.md`「6. 既知の構造的落とし穴」に
+  挙げた項目(特に`aggregation_reproject.py`の`FAIL_ON_WARNING=False`による
+  エラー握りつぶし、`aggregation_tile.py`のstale cleanupが50%の位置で
+  機能していない原因)を深掘りする。まだ根本原因は未特定
+
+### Resume prompt
+
+> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn`(via `aalto` →
+> `slate-via-spacex`)、および新規`hfu/mapterhorn-monitor`(ローカルのみ、
+> 未push)。日本語で会話する(このリポジトリの言語ポリシー)。
+>
+> **まず`aggregation_repair_3344`の進捗を確認**(上記コマンド)。完了
+> していれば「復旧完了後にやるべきこと」の手順1から順に進める。まだなら
+> 15分ごとの標準tick報告を継続しつつ、`hfu/mapterhorn-monitor`の残り
+> インスツルメント実装(現在のステージ→状況図→更新履歴→資源状況の順を
+> 推奨、状況図が藤村さんの最重要視ポイント)を進める。
+>
+> 藤村さんから「生産管理・ダッシュボード開発・コードレビューを48時間
+> 自律的に回してほしい」という標準運用指示が出ている(2026-08-31
+> 06:24発令)。3本柱をバランスよく進めること。確認したいことがあれば
+> 遠慮なく質問してよい。
+>
+> `DECISIONS.md`のD71〜D76、`PLAN.md`、`PIPELINE_DESIGN.md`、
+> `MONITORING_REQUIREMENTS.md`を先に読むこと。
