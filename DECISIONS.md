@@ -6521,3 +6521,23 @@ total check time: 12s
 ### Resume prompt
 
 > D72でローカルbundle-store成果物のcheck_pmtiles_integrity.pyがCLEAN(孤立タイル0件)を確認。stars向けrsync完走後、本番ファイルでも同様にCLEANであることを念のため再確認するとよい(ローカルとstars側でファイルが一致していることはD67のパターンで確認可能)。これでPLAN.mdのdisk5デタッチ前提条件(publish_cycleの整合性改善確認)は満たされた。
+
+## D73: publish_cycle_12が完走 -- stars本番反映完了、1号のミッション(タイル抜けなし)を実証
+
+**Status**: Recorded, 2026-08-30 19:58 JST。
+
+publish_cycle_12(downsampling→bundle→merge→rsync)が19:53:38に完走。stars向けrsyncは311,401,426,221 bytesを転送、送信側報告(311,477,452,080 bytes sent、speedup 1.00)と一致。`publish_cycle_12` screenセッションは正常終了。
+
+**このサイクルの経緯まとめ**:
+- bundleステージのarchive数がcycle_11の7個→21個に急増(D69/D70のdownsampling修復で新規カバレッジが埋まったため)、最終マージサイズもcycle_11実績(304.0GB)を上回る311.4GBに到達
+- merge進行中にディスク逼迫が現実化(`/Volumes/Migrate-2025-04`の空きが294GBまで低下)したが、Hidenoriの承認を得て`pmtiles-store.old-internal-disk`(284GB、disk5移行前の安全コピー)を削除(D71)し解消
+- merge完了直後、ローカル成果物に対する`check_pmtiles_integrity.py`で**孤立タイル0件(CLEAN)**を確認(D72)、D68の183,847件から完全収束
+- 今回のrsyncはローカル再起動によるモニタリングタスク中断を挟みつつ、約7時間かけて11.0MB/s前後の安定した帯域で完走
+
+**結論**: 1号(`01M0MWK852631SHCHPA66F21WQ`)の当初ミッション「タイル抜けなし」は、ローカル検証(D72)とstars本番反映(本エントリ)の両方で実証された。stars直接のホスト名解決は環境上できず(D67と同様)、rsync自身の転送完了報告(バイト数一致)を検証根拠とした。
+
+**次のステップ**: PLAN.mdに記録されているdisk5デタッチ手順の前提条件はこれで全て満たされた。実際にdisk5を取り外すかどうかは別途Hidenoriの判断を待つ。
+
+### Resume prompt
+
+> D73でpublish_cycle_12が完走、stars本番反映も完了。1号の「タイル抜けなし」ミッションは実証済み(D72のCLEAN確認+本エントリの転送完了)。PLAN.mdのdisk5デタッチ前提条件は全て満たされているので、Hidenoriが実施を希望すればいつでも着手できる状態。2号は10月末のGSI更新まで着手しない方針(既存合意通り)。
