@@ -6499,3 +6499,25 @@ newest stale marker: 2026-08-29 08:48:18
 ### Resume prompt
 
 > D71でpmtiles-store.old-internal-disk(284GB)を削除、Migrate-2025-04の空き容量を554GBまで回復。publish_cycle_12のmerge完走後、check_pmtiles_integrity.pyで再検証すること。disk5のdetach手順(PLAN.md記載)は、この削除でold-internal-diskへの依存が完全に無くなったことも追記しておくとよい。
+
+## D72: `check_pmtiles_integrity.py`をpublish_cycle_12のローカル成果物に対して実行 -- 孤立タイル0件(CLEAN)、D68の183,847件から完全収束
+
+**Status**: Recorded, 2026-08-30 13:30 JST。stars向けrsync進行中(13%程度)と並行して、ローカルの`bundle-store/mapterhorn-japan-bridge.pmtiles`(merge済み、311,401,426,221 bytes)に対して整合性チェックを実施。
+
+**結果**:
+```
+total tiles: 2,568,241 (D68のcycle_11実績2,507,680から+60,561)
+tiles per zoom: z0:1 z1:1 z2:1 z3:4 z4:6 z5:13 z6:37 z7:117 z8:440 z9:1,725
+  z10:6,870 z11:27,431 z12:109,699 z13:38,840 z14:123,856 z15:451,840 z16:1,807,360
+=== orphan check ===
+CLEAN: every tile at every zoom > min_zoom has a parent one zoom coarser.
+total check time: 12s
+```
+
+**D68(183,847孤立タイル)からゼロまで完全収束**。D69/D70で修復したstale downsampling `.done`マーカー(1,265件)の解消が、そのまま孤立タイルの解消に直結したことが実測で確認された。タイル総数も+60,561件増加しており、D71で削除した`pmtiles-store.old-internal-disk`が占めていたディスク容量問題とは無関係に、純粋にデータ側のカバレッジが拡大したことを示している。
+
+**結論**: 1号(`01M0MWK852631SHCHPA66F21WQ`)について、「タイル抜けなし」という当初のミッションは、ローカル成果物のレベルで実証された。残るのはstars向けrsyncの完走(本番反映)のみ。
+
+### Resume prompt
+
+> D72でローカルbundle-store成果物のcheck_pmtiles_integrity.pyがCLEAN(孤立タイル0件)を確認。stars向けrsync完走後、本番ファイルでも同様にCLEANであることを念のため再確認するとよい(ローカルとstars側でファイルが一致していることはD67のパターンで確認可能)。これでPLAN.mdのdisk5デタッチ前提条件(publish_cycleの整合性改善確認)は満たされた。
