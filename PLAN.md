@@ -66,6 +66,11 @@ around **end of October 2026**, not a fixed date yet. This also sets
 the natural point to re-attach disk5 (currently planned to be detached
 once 1号 is done — see section 4).
 
+**Live check, 2026-09-01**: GSI's update-info page still shows
+2026-07-31 as the latest 1mメッシュDEM update — no new update since.
+Consistent with the end-of-October expectation above; nothing to act
+on yet.
+
 ## 2. Scope: what actually needs refreshing
 
 - `jpnational1`/`jpnational5`/`jpnational10`/`jpnationalsea` all need
@@ -117,6 +122,17 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
   not assumed.
 
 ## 4. Infrastructure prerequisites
+
+- **[最優先, 未実装, 設計のみ] D74-D76の名前空間衝突の構造的修正 — 2号着手前に必ず実装すること**:
+  1号最大のインシデント(D74→D75→D76の連鎖、3,344件のaggregation出力を誤削除)の根本原因は、aggregation層とdownsampling層が**同じファイル命名規則`{z}-{x}-{y}-{child_z}.pmtiles`を共有し、どちらのレイヤーが書いたファイルか名前だけでは区別できない**という構造的な欠陥だった(D76)。D80でも、この同じ弱点に起因する**未発火の潜在バグ**(`downsampling_run.py --fix`が、削除したファイルがaggregation層由来の場合に正しい`.done`マーカーを消せない)が見つかっており、「拙速に修正するとD74と同種の事故を再現しかねないので、号2の構造的な修正まで温存する」と明記して保留していた。**2号を安全に開始するには、この構造的分離を必ず実装しておく必要がある。**
+
+  **設計案(未実装、2026-09-01時点でHidenoriと合意した方針検討)**:
+  - **案A(推奨)**: `pmtiles-store`のディレクトリ構造そのものにレイヤー識別子を組み込む。例: `pmtiles-store/aggregation/...`と`pmtiles-store/downsampling/...`のようにトップレベルで分離し、既存の`utils.get_pmtiles_folder()`(z7祖先ベースのシャーディング)はその配下でレイヤーごとに独立して動く。横断的なクリーンアップ/監査スクリプトが、コード上「今どちらのレイヤーを見ているか」を型的に取り違えようがない構造になる。
+  - **案B(非推奨、参考として記録)**: ファイル名にレイヤー識別子をサフィックスとして追加(例: `{z}-{x}-{y}-{child_z}-agg.pmtiles`/`...-ds.pmtiles`)。ディレクトリ移動は不要だが、コードベース全体に散らばる`filename.replace('.pmtiles', '').split('-')`という4フィールド前提のパース処理を全て洗い出して修正する必要があり、変更範囲が案Aより広く誤りやすい。
+  - **影響範囲の洗い出し(未実施)**: `get_pmtiles_folder()`を呼ぶ全箇所(`aggregation_run.py`・`downsampling_run.py`・`bundle.py`・各種`check_*.py`監査ツール)を`grep`で棚卸しし、1つのコミットで一括変更する必要がある。片手落ちの部分適用は、まさにD74-D76と同じ「一部のツールだけが新しいレイヤー分離を認識し、別のツールが古い前提のまま動く」という事故を再現しかねない。
+  - **D80の潜在バグとの関係**: この構造的修正が入れば、D80で見つかった「削除対象ファイルがどちらのレイヤー由来か判定できない」問題はそもそも起こりえなくなる(ファイルパス自体がレイヤーを一意に決めるため)。D80のバグ修正そのものは、この構造変更とセットで自然に解消される想定。
+
+  **なぜ今は実装しないか**: `get_pmtiles_folder()`・ファイル命名規則は`aggregation_run.py`/`downsampling_run.py`/`bundle.py`という、今まさに`aggregation_repair_3344`が使っている本番コードの中核。1号が完全に完了する前にこれを変更すると、進行中の復旧作業を直接壊しかねない。**この設計は2号着手の直前、1号が完全にミッションコンプリートした後、かつ2号自身のビルドを開始する前のタイミングで実装すること**——1号の残作業(bundle→merge→rsync→整合性確認)には一切触れない。
 
 - **D41's storage-tiering split** (`source-store`/`bundle-store` →
   slow storage, `tmp-store` → fast internal disk): **Update
@@ -316,7 +332,16 @@ publishes? Tradeoff already flagged by Oliver himself: not ideal for
 general GIS usage (no true COG without overviews, older software may
 lack LERC support). Not decided yet.
 
-## 6. Explicitly out of scope for this planning pass
+## 6. Candidate feature: lineage/provenance tiles
+
+D83で使った`lineage_inspect.py`(単一タイルの診断ツール、どのソース優先度グループが各ピクセルを埋めたかを可視化)を、2号で全国常設のPMTiles層として組み込むかどうかの検討。D93で見積もり(未実装)、D94で必要な多数決downsamplingアルゴリズムを先行実装済み(`hfu-mapterhorn/pipelines/lineage_downsample.py`、production未接続)。
+
+- **時間コスト**: 2号の本番`aggregation_run.py`に`EMIT_LINEAGE`フラグとして相乗りさせれば、追加コストは数時間〜半日規模(D93)。downsampling側の追加コストは実測でほぼ無視できる(D94: 全8,223件換算で合計3〜4分)。
+- **ストレージコスト**: 標高本体(307.9GB)の5〜15%、約15〜45GB(粗い概算、D93)。
+- **未実装の残り**: `aggregation_run.py`本体への`EMIT_LINEAGE`フラグ組み込み(D93で挿入位置は特定済み)、lineageラスタのタイル化・bundle・merge・stars配信までの一連。
+- **判断**: 2号本編とは独立した任意機能。2号の本編スコープ(GSI更新の取り込み)を遅らせてまで実装する優先度ではないので、2号の一次リリース後の追加機能として検討するのが妥当(2号着手前の必須事項ではない)。
+
+## 7. Explicitly out of scope for this planning pass
 
 - Actually starting 2号 — gated on GSI shipping real new data, not on
   this document being finished.
@@ -325,6 +350,23 @@ lack LERC support). Not decided yet.
   from everything above (marginal gain observed there: 412MB vs 425MB
   on one Canada tile), revisit only if `source_to_cog.py` work above
   actually starts.
+
+## 8. Readiness checklist: 今すぐ準備してよいこと / 1号完了まで待つべきこと
+
+2026-09-01、Hidenoriから「1号を完成させるまでは2号は投入しないが、2号を投入可能にしておくための準備はしておこう。1号に悪影響は及ぼさないように」との方針を受けて整理。
+
+**今すぐ着手してよい(1号の本番コード・本番データパスに触れない)**:
+- ✅ D94: 多数決downsamplingアルゴリズムの実装(完了、新規ファイルのみ、production未接続)
+- GSI更新監視の定期チェック(読み取り専用、実施済み・継続可能)
+- 本ファイル(PLAN.md)のような設計ドキュメントの作成・更新
+- 案A/案Bのようなレイヤー分離設計の詳細化(ドキュメント上の検討のみ、コード変更なし)
+- LERC再設計の検証も、`pipelines-rehearsal/`(このセッションで既に確立されている、本番`pipelines/`とは独立したシンボリックリンク環境、bundle.py/merge_japan_bundles.pyのスローアウェイ検証に過去使用)を使えば1号に触れずに試せる——ただし今回は着手していない
+
+**1号完了まで待つべき(本番コード・本番データに触れる)**:
+- ❌ D74-D76レイヤー分離の実装(`get_pmtiles_folder()`・ファイル命名規則の変更) — `aggregation_run.py`/`downsampling_run.py`/`bundle.py`という、今`aggregation_repair_3344`が使っている本番コードそのもの
+- ❌ disk5のデタッチ(D90で既にPLAN.md §4にSTALE警告を追記済み)
+- ❌ lineageタイルの`EMIT_LINEAGE`フラグを本番`aggregation_run.py`に組み込むこと
+- ❌ upstream同期での「マージしない」判断済みの変更(分散ワーカー化等、D82)を再検討して取り込むこと——2号の規模次第では検討価値があるかもしれないが、今取り込むと1号の動作が変わってしまう
 
 ## Resume note
 
