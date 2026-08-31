@@ -198,6 +198,24 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
        disk4-hosted copy to confirm the copy-back didn't drop or
        corrupt anything (expect it to stay CLEAN, matching D72).
     6. Only then `diskutil eject disk5` and physically disconnect.
+
+    **STALE — do not follow this procedure as written (added 2026-09-01,
+    DECISIONS.md D90 full-log audit)**: the "all preconditions satisfied"
+    note above was accurate as of `publish_cycle_12`'s success (D73), but
+    within hours the D74-D76 incident hit -- 212GB of stale files were
+    found and deleted, the cleanup itself over-deleted first the
+    downsampling layer (D75) then 3,344 legitimate aggregation outputs
+    (D76), and `aggregation_repair_3344` has been rebuilding those ever
+    since (still running as of this note). `pmtiles-store` (the disk this
+    section wants to detach) is the ACTIVE, currently-written-to volume
+    for that repair -- step 1's "confirm nothing is still writing" is
+    currently false, and running this procedure now would either race the
+    repair or physically remove the disk it's writing to. **Do not detach
+    disk5/pmtiles-store until aggregation_repair_3344 completes AND a
+    fresh publish_cycle + `check_pmtiles_integrity.py` CLEAN result
+    reproduces D72/D73's outcome post-repair.** Re-evaluate preconditions
+    from scratch at that point rather than trusting this section's old
+    "done" markers.
     Confirmed via `grep` that no pipeline script hardcodes
     `/Volumes/pmtiles-store` anywhere — everything goes through the
     relative `pmtiles-store`/`tmp-store` symlinks from the `pipelines/`
