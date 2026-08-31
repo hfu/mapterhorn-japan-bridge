@@ -6808,3 +6808,34 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D87でLive Viewer/公開ビューアのデフォルト中心座標を函館山・五稜郭から風不死岳(42.71694, 141.35889)に変更(`e936344`)。変更前にmartin XYZエンドポイントへの直接curlでデータ存在を確認済み(ブラウザペインの目視確認だけでは信用できないことを再確認)。GitHub Pagesの10分キャッシュ後、実際の表示を確認すること。
+
+## D88: ダッシュボード整理(Constituent PMTiles廃止・並び替え・巡回モード追加)、その過程でOpen MCT rc1ビルドの`openmct.on('start', ...)`が実際には発火しないバグを発見
+
+**Status**: Recorded, 2026-09-01 03:10 JST頃。Hidenoriから3点の整理指示:「Constituent PMTilesは廃止」「Progress Trendを先頭に」「巡回モードを追加」。
+
+**内容(整理3点)**: `pmtiles-manifest.js`計器・関連データ(`pmtiles_manifest.json`)・config/index.htmlの参照・CSSブロックを全て削除。表示順を`Progress Trend → Current Stage → Status Map → Change Log → Resources → Mission Timeline → Live Viewer`に変更(`order`値を1つずつ振り直し)。新機能として「巡回モード」(右下の▶Cycleトグル、ON中は20秒ごとに全計器を自動的に巡回表示、無人ディスプレイでの表示を想定)を追加。
+
+**巡回モード実装中に発見したバグ**: 新しい巡回ロジックを`openmct.on('start', () => {...})`のコールバック内に置いたところ、ボタンが一切表示されなかった。デバッグの結果、**このOpen MCT rc1ビルドでは`'start'`イベントが内部的にリスナー登録はされる(`openmct._events`に`'start'`キーが現れる)ものの、実際には一度も発火(emit)されていない**ことが判明——既存の`openmct.router.setPath(...)`呼び出しも、実は同じ理由でこれまで一度も実行されていなかった(見た目上ルートフォルダが正しく表示されていたのは、Open MCT自身が登録済みrootへ自動的にデフォルトナビゲートする挙動のおかげで、たまたま隠れていただけ)。
+
+**対応**: `openmct.on('start', ...)`への依存をやめ、`openmct.start('#app')`呼び出しの直後に`setPath`と巡回モードのインストール処理を直接(同期的に)実行するよう変更。`document.body`は`<body>`内の`<script>`が実行される時点で常に存在するため、DOM準備待ちは不要と判断。
+
+**教訓**: D3(SharedWorker無効化)・D4相当の過去のOpen MCT関連の発見と同様、このrc1ビルドは**ドキュメント化されていない挙動が多い**。イベントベースのAPIを新たに使う際は、まず`window.__debug`のようなグローバル変数に副作用を記録して直接DOM/JS状態を検証する手法が、consoleログのタイミング依存の不確実性(このセッション中、早期に発火するconsole.logが`read_console_messages`に一部捕捉されないケースも確認)より確実だと分かった。
+
+### Resume prompt
+
+> D88でダッシュボード計器を整理(PMTiles計器廃止・Progress Trend先頭化・巡回モード追加)、push済み。同時に、Open MCT rc1ビルドの`openmct.on('start', ...)`が実際には発火しないバグを発見・回避(`openmct.start()`直後に直接呼び出す形に変更)。今後Open MCTの新しいイベントベースAPIを使う際は、まずグローバル変数への副作用記録で動作を直接検証すること。
+
+## D89: ダッシュボードの文言微調整3件(友人への本格共有を見据えて)
+
+**Status**: Recorded, 2026-09-01 03:15 JST頃。Hidenoriから「このダッシュボードを本格的に友人に共有することを考えている」との前置きで3件の指摘。
+
+**内容**:
+1. **Current Stageの「ETA remaining」を相対時間から絶対時刻に変更**: 従来は`~2.3 hr`のような相対表示だったが、これはスナップショット生成時点でのみ正しく、閲覧者がスナップショットが古くなった後に見ると誤解を招く。`generated_at + remainingMs`を計算した絶対時刻(ローカル時刻表示)を「Estimated completion」ラベルで表示するよう変更。スナップショットが古くなっても表示自体の意味は保たれる。
+2. **Current Stageのキャプションから内部開発メモを削除**: 「Planned evolution: a slate-side script commits to a dedicated branch served via raw.githubusercontent.com (per sas0's advice).」は`progress.json`の`note`フィールドに由来する、開発者向けの将来計画メモであり、外部の友人向けには不要と判断。`progress.json`から`note`フィールド自体を削除し、`current-stage.js`側もこのフィールドを表示しないよう修正。
+3. **Progress Trendのキャプションから方法論の説明を削除**: mtimeベースの実測方法(marker fileのrenameではなく実際の出力ファイルのmtimeを使う、という技術的根拠)を説明する長いキャプションは、開発者向けレビュー記録(DECISIONS.md)には価値があるが、ダッシュボードの読者には過剰な detail だったため削除。グラフ本体と「Latest: N repaired as of...」の要約行のみ残した。
+
+**教訓**: D86(Mission Timelineの凡例)と同種——ダッシュボードを外部に見せる前提が明確になったことで、「開発者が自分向けに書いた注記」と「読者向けの説明」を分離する必要性が繰り返し顕在化している。今後新しい計器やキャプションを書く際は、最初から「これは読者向けか、開発メモか」を意識して書き分けること。
+
+### Resume prompt
+
+> D89でCurrent StageのETAを絶対時刻表示に変更、内部開発メモ2箇所(Current Stageの`note`表示、Progress Trendの方法論キャプション)を削除。push済み。友人への共有に向けて、他の計器にも同様の「開発メモ混入」が無いか、余裕があれば一通り見直すこと。
