@@ -6718,3 +6718,21 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D81でPIPELINE_DESIGN.md 3.9節・6節を訂正(「pmtiles clusterが使えない」は未検証の誤り)。`japan-z8plus.pmtiles`再生成後、最終mergeの前に`pmtiles cluster japan-z8plus.pmtiles`を試すこと。
+
+## D82: upstream(`mapterhorn/mapterhorn`)同期確認 -- D22以降の13コミットは大半が多ホスト分散アーキテクチャへの移行で、単一マシン運用の1号には非適用。underflow対策のみcherry-pick
+
+**Status**: Recorded, 2026-08-31 21:50 JST頃。`rustling-napping-pond.md`計画のPhase Dに沿って、`git fetch upstream && git log HEAD..upstream/main`で確認。
+
+**内容**: D22(2026-08-21)以降、upstreamに13コミットが積まれていた。大半(8件)は新規ソース追加(`Add source ...`)で無関係。パイプライン本体に触れる主要コミットを精読した結果:
+
+- **`57f8481`「Update worker, reduce memory usage」・`a0ae374`「update multi-host pipeline」**: `aggregation_run.py`・`downsampling_run.py`双方に、`tmp-store/queue`/`tmp-store/ready`フォルダを介して別プロセス(新設の`downloader.py`)からのダウンロード完了を`while not os.path.isfile(...): time.sleep(1)`で待つロジックが追加されていた。これは複数ホストでpmtiles-storeを分散配置し、各ワーカーホストがオンデマンドで必要なファイルをフェッチする前提のアーキテクチャで、**1号は単一マシン(slate)上に全データを直接マウントしているため、この分散フェッチ機構自体が不要**。マージ対象外と判断。
+- 同じ`57f8481`で、upstream版`aggregation_run.py`は`shutil.rmtree(tmp_folder)`が長らくコメントアウトされたままだった(一時フォルダが溜まり続けるバグ)のを今回のコミットで解消していた。**確認したところ、1号のフォークは既にこの行がコメントアウトされておらず正しく`rmtree`されている**(D12以降のfork固有の`aggregation_id`スコープ変更の際に、独立して正しい状態になっていたと見られる)。`tmp-store`の実測サイズも4KB(2件)のみで、リークの兆候なし。対応不要。
+- **`8eaef05`「Minor pipeline changes」の`utils.py`**: `save_terrarium_tile()`内の`np.seterr(all='raise')`を`np.seterr(all='raise', under='ignore')`に変更(浮動小数点アンダーフローで例外を投げるのをやめ、無視するよう緩和)。1号のフォークにも同じ`all='raise')`(アンダーフロー無視なし)が残っていた。`aggregation_repair_3344.log`をgrepしてFloatingPointError/underflowの実際の発生は0件——**現時点で実害は出ていないが、エラー条件を緩める方向の変更で新たな不具合を生む余地がない(既存の動作を壊さない、クラッシュ条件を減らすだけ)ため、低リスクな保険としてそのままcherry-pick**。`hfu-mapterhorn`側でコミット`d8b7c2e`。
+
+**対応**: `d8b7c2e`のみ適用(1行、`np.seterr`引数追加)。分散ダウンローダー関連の変更は取り込まない。今回精読しなかった残り2コミット(`f2ff181`ローカルビューア用create_index.py削除、`ef97ada`source_create_tarball.py修正)は、1号が使っていない機能(それぞれローカルビューア生成・新規ソースのtarball作成)に限定されたdiffstatだったため、スコープ外と判断し詳細は読んでいない。
+
+**教訓**: upstreamの開発方向が「単一マシンでのバッチ処理」から「複数ホストでの分散処理」へ明確にシフトしている。今後の同期では、キュー/フェッチ待ち系のパターン(`tmp-store/queue`, `tmp-store/ready`)が出てきたら、それは多ホスト前提の変更だとまず疑ってよい。1号がこの方向に追従する必要が生じるとしたら、それはハードウェア調達(PLAN.mdのストレージ階層化)の話と合わせて号2以降で検討すべき規模の話。
+
+### Resume prompt
+
+> D82でupstream 13コミットを確認、大半は多ホスト分散アーキテクチャ移行(1号には非適用)。`utils.py`のnp.seterr underflow緩和のみ低リスクとしてcherry-pick済み(`d8b7c2e`)。次回upstream同期時も「tmp-store/queue, tmp-store/ready」パターンが出たら分散フェッチ機構への追従と判断し、原則マージ対象外とすること。
