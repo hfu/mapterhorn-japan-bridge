@@ -6920,3 +6920,24 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D93でlineageタイル常設化の見積もりを作成(未実装)。時間: 号2のフルビルドに相乗りさせれば数時間〜半日規模、1号への遡及なら約2日規模の冗長コスト。ストレージ: 標高本体307.9GBの5〜15%(約15〜45GB、粗い概算)。挿入位置: `aggregation_run.py`の`reproject()`直後、`EMIT_LINEAGE`フラグで。新規要件: カテゴリ値downsamplingには多数決ベースの新しいリサンプリングアルゴリズムが必要(既存のcubicsplineは流用不可)。号2着手時にこの見積もりを判断材料にすること。
+
+## D94: カテゴリ値(lineage)downsampling用の多数決アルゴリズムを特定・実装(号2向け先行実装、未接続)
+
+**Status**: Recorded, 2026-09-01 05:05 JST頃。D93のフォローアップとして、Hidenoriから「多数決ベースのリサンプリングアルゴリズムを特定して、実装しておこうか」との依頼。
+
+**訂正(D93の記述ミス)**: D93で「既存のcubicsplineが使えず」と書いたが、これは不正確だった。実際に`downsampling_run.py`の`create_tile()`を読んだところ、ダウンサンプリング(coarser zoomの親タイル生成)は**cubicsplineではなくαウェイト付き平均**(2×2ブロックの子タイルの標高値を、alpha(有効/無効)で重み付けして平均し、その1つの平均標高値からR/G/Bを再導出する方式、upstream本家のアルゴリズムに合わせた実装)。cubicsplineは別の場所(`aggregation_reproject.py`のGDALワープ時のリサンプリング手法)の話で、混同していた。いずれにせよ「平均」という演算自体がカテゴリ値には無意味という結論は変わらない。
+
+**実装したアルゴリズム**: `hfu-mapterhorn/pipelines/lineage_downsample.py`(コミット`62c592e`、production未接続)。
+
+- 1024×1024の子タイル4枚ぶんのカテゴリラスタ+alphaを入力に、2×2ブロックごとの**多数決(one-hotカウント+argmax)**で512×512の親ラスタを生成。
+- **同数タイの処理**: `lineage_inspect.py`の`GLOBAL_TIER`(0=最優先ソース〜6=海)の順序をそのまま利用し、タイの場合は**インデックスの若い方(=優先度の高いソース)を採用**。これは新しいルールを持ち込んだのではなく、`np.argmax`が同値の場合に最初(最小インデックス)を返すという既存の仕様と、`GLOBAL_TIER`の既存の優先順位付けを組み合わせただけ——`aggregation_merge.py`本体のピクセル単位マージが元々使っている優先順位と一貫性がある。
+- nodata処理: alpha=0の子は投票から除外。4件中1〜3件だけ有効な場合もその有効票だけで多数決(定足数不足で無効扱いにはしない)。4件全て無効ならnodata。
+- `scipy.stats.mode`は使わず(新規依存の追加を避ける、バージョン依存のtie-break挙動を避ける)、カテゴリ数(7)ぶんのnumpy一括演算で完全ベクトル化。
+
+**検証**: 4パターンの合成テストケース(明確な多数決/同数タイ/有効票1件のみ/全無効)を全て通過。実測パフォーマンス: 1024×1024→512×512の1回あたり約24.1ms(10回平均)。D93で見積もった全downsampling件数(8,223件)に単純適用すると合計3〜4分程度——D93の「数時間〜半日」という見積もりより実際にはさらに軽いことが判明(D93の見積もりはreproject側の重さを支配的要因と見ていたが、それは変わらず妥当)。
+
+**未接続の理由**: D93の結論通り、1号への遡及実装はしない方針。このモジュールは号2でのpipeline組み込み(`downsampling_run.py`のcreate_tile()に相当する処理からデータ種別で分岐、または専用の`lineage_downsampling_run.py`を新設)を待つ、独立した検証済みビルディングブロックとして置いておく。
+
+### Resume prompt
+
+> D94で多数決ベースのカテゴリ値downsamplingアルゴリズムを実装・自己テスト済み(`hfu-mapterhorn/pipelines/lineage_downsample.py`、`62c592e`)。1024x1024→512x512で約24ms、全downsampling件数(8,223件)換算で合計3〜4分——D93のストレージ・時間見積もりのうちdownsampling自体のコストはほぼ無視できるレベルと判明(支配的コストは引き続きreproject側)。号2でlineageタイルを実装する際は、このモジュールをそのまま`downsampling_run.py`相当の処理に組み込むこと(production未接続、独立したビルディングブロックとして温存)。
