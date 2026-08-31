@@ -6736,3 +6736,19 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D82でupstream 13コミットを確認、大半は多ホスト分散アーキテクチャ移行(1号には非適用)。`utils.py`のnp.seterr underflow緩和のみ低リスクとしてcherry-pick済み(`d8b7c2e`)。次回upstream同期時も「tmp-store/queue, tmp-store/ready」パターンが出たら分散フェッチ機構への追従と判断し、原則マージ対象外とすること。
+
+## D83: `lineage_inspect.py`で倉橋島タイルのソース境界を可視化 -- D79検証の一環、lineage境界にグリッド/ブロック状パターンは見られず、市松模様の原因としてのソース切り替わり説を却下
+
+**Status**: Recorded, 2026-08-31 22:24 JST頃。Hidenoriの提案(「lineageタイルを作ってみる？」)を受けて、既存の標準外(D20由来)診断ツール`lineage_inspect.py`をそのまま倉橋島タイルに対して実行。
+
+**内容**: D74で市松模様の報告地点として言及されていた`10-889-408`(呉市・倉橋島付近、z=10)の中心座標をz17タイルに変換し、`find_aggregation.py`と同じ包含判定ロジックでこれを覆うaggregation itemを特定 -- `10-889-408-16-aggregation.csv`一件のみが該当。このitemは現在`aggregation_repair_3344`の対象(`.todo`のまま、`.done`未生成)だが、`lineage_inspect.py`は`aggregation_reproject.reproject()`を独立tmpディレクトリで再実行するだけで、pmtiles-store本体や進行中のリペア用tmp-storeとは一切干渉しないため、リペア完了を待たずに安全に実行できた。
+
+実行結果: 5つの優先グループ(jpnational1/A 31.7%、jpnational5/A・5/B・10/B 合計0.9%未満、jpnationalsea 68.1%)。生成したRGB可視化画像を目視確認したところ、**陸域(青)と海域(グレー)の境界は完全に自然な海岸線形状で、グリッド線やブロック境界を示唆する直線的なパターンは一切存在しない**。5%未満の小さな中間解像度パッチ(5A/5B/10B、おそらく港湾部や離島周辺の1mデータの穴埋め)も、海岸線に沿った自然な輪郭で現れており、四角いタイル状の切れ方はしていなかった。
+
+**D79との関係**: これはD79が提起した「市松模様の境界がaggregation_merge.pyの512pxブロック単位ブレンド判定に由来する」仮説と、暗黙に対立していたかもしれない別の可能性(「境界はソースデータの切り替わり=lineage境界そのものではないか」)を、少なくともこの1サンプル地点について明確に否定する結果である。ソース境界自体がグリッド状に現れない以上、実際の市松模様がもし規則的なグリッドパターンとして視認されるなら、それを説明できるのは引き続きD79の512pxブロック仮説の方だと判断できる。
+
+**副産物として得た知見**: `lineage_inspect.py`は単体で軽量に動く(このタイル1件で約2分)、かつ現在進行中のリペア処理と安全に並行実行できることを実地確認した。号2以降、複数の既知報告地点でこれを繰り返し実行し、lineageタイルとして面的にPMTiles化・ダッシュボードへ反映する構想がHidenoriから出ている(急ぎではなく、starsへのPMTilesアップロードは`stars`エージェントに相談する予定)。
+
+### Resume prompt
+
+> D83で`lineage_inspect.py`を倉橋島タイルに実行、ソース境界(lineage境界)は完全に海岸線形状でグリッドパターンなし -- 市松模様の「ソース切り替わり」説を却下、D79の512pxブロック仮説が引き続き最有力。`aggregation_repair_3344`完了・再構築後の実地検証(D79 resume prompt参照)で、512px格子線とアーティファクト境界が一致するかを確認すること。余裕があれば他の既知報告地点でもlineage_inspect.pyを追加実行し、lineageタイルのPMTiles化・ダッシュボード反映(急がず、stars向けアップロードは`stars`エージェントに相談)を検討する。
