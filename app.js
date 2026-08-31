@@ -35,4 +35,10 @@ fetch('style.json')
     map.on('terrain', () => {
       terrainToggle.checked = !!map.getTerrain();
     });
+    // 3D on by default (mapterhorn-japan-bridge DECISIONS.md D92) -- wait
+    // for 'load' so the 'mapterhorn' raster-dem source is actually ready;
+    // the 'terrain' listener above then syncs the checkbox to match.
+    map.on('load', () => {
+      map.setTerrain({ source: 'mapterhorn', exaggeration: 1 });
+    });
   });
