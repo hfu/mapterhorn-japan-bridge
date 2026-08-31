@@ -6704,3 +6704,17 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D80で`downsampling_run.py --fix`に、削除したpmtilesファイルがaggregation層由来だった場合に正しい`.done`マーカーを消せない(downsampling層のサフィックスしか探さない)という潜在バグを発見。実害はまだ無いが、拙速な修正はD74と同種の事故を再現しうるため、号2の構造的なレイヤー分離設計まで温存する方針。このツールを実際に使う前には必ずこのエントリを確認すること。
+
+## D81: PIPELINE_DESIGN.mdの訂正 -- 「pmtiles clusterは使えない」は未検証の誤った一般化だった
+
+**Status**: Recorded, 2026-08-31 12:15 JST。コードレビュー方針の一環、次の最終mergeステップの準備として`merge_japan_bundles.py`(3.9節)を再読・`pmtiles cluster --help`を実地確認して発見。
+
+**内容**: PIPELINE_DESIGN.mdの既存記述は「`merge_japan_bundles.py`の出力はclustered化されないため、`pmtiles extract`/`pmtiles cluster`が使えない(`must be clustered for extracts`エラー)」としていた。`pmtiles extract`が失敗する点は実際に確認された事実だが、**`pmtiles cluster`も同様に使えないというのは、extractの制限からの未検証の類推だった**。`pmtiles cluster --help`の説明文は"Cluster an unclustered local archive"であり、非clustered化アーカイブをclustered化することがこのコマンド自身の存在目的——事前にclustered化されている必要があるなら、このコマンドは何もできなくなり、存在意義そのものと矛盾する。実際に試した記録はDECISIONS.mdに見当たらない。
+
+**対応**: PIPELINE_DESIGN.md 3.9節・6節を訂正。次に`japan-z8plus.pmtiles`を再生成した際、最終`pmtiles merge`の前に`pmtiles cluster japan-z8plus.pmtiles`を試すことを推奨事項として追記した。機能すれば、7節の「結合順序で副産物的にclustered化する」設計への依存を減らせる。
+
+**教訓**: 「Aができないので関連するBもできないだろう」という類推は、実地検証なしに文書に書くとそのまま既成事実として扱われてしまう。D74以来のレビューで繰り返し見つかっているパターン(D78の監査スクリプトの誤検出、D79-D80のコード読解結果)と同種——ツールのhelp文やドキュメントを実際に確認する一手間を惜しまないことの重要性。
+
+### Resume prompt
+
+> D81でPIPELINE_DESIGN.md 3.9節・6節を訂正(「pmtiles clusterが使えない」は未検証の誤り)。`japan-z8plus.pmtiles`再生成後、最終mergeの前に`pmtiles cluster japan-z8plus.pmtiles`を試すこと。

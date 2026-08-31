@@ -270,10 +270,23 @@ aggregation_run.py と同じ `.csv`/`.csv.done` パターン(**`.todo` は使わ
 **「clustered」にならない**: PMTilesの `clustered` フラグは「tile_idの昇順で
 バイト列が並んでいるか」を意味するが、このスクリプトは**ファイル単位で完結した
 書き込み**をアルファベット順に連結するだけで、**グローバルなtile_id順にはならない**。
-そのため `pmtiles extract`/`pmtiles cluster` 等のgo-pmtiles CLIツールはこの
-出力に対して使えない(`must be clustered for extracts` エラー)。カスタムの
-Pythonスクリプト(`pmtiles.reader.all_tiles()` を使う、本ドキュメント7節参照)で
-代替する必要がある。
+そのため `pmtiles extract` はこの出力に対して使えない(`must be clustered for
+extracts` エラー、実際に確認済み)。カスタムのPythonスクリプト
+(`pmtiles.reader.all_tiles()` を使う、本ドキュメント7節参照)で代替する必要がある。
+
+**訂正(2026-08-31、D79/D80と同時期のレビューで発見)**: 上記のextract制限を
+「`pmtiles cluster` も同様に使えない」と一般化していたのは誤り。
+`pmtiles cluster --help`を確認したところ、**「Cluster an unclustered local
+archive」——非clustered化アーカイブをclustered化する**ことがこのコマンド自身の
+存在目的であり、事前にclustered化されていることを前提にする道理がない
+(それでは何もできなくなる)。実際に`cluster`コマンドをこのプロジェクトの
+非clustered出力に対して試した記録はDECISIONS.mdに見当たらず、「使えない」は
+`extract`の制限からの類推であって実地検証されていない可能性が高い。
+次に`japan-z8plus.pmtiles`を再生成した際、**最終`pmtiles merge`の前に
+`pmtiles cluster japan-z8plus.pmtiles`を試す価値がある**——もし機能すれば、
+7節で説明している「z0-7ファイル→z8+ファイルの順でmergeすることで副産物的に
+clustered化される」という設計をより単純化できる(z8+側単体を先にclustered化
+しておけば、そもそも結合順序に依存しなくなる)。
 
 ### 3.10 publish_cycle.py — サイクル全体のオーケストレーション
 
@@ -350,7 +363,9 @@ Pythonスクリプト(`pmtiles.reader.all_tiles()` を使う、本ドキュメ�
    つぶされ、後続処理が不可解なクラッシュを起こす**(3.3節)。実行環境依存で
    再現性が不安定。
 6. **`merge_japan_bundles.py`の出力はclustered化されない**ため、go-pmtiles
-   CLIの`extract`/`cluster`が使えない(3.9節)。
+   CLIの`extract`が使えない(3.9節)。ただし`pmtiles cluster`(非clustered
+   アーカイブをclustered化するコマンド)は実地検証されておらず、「使えない」
+   という記述は誤りだった可能性が高い(3.9節の訂正参照、2026-08-31)。
 
 ## 7. z0-7 グローバルMapterhorn接合設計(2026-08-30〜)
 
