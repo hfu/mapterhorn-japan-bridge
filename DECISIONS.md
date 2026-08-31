@@ -6768,3 +6768,15 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D84で`AGGREGATION_WORKERS`のデフォルトを4→5に変更(`486a7a0`)、2026-09-01 02:00 JST頃に再起動。4ワーカー時点のベースラインペースは概ね28〜33件/15分。5ワーカーでのペースを複数tick分計測し、有意な増速があるか、load average/iostatに悪化がないかを確認すること。良好であれば6への追加引き上げも検討、悪化(ディスクI/O競合等)が見られれば4へ戻すこと。
+
+## D85: ダッシュボードのMission Timeline計器、文字サイズが小さいとの指摘を受けてデザイン改善
+
+**Status**: Recorded, 2026-09-01 02:05 JST頃。Hidenoriから「Mission Timelineは極めて良いが字が小さい」とのフィードバック。
+
+**内容**: `mapterhorn-monitor/docs/instruments/mission-timeline.js`のSVGガントチャートは、900px viewBoxの中でラベル11px・軸目盛10pxという小さめのSVGフォントサイズを使っていた。行高(rowHeight 34px)・ラベル用余白(labelHeight 16px)も同様に詰まっていたため、実際のダッシュボードパネル幅にスケールされた際に文字が読みづらかった。ラベル15px・軸目盛/now注記13px相当まで引き上げ、それに合わせてrowHeight(34→46)・labelHeight(16→22)・topPad(30→40)も拡大し、バーと文字が窮屈にならないよう調整。ダッシュボードの基本フォントサイズ(14px)・キャプション(12px)との整合も意識した(ラベルが主要テキストとして14pxよりやや大きい15px、軸目盛等は補助情報としてキャプションに近い13px)。ローカルでOpen MCT越しに目視確認してからpush。
+
+**対応**: `mapterhorn-monitor`側でコミット・push済み。他の計器(Progress Trendなど)も同様に小さめのSVGフォントサイズを使っているため、追加のフィードバックがあれば同じ方針で拡大する。
+
+### Resume prompt
+
+> D85でMission Timelineの文字サイズを拡大(ラベル11→15px、軸目盛10→13px、行高34→46px)、push済み。他の計器(Progress Trend等)も同種の小さいSVGフォントサイズを使っているため、フィードバックがあれば同様に拡大すること。
