@@ -14,7 +14,7 @@ fetch('style.json')
       container: 'map',
       style,
       hash: 'hash',
-      center: [140.73, 41.79], // 函館山・五稜郭 (current coverage; recenter as coverage grows)
+      center: [141.35889, 42.71694], // 風不死岳 (支笏湖畔、千歳市) -- recentered from 函館山・五稜郭, mapterhorn-japan-bridge DECISIONS.md D87
       zoom: 13,
       pitch: 50,
       maxPitch: 85,
