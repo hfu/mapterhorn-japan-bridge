@@ -6794,3 +6794,17 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D86でMission Timelineのキャプションをスウォッチ凡例に置き換え、push済み。今後ダッシュボードに新しい視覚的エンコーディングを追加する際は、文章キャプションではなく`status-map.js`/`mission-timeline.js`と同じスウォッチ凡例パターンを最初から使うこと。
+
+## D87: 公開ビューア(`mapterhorn-japan-bridge`)のデフォルト表示位置を函館山・五稜郭から風不死岳に変更
+
+**Status**: Recorded, 2026-09-01 02:45 JST頃。Hidenoriから「Live Viewerのデフォルト位置を、現在の『函館の中途半端な位置』ではなく風不死岳あたりにしたい」との要望。
+
+**内容**: `app.js`の`center`は元々`[140.73, 41.79]`(函館山・五稜郭)で、コメントに「current coverage; recenter as coverage grows」とあり、当初から暫定値だった。風不死岳(北海道千歳市、支笏湖畔、座標42.71694°N/141.35889°E、標高1102.5m、出典: 日本語版Wikipedia)へ変更。
+
+**検証**: 変更前に、この地点に実データがあるか確認した。ブラウザペインでの目視確認では地図が真っ白に見えたが(このツールの既知の制限——本セッション中繰り返し確認されているMapLibreタイル非描画のクセ)、実際に`stars.optgeo.org/mapterhorn-japan-bridge`のmartin XYZエンドポイントへ直接curlしたところ、風不死岳のz13タイル(7312/3018)は`200 image/webp`で実データを確認。函館側の同じ検証(7298/3047)も同様に200だった——つまりどちらも実際にはデータがあり、ブラウザペインの表示だけが信用できなかった、という結論。今後もこの種の視覚確認は、ブラウザペインの結果だけでなくHTTPレベルの直接確認を併用すること。
+
+**対応**: `app.js`を変更、`mapterhorn-japan-bridge`側にコミット・push(`e936344`)。GitHub Pagesのキャッシュ(10分)が効くため、反映まで多少のラグがある。
+
+### Resume prompt
+
+> D87でLive Viewer/公開ビューアのデフォルト中心座標を函館山・五稜郭から風不死岳(42.71694, 141.35889)に変更(`e936344`)。変更前にmartin XYZエンドポイントへの直接curlでデータ存在を確認済み(ブラウザペインの目視確認だけでは信用できないことを再確認)。GitHub Pagesの10分キャッシュ後、実際の表示を確認すること。
