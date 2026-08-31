@@ -6749,6 +6749,8 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 
 **副産物として得た知見**: `lineage_inspect.py`は単体で軽量に動く(このタイル1件で約2分)、かつ現在進行中のリペア処理と安全に並行実行できることを実地確認した。号2以降、複数の既知報告地点でこれを繰り返し実行し、lineageタイルとして面的にPMTiles化・ダッシュボードへ反映する構想がHidenoriから出ている(急ぎではなく、starsへのPMTilesアップロードは`stars`エージェントに相談する予定)。
 
+**追記(2026-08-31 22:48 JST)**: D75で言及された九州修正タイル`10-881-411-16-aggregation.csv`でも同じ手法を再実行。6優先グループ(jpnational1/A 91.5%、jpnational5/A・B・C計0.3%、jpnational10/b 0.1%、jpnationalsea 8.2%)、可視化結果もやはり境界は完全に自然な海岸線・地形形状のみで、グリッド痕跡は無し。倉橋島に続く2件目の独立した裏付けが得られ、「lineage境界は市松模様の原因ではない」という結論の確度が上がった。
+
 ### Resume prompt
 
-> D83で`lineage_inspect.py`を倉橋島タイルに実行、ソース境界(lineage境界)は完全に海岸線形状でグリッドパターンなし -- 市松模様の「ソース切り替わり」説を却下、D79の512pxブロック仮説が引き続き最有力。`aggregation_repair_3344`完了・再構築後の実地検証(D79 resume prompt参照)で、512px格子線とアーティファクト境界が一致するかを確認すること。余裕があれば他の既知報告地点でもlineage_inspect.pyを追加実行し、lineageタイルのPMTiles化・ダッシュボード反映(急がず、stars向けアップロードは`stars`エージェントに相談)を検討する。
+> D83で`lineage_inspect.py`を倉橋島・九州(D75言及地点)の2タイルに実行、いずれもソース境界(lineage境界)は完全に自然な地形形状でグリッドパターンなし -- 市松模様の「ソース切り替わり」説を却下、D79の512pxブロック仮説が引き続き最有力。`aggregation_repair_3344`完了・再構築後の実地検証(D79 resume prompt参照)で、512px格子線とアーティファクト境界が一致するかを確認すること。余裕があれば他の既知報告地点(中国・四国・沖縄)でもlineage_inspect.pyを追加実行し、lineageタイルのPMTiles化・ダッシュボード反映(急がず、stars向けアップロードは`stars`エージェントに相談)を検討する。
