@@ -6754,3 +6754,17 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D83で`lineage_inspect.py`を倉橋島・九州(D75言及地点)の2タイルに実行、いずれもソース境界(lineage境界)は完全に自然な地形形状でグリッドパターンなし -- 市松模様の「ソース切り替わり」説を却下、D79の512pxブロック仮説が引き続き最有力。`aggregation_repair_3344`完了・再構築後の実地検証(D79 resume prompt参照)で、512px格子線とアーティファクト境界が一致するかを確認すること。余裕があれば他の既知報告地点(中国・四国・沖縄)でもlineage_inspect.pyを追加実行し、lineageタイルのPMTiles化・ダッシュボード反映(急がず、stars向けアップロードは`stars`エージェントに相談)を検討する。
+
+## D84: `AGGREGATION_WORKERS`のデフォルトを4→5に引き上げ、実測で増速効果を検証中
+
+**Status**: Recorded, 2026-09-01 02:00 JST頃。Hidenoriとの議論を受けて実施。
+
+**背景**: `aggregation_run.py`の`get_worker_count()`が返すデフォルト4は、元々「aggregation_run.pyとdownsampling_run.pyが同じマシン上で同時に動く」「pmtiles-storeがディスク1枚」という前提でCPU/ディスクを飽和させないよう控えめに設定されたものだった。しかし現在: (1) `aggregation_repair_3344`はdownsamplingと同時実行しておらず単独稼働、(2) D58/D61でpmtiles-storeは2枚のディスクに分割済み——前提が変わっていた。実測(`iostat`)でも4ワーカー時点でCPU idle 46-47%(10論理コア、4P+6E構成)と明確な余裕があった。
+
+**対応**: 一気に増やさず、まず5への1段階引き上げに留めて増速効果を計測する方針(Hidenoriの判断)。`get_worker_count()`のデフォルトを4→5に変更、`hfu-mapterhorn`側にコミット(`486a7a0`)。適用のため`aggregation_repair_3344`をgraceful stop(SIGTERM、進行中アイテムはatomic renameで保護済みなので安全)→新screenセッションで再起動、ログで`using 5 workers`を確認。
+
+**計測方法**: 15分tickごとの`done_count`増分(直近の4ワーカー時点の実測: 概ね28〜33件/15分)と、5ワーカー再開後の同じ指標を比較する。あわせてload average・iostatも継続観測し、ディスクI/Oが新たなボトルネックにならないか確認する。
+
+### Resume prompt
+
+> D84で`AGGREGATION_WORKERS`のデフォルトを4→5に変更(`486a7a0`)、2026-09-01 02:00 JST頃に再起動。4ワーカー時点のベースラインペースは概ね28〜33件/15分。5ワーカーでのペースを複数tick分計測し、有意な増速があるか、load average/iostatに悪化がないかを確認すること。良好であれば6への追加引き上げも検討、悪化(ディスクI/O競合等)が見られれば4へ戻すこと。
