@@ -6780,3 +6780,17 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D85でMission Timelineの文字サイズを拡大(ラベル11→15px、軸目盛10→13px、行高34→46px)、push済み。他の計器(Progress Trend等)も同種の小さいSVGフォントサイズを使っているため、フィードバックがあれば同様に拡大すること。
+
+## D86: Mission Timelineの説明文が「細部が多すぎて分かりにくい」との指摘を受け、文章形式の凡例をスウォッチ形式に置き換え
+
+**Status**: Recorded, 2026-09-01 02:10 JST頃。D85直後、Hidenoriから「このテキストがわかりにくい。微妙に細部が多すぎるのかも」とのフィードバック。
+
+**内容**: 従来のキャプションは"Solid = actual/in-progress (dark) / projected remainder (light) — dashed outline = pure estimate — solid blue outline = estimate anchored to a historical measurement (rsync). Covers every step from now..."と、4種類のバー表現(実績/進行中の濃い緑・投影分の薄い緑・純粋な見積もりの青破線枠・実測値に基づく見積もりの青実線枠)とスコープ説明を、記号的な"="を使った一文に詰め込んでいた——凡例というより暗号に近く、読み解くのに文章解析が必要な状態だった。
+
+**対応**: `status-map.js`の凡例と同じパターン(色付きスウォッチ+短いラベル)に置き換え。新設した`.mjbmon-timeline-legend`(flexラップの2x2グリッド)で、実際のバースタイルと視覚的に一致するスウォッチ(塗り/半透明塗り/破線枠/実線枠)を4行で示す。キャプション自体は"Every step from now through Generation 1's final rebuild after the D74-D76 repair."という短いスコープ説明のみに削減。ローカルでOpen MCT越しに目視確認してからpush。
+
+**教訓**: D85(文字サイズ)とD86(情報の詰め込みすぎ)は別々の指摘だったが、根っこは同じ——SVG/テキストベースの表現に頼りすぎて、本来視覚的に示すべき情報(色・線種の意味)まで文章化してしまっていた。今後ダッシュボードに新しい視覚的エンコーディング(色・線種・塗りパターンなど)を追加する際は、最初から文章キャプションではなくスウォッチ凡例で設計すること。
+
+### Resume prompt
+
+> D86でMission Timelineのキャプションをスウォッチ凡例に置き換え、push済み。今後ダッシュボードに新しい視覚的エンコーディングを追加する際は、文章キャプションではなく`status-map.js`/`mission-timeline.js`と同じスウォッチ凡例パターンを最初から使うこと。
