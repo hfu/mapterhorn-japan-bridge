@@ -6872,23 +6872,12 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 
 > D91でOpen MCT継続利用の方針を明文化(技術的代替は存在するが、意図的に「使い倒して貢献する」立場を維持)。号2以降、ダッシュボードの規模や要件が大きく変わる場合は、この記録を踏まえて改めて技術選定を見直す余地がある。
 
-**追記(2026-09-01 03:35 JST頃)**: D91のドラフト(「Open MCT実地ノウハウ集」)をsas0エージェント・claude-mctエージェントに回付し、双方から詳細なレビューを受けた。3者の実装(mapterhorn-monitor: 4.3.0-rc1/CDN、sas0: 同じく4.3.0-rc1/CDN、claude-mct: 4.2.0/npm自前ホスティング)を突き合わせた結果、当初の仮説のうち2点を訂正:
+**追記(2026-09-01 03:35〜03:50 JST頃)**: D91のドラフト(「Open MCT実地ノウハウ集」)をsas0エージェント・claude-mctエージェントに回付し、3者(mapterhorn-monitor/sas0/claude-mct)の実装を突き合わせるレビューを実施。当初の仮説のうち「Plot/Telemetry APIはproviderパターンと根本的に相性が悪い」「`openmct.on('start', ...)`が4.3.0-rc1全般で発火しない」の2点が言い過ぎだったと判明(他環境での反証)。巡回モードのフルスクリーン化(Hidenoriからの要望)についてもsas0に相談し、Open MCT自身のUI chrome(ツリー・ヘッダー・Inspectパネル)を隠すCSSクラスをsas0の実地DOM調査から流用、実装・push済み。
 
-1. **「Plot/Telemetry APIはproviderパターンと根本的に相性が悪い」は言い過ぎだった**: claude-mctはproviderが返す非永続オブジェクトに対するTelemetry API(request/subscribe)をライブテレメトリ表示で実証済み。相性が悪いのはPlot(グラフ描画)のデータ表示に限定される話で、それもバージョン依存の可能性が高い(sas0は4.3.0-rc1で描画が空になる、claude-mctは4.2.0で描画自体はされる)。
-2. **「`openmct.on('start', ...)`が4.3.0-rc1全般で発火しない」も誤り**: sas0は同じ4.3.0-rc1・同じCDN構成・同じ登録順序(リスナーを`start()`より先に登録)で確実に発火している。mapterhorn-monitor固有の環境要因(起動時に一貫して発生する未処理Promise rejection `Cannot read properties of undefined (reading 'key')`が怪しいが未確定)である可能性が高い。
+**ドキュメントのマスターはsas0リポジトリに移管完了**: **https://github.com/dwg7/sas0/blob/main/OPENMCT-NOTES.md** (`docs/`配下ではなくリポジトリルート — `docs/`はGitHub Pages配信対象そのものなので、フロントマターなしのMarkdownを置くと生テキストのまま配信されてしまうため、とのsas0の判断)。技術的な詳細・3者統合の全内容はこのURLを参照。以降の更新もここで行われる。このDECISIONS.mdには重複させない。
 
-一方、**PlanLayoutの「Attempted to mutate immutable object」壁**は3者中2者の実装ベースの確認+1者のコード読解ベースの判断が矛盾なく一致し、確度が上がった。SharedWorkerのエラーには「CDN起因のクロスオリジン」と「npm自前ホスティング時の`setAssetPath()`未設定」という2つの独立した原因があることも判明。統合版(v2)を作成し両エージェントに返送済み。マスター管理をsas0リポジトリへ移管する件は、sas0側がHidenoriさんに確認中。
-
-**教訓**: 一つの環境だけで得た知見を「〜は使えない」と断定的に書くと、他の環境での反証で覆ることがある(今回は2件)。複数の独立した実装を持つチームでは、この種のドキュメントは早い段階で横展開してレビューを受ける価値が高い。
-
-**追記2(2026-09-01 03:45 JST頃、巡回モードのフルスクリーン化)**: D88で追加した巡回モードについて、Hidenoriから「フルスクリーンでやってほしい」との要望。sas0が既に同種の「フルスクリーン巡回」機能を実装済みとのことで、ドキュメントスレッドとは別件としてsas0に相談。
-
-**sas0からの重要な指摘**: ブラウザ本体のFullscreen API(`requestFullscreen()`)は**ブラウザ自身のchrome(タブ・アドレスバー)しか消さず、Open MCT自身のUI chrome(左ツリー・上部ヘッダー・右Inspectパネル)は残ったまま**——Open MCTには組み込みのキオスクモードは無く、これは自前でCSSを書いて隠す必要がある。sas0が実地のDOM調査で特定したクラス名(`.l-shell__head`・`.l-shell__pane-tree`・`.l-shell__pane-inspector`・`.l-browse-bar`)を、こちらの環境(同じEspressoテーマ・同じOpen MCTバージョン)でも`document.querySelector`で確認したところ全て一致。`body`にクラスをトグルする形で実装し、ローカルプレビューで正しく隠れる/復元することを確認、push済み。
-
-**もう一つの重要な指摘(該当せず、確認のみ)**: Open MCTは計器を切り替えるたびに、切り替え元の計器のview/renderを破棄する。巡回モードの制御(タイマー・トグルボタン)を通常の計器ビューのDOM内に置くと、次の計器に切り替わった瞬間に消えてしまう——というsas0自身が踏んだ罠。私たちの実装は元々`document.body.appendChild()`(ビュー階層の外)+ IIFEモジュールスコープのクロージャ(ページ全体で1度だけ実行される場所)に置いていたため、この問題には該当していなかったが、理由を意識せず結果的に正しい設計になっていたことが分かった。
-
-**対応**: `core.js`にchrome非表示のトグル処理を追加、`style.css`にCSSルールを追加。コミット済み(mapterhorn-monitor側)。
+**教訓**: 一つの環境だけで得た知見を「〜は使えない」と断定的に書くと、他の環境での反証で覆ることがある。複数の独立した実装を持つチームでは、この種のドキュメントは早い段階で横展開してレビューを受け、マスターは実際にその技術を最も深く使っているチームが持つのが良い。
 
 ### Resume prompt
 
-> D91追記2で巡回モードのフルスクリーン化を完了(Fullscreen API + Open MCT自身のchrome非表示CSS、sas0の実地DOM調査による知見)。ボタン/タイマーの状態管理がビュー階層外・モジュールスコープにあることも確認済み(sas0が踏んだ「計器切替でUIが消える」罠には該当せず)。実機での最終視覚確認はブラウザ自動化ツールの制約で未実施——次回Hidenoriが実機で確認すること。
+> D91の技術的詳細(Plot/Telemetry APIの評価訂正・`'start'`イベントの環境依存性・SharedWorkerの2系統の原因・巡回モードのフルスクリーン化)は、mapterhorn-japan-bridge内ではなく https://github.com/dwg7/sas0/blob/main/OPENMCT-NOTES.md が正本。参照する際はこのURLを見ること、このDECISIONS.mdには複製しないこと。巡回モードのフルスクリーン化自体は実装・push済みだが、実機での最終視覚確認はブラウザ自動化ツールの制約で未実施——次回Hidenoriが実機で確認すること。
