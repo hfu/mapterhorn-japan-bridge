@@ -232,6 +232,19 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
     reproduces D72/D73's outcome post-repair.** Re-evaluate preconditions
     from scratch at that point rather than trusting this section's old
     "done" markers.
+
+    **STALE AGAIN (added 2026-09-01, DECISIONS.md D96, "1.5号" plan)**:
+    even once 1号 itself is clean, do NOT detach disk5 -- Hidenori has
+    decided to immediately follow 1号 with "1.5号" (section 6: same
+    source data, new pipeline code, national-scale validation run before
+    real 2号 starts), which needs this same disk as its own working
+    volume. Keep disk5/pmtiles-store attached and in use straight through
+    1.5号. Only re-evaluate detaching it after 1.5号 itself reaches a
+    clean, verified state -- and even then, re-attaching for real 2号
+    (section 1) is coming soon after anyway, so detaching in between may
+    not be worth doing at all. Don't trust this section's "done" markers
+    from the D73/D90 eras; re-derive current status from DECISIONS.md's
+    latest entries each time this is revisited.
     Confirmed via `grep` that no pipeline script hardcodes
     `/Volumes/pmtiles-store` anywhere — everything goes through the
     relative `pmtiles-store`/`tmp-store` symlinks from the `pipelines/`
@@ -332,14 +345,26 @@ publishes? Tradeoff already flagged by Oliver himself: not ideal for
 general GIS usage (no true COG without overviews, older software may
 lack LERC support). Not decided yet.
 
-## 6. Candidate feature: lineage/provenance tiles
+## 6. 「1.5号」: 1号完了後・2号(新GSIデータ)着手前のパイプライン検証ラン
 
-D83で使った`lineage_inspect.py`(単一タイルの診断ツール、どのソース優先度グループが各ピクセルを埋めたかを可視化)を、2号で全国常設のPMTiles層として組み込むかどうかの検討。D93で見積もり(未実装)、D94で必要な多数決downsamplingアルゴリズムを先行実装済み(`hfu-mapterhorn/pipelines/lineage_downsample.py`、production未接続)。
+**Hidenoriの決定、2026-09-01(DECISIONS.md D96)**: 1号が完成しstarsに公開された後、10月末のGSI更新までの空き時間を使って、**ソースデータは1号と同一のまま、パイプラインだけを2号向けに改修した「1.5号」を全国スケールで走らせる**。2号本番で「新しいコード」と「新しいデータ」という2つの未知数を同時に抱えないための変数分離が目的。ソースデータが同一なので、1号の既実証の結果(タイル抜けなし)とほぼ一致するはずの出力になり、パイプライン変更の副作用を検出する実質無料の回帰テストにもなる。
 
-- **時間コスト**: 2号の本番`aggregation_run.py`に`EMIT_LINEAGE`フラグとして相乗りさせれば、追加コストは数時間〜半日規模(D93)。downsampling側の追加コストは実測でほぼ無視できる(D94: 全8,223件換算で合計3〜4分)。
-- **ストレージコスト**: 標高本体(307.9GB)の5〜15%、約15〜45GB(粗い概算、D93)。
-- **未実装の残り**: `aggregation_run.py`本体への`EMIT_LINEAGE`フラグ組み込み(D93で挿入位置は特定済み)、lineageラスタのタイル化・bundle・merge・stars配信までの一連。
-- **判断**: 2号本編とは独立した任意機能。2号の本編スコープ(GSI更新の取り込み)を遅らせてまで実装する優先度ではないので、2号の一次リリース後の追加機能として検討するのが妥当(2号着手前の必須事項ではない)。
+**1.5号のスコープ**:
+1. **D74-D76レイヤー名前空間分離の構造的修正**(本ファイル§4、案A推奨)——1号最大のインシデントの再発防止策を、全国スケールで初めて検証する機会。
+2. **lineageタイル機能**(D93/D94)——当初「2号本編とは独立した任意機能」としていたが、**Hidenoriの決定によりスコープに含めることに変更**。`aggregation_run.py`への`EMIT_LINEAGE`フラグ組み込み(D93で挿入位置は特定済み)、D94の多数決downsampling(`hfu-mapterhorn/pipelines/lineage_downsample.py`、既に自己テスト済み・production未接続)の実接続、タイル化・bundle・merge・stars配信までの一連を1.5号で実装する。
+   - 時間コスト: D93の見積もりでは数時間〜半日規模。downsampling側の追加コストは実測でほぼ無視できる(D94: 全8,223件換算で合計3〜4分)。
+   - ストレージコスト: 標高本体(307.9GB)の5〜15%、約15〜45GB(粗い概算、D93)。
+3. ソースデータ(`jpnational1`/`5`/`10`/`sea`)は1号と同一のまま——新規GSIデータの取り込みは行わない(それは2号の役目)。
+
+**公開方針**:
+- terrariumタイル: starsで1号を**上書き**(1.5号が新しい現行版になる)。
+- lineageタイル: 新規公開(1号には存在しなかった)。
+- どちらも2号(新GSIデータ投入後)完成時に、さらに上書きされる——1.5号はあくまで中間ステージング。
+
+**未確認・実装着手前に詰めるべき点**:
+- 1.5号のディスク容量: 1号の成果物(比較基準として保持)と1.5号自身の成果物を、一時的に並行して持てるだけの空き容量があるか事前確認が必要。
+- 純粋な「クリーンな1回のフルビルド」の所要時間の実績が無い(1号の実績は調査・バグ修正込みの数字で参考にならない)——1.5号自体がこの実測データを初めて提供することになる。
+- generation_idは1号と別にする(上書きせず、突き合わせの基準として1号を残す)。
 
 ## 7. Explicitly out of scope for this planning pass
 
@@ -362,10 +387,10 @@ D83で使った`lineage_inspect.py`(単一タイルの診断ツール、どの�
 - 案A/案Bのようなレイヤー分離設計の詳細化(ドキュメント上の検討のみ、コード変更なし)
 - LERC再設計の検証も、`pipelines-rehearsal/`(このセッションで既に確立されている、本番`pipelines/`とは独立したシンボリックリンク環境、bundle.py/merge_japan_bundles.pyのスローアウェイ検証に過去使用)を使えば1号に触れずに試せる——ただし今回は着手していない
 
-**1号完了まで待つべき(本番コード・本番データに触れる)**:
-- ❌ D74-D76レイヤー分離の実装(`get_pmtiles_folder()`・ファイル命名規則の変更) — `aggregation_run.py`/`downsampling_run.py`/`bundle.py`という、今`aggregation_repair_3344`が使っている本番コードそのもの
-- ❌ disk5のデタッチ(D90で既にPLAN.md §4にSTALE警告を追記済み)
-- ❌ lineageタイルの`EMIT_LINEAGE`フラグを本番`aggregation_run.py`に組み込むこと
+**1号完了まで待つべき(本番コード・本番データに触れる)——ただし完了後は2号ではなく先に1.5号(§6)のタイミングで着手する**:
+- ❌ D74-D76レイヤー分離の実装(`get_pmtiles_folder()`・ファイル命名規則の変更) — `aggregation_run.py`/`downsampling_run.py`/`bundle.py`という、今`aggregation_repair_3344`が使っている本番コードそのもの。1号完了後、1.5号として実装・検証。
+- ❌ disk5のデタッチ(D90/D96で二重にSTALE警告を追記済み)——1.5号も同じディスクを使うため、2号本番が近づくまでさらに待つ。
+- ❌ lineageタイルの`EMIT_LINEAGE`フラグを本番`aggregation_run.py`に組み込むこと——D96でスコープを1.5号に変更(当初「2号一次リリース後」としていたのを訂正)。
 - ❌ upstream同期での「マージしない」判断済みの変更(分散ワーカー化等、D82)を再検討して取り込むこと——2号の規模次第では検討価値があるかもしれないが、今取り込むと1号の動作が変わってしまう
 
 ## Resume note
