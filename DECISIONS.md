@@ -6871,3 +6871,12 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D91でOpen MCT継続利用の方針を明文化(技術的代替は存在するが、意図的に「使い倒して貢献する」立場を維持)。号2以降、ダッシュボードの規模や要件が大きく変わる場合は、この記録を踏まえて改めて技術選定を見直す余地がある。
+
+**追記(2026-09-01 03:35 JST頃)**: D91のドラフト(「Open MCT実地ノウハウ集」)をsas0エージェント・claude-mctエージェントに回付し、双方から詳細なレビューを受けた。3者の実装(mapterhorn-monitor: 4.3.0-rc1/CDN、sas0: 同じく4.3.0-rc1/CDN、claude-mct: 4.2.0/npm自前ホスティング)を突き合わせた結果、当初の仮説のうち2点を訂正:
+
+1. **「Plot/Telemetry APIはproviderパターンと根本的に相性が悪い」は言い過ぎだった**: claude-mctはproviderが返す非永続オブジェクトに対するTelemetry API(request/subscribe)をライブテレメトリ表示で実証済み。相性が悪いのはPlot(グラフ描画)のデータ表示に限定される話で、それもバージョン依存の可能性が高い(sas0は4.3.0-rc1で描画が空になる、claude-mctは4.2.0で描画自体はされる)。
+2. **「`openmct.on('start', ...)`が4.3.0-rc1全般で発火しない」も誤り**: sas0は同じ4.3.0-rc1・同じCDN構成・同じ登録順序(リスナーを`start()`より先に登録)で確実に発火している。mapterhorn-monitor固有の環境要因(起動時に一貫して発生する未処理Promise rejection `Cannot read properties of undefined (reading 'key')`が怪しいが未確定)である可能性が高い。
+
+一方、**PlanLayoutの「Attempted to mutate immutable object」壁**は3者中2者の実装ベースの確認+1者のコード読解ベースの判断が矛盾なく一致し、確度が上がった。SharedWorkerのエラーには「CDN起因のクロスオリジン」と「npm自前ホスティング時の`setAssetPath()`未設定」という2つの独立した原因があることも判明。統合版(v2)を作成し両エージェントに返送済み。マスター管理をsas0リポジトリへ移管する件は、sas0側がHidenoriさんに確認中。
+
+**教訓**: 一つの環境だけで得た知見を「〜は使えない」と断定的に書くと、他の環境での反証で覆ることがある(今回は2件)。複数の独立した実装を持つチームでは、この種のドキュメントは早い段階で横展開してレビューを受ける価値が高い。
