@@ -7221,3 +7221,5 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 **追記(05:43 JST)**: `merge_bundles3`が正常完走(エラーなし、`bundle-store/mapterhorn-japan-bridge.pmtiles`、217.4GB、1,777,785タイル)。D81に従い`pmtiles cluster bundle-store/mapterhorn-japan-bridge.pmtiles`を`pmtiles_cluster2`スクリーンで起動。
 
 **追記(06:13 JST)**: `pmtiles cluster`が正常完走(11分、エラーなし、`total directory size 3817864 (99.761849% of original)`——D100実績とほぼ同水準)。`global-overview-backup.pmtiles`(3.27GB)を`/Volumes/Migrate-2025-04/global-overview-backup.pmtiles`で確認し、`pmtiles merge bundle-store/mapterhorn-japan-bridge.pmtiles /Volumes/Migrate-2025-04/global-overview-backup.pmtiles bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`を`pmtiles_merge2`スクリーンで起動。
+
+**追記(06:43 JST)**: `pmtiles merge`が正常完走(26分、`bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`、220.65GB)。真の検証として`check_pmtiles_integrity.py`を`integrity_check2`スクリーンで起動(D100でオーファンタイルを発見したのと同じ検証ステップ)。
