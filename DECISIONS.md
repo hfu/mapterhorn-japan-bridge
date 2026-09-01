@@ -114,6 +114,8 @@ This file is the *why*, kept stable. Session narrative lives in
 | [D98](#d98-downsampling再収束完了82158223残8件は構造的に子タイル欠落bundlepy起動) | downsampling再収束完了(8,215/8,223、残8件は構造的に子タイル欠落)、bundle.py起動 | | |
 | [D99](#d99-bundlepy完走想定4時間実測約30分merge_japan_bundlespy起動) | bundle.py完走(想定4時間→実測約30分)、merge_japan_bundles.py起動 | | |
 | [D100](#d100-bundlepymerge_japan_bundlespypmtiles-clusterd81実証最終pmtiles-merge完走しかし整合性チェックで大規模なdownsampling-stale-markerを発見) | bundle.py・merge_japan_bundles.py・pmtiles cluster(D81実証)・最終pmtiles merge完走、しかし整合性チェックで大規模なdownsampling stale markerを発見 | | |
+| [D101](#d101-downsampling_runpyの再構築が想定より大幅に遅い約2件分priority_mode環境変数が実は無視されるデッドコードだったと判明) | downsampling_run.pyの再構築が想定より大幅に遅い(約2件/分)、PRIORITY_MODE環境変数が実は無視されるデッドコードだったと判明 | | |
+| [D102](#d102-d101の訂正-priority_modeはデッドコードではなかった実際の遅さの原因はioバウンドな処理そのもの) | D101の訂正 — PRIORITY_MODEはデッドコードではなかった。実際の遅さの原因はI/Oバウンドな処理そのもの | | |
 
 ---
 
@@ -7145,3 +7147,19 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D101で`downsampling_run.py`の`PRIORITY_MODE`環境変数がデッドコード(常にFreetown中心のproximityソートが使われる)と判明。7,079件の再構築が約60時間規模ペースで進行中——遅い原因はitem処理順序の可能性(D21と同種のパターン)だが未確定。しばらく実測ペースを追跡し、改善しなければD21と同じシャッフル対策の導入(グレースフル停止→コード修正→再起動、これまでの進捗は`.done`マーカーにより失われない)を検討すること。`PRIORITY_MODE`のデッドコード自体は号2に向けて修正または削除を検討する価値がある(現状は嘘の設定に見えて実は何もしていない)。
+
+## D102: D101の訂正 — `PRIORITY_MODE`はデッドコードではなかった。実際の遅さの原因はI/Oバウンドな処理そのもの
+
+**Status**: Recorded, 2026-09-01 21:20 JST頃。CLAUDE.md/HANDOVER.mdの更新作業の一環で`downsampling_run.py`を再確認して発覚。
+
+**内容**: D101は`sort_files_by_proximity(all_files, CENTER_LAT, CENTER_LON)`の**呼び出し側**（`__main__`ブロック、520行目付近）だけを見て、「引数に`PRIORITY_MODE`が渡っていない＝無視されている」と誤って結論していた。実際には`sort_files_by_proximity()`内部の`sort_key()`クロージャが、モジュールスコープの`PRIORITY_MODE`変数（`os.environ.get('PRIORITY_MODE', 'proximity')`で設定済み）を直接参照しており、`if PRIORITY_MODE == 'quadrans':`の分岐で`utils.japan_quadrans_of()`ベースの優先度に正しく切り替わる。`downsampling_repair2`は`PRIORITY_MODE=quadrans`で起動されているため、実際の処理順序はquadrans優先度で決まっている——D101が疑った「常にFreetown距離でソートされている」は誤りだった。
+
+ログの`=== Processing Order (Center: 8.465, -13.234) ===`という表示は、単に印字コード自体が`CENTER_LAT`/`CENTER_LON`のデフォルト値を無条件に表示しているだけ（実際のソートキーで使われているかどうかとは無関係）で、これがD101の誤読を招いた直接の原因だった。この印字文自体は実害はない（誤解を招くだけ）ため、修正の優先度は低い。
+
+**訂正した理解**: 約2件/分という遅さの原因は、ソート順序のバグではなく、D44/D56が既に指摘していた「粗いズームのitemほど大きなpmtiles-storeアーカイブの読み込みI/Oが重い」という、元から分かっていた特性がそのまま表れている可能性が高い。`slate`は10コア/16GB、両ボリューム(`Migrate-2025-04`/`pmtiles-store`)ともUSB接続のSSD（`diskutil info`で確認、Solid State: Yes）。プロセス自体のCPU使用率は実測0.1%程度と低く、CPUバウンドではなくI/Oバウンドであることと整合する。`DOWNSAMPLING_WORKERS=3`は10コアに対して控えめな設定であり、SSD（spinning diskと異なりランダムI/Oの並列化に強い）という条件を踏まえると、ワーカー数を増やす余地がある可能性がある。
+
+**対応**: D21のシャッフル対策（ソート順序の問題という誤った前提に基づく提案）は見送り。代わりに、`DOWNSAMPLING_WORKERS`を増やす実験を次に検討する——ただし本番プロセスの再起動を伴うため、実測データ（現在の~2.1件/分という基準値）を確保した上で、小さく試す。
+
+### Resume prompt
+
+> D101の「PRIORITY_MODEはデッドコード」という診断は誤りだったとD102で訂正済み——実際にはquadrans優先度が正しく機能している。約2件/分という遅さはI/Oバウンドな処理特性(D44/D56)によるものと理解し直した。次の一手はワーカー数(`DOWNSAMPLING_WORKERS=3`→増加)の実測チューニング検討。ソート順序側の追加調査は不要。
