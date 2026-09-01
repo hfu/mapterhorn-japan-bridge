@@ -7019,3 +7019,15 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D98でdownsampling再収束完了(8,215/8,223、残8件はz6/z7低ズームの構造的欠落、DOWNSAMPLING_STRICTで安全スキップ)。`bundle.py`(`bundle_rebuild`スクリーン)起動済み、完了まで数時間規模。完了後: `merge_japan_bundles.py`→`pmtiles cluster japan-z8plus.pmtiles`(D81)→`global-overview.pmtiles`復元→`pmtiles merge`→`check_pmtiles_integrity.py`(この時点でD98の8件の欠落が孤立タイルとして実際に現れるか確認)→D79の視覚確認→starsへrsync(Hidenoriに一声かけてから)。
+
+## D99: bundle.py完走(想定4時間→実測約30分)、merge_japan_bundles.py起動
+
+**Status**: Recorded, 2026-09-01 19:01 JST頃。
+
+**内容**: `bundle_rebuild`スクリーンが18:16開始・18:46終了、**Mission Timelineの見積もり(約4時間)よりはるかに早い約30分で完走**。23ファイル生成(`planet.pmtiles`+z6タイル22枚)、エラーなし。`bundle-store`合計約393GB。想定より速かった要因は未分析(D84のワーカー増強・D58-61のディスク分割の効果が複合している可能性、深掘りはしていない)。
+
+**対応**: `merge_japan_bundles.py`を`merge_bundles`スクリーンで起動(`TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/`)。プロセス起動・実行中を確認(CPU 16.6%)。
+
+### Resume prompt
+
+> D99でbundle.pyが想定よりはるかに早く完走(約30分、想定4時間)。`merge_japan_bundles.py`(`merge_bundles`スクリーン)起動済み。完了後: `pmtiles cluster japan-z8plus.pmtiles`を試す(D81)→`global-overview.pmtiles`復元→`pmtiles merge`→`check_pmtiles_integrity.py`→D79の視覚確認→starsへrsync(Hidenoriに一声かけてから)。Mission Timelineの見積もり(bundle 4h・merge 0.5h)は実績に応じて更新を検討すること。
