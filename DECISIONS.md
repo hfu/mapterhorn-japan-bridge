@@ -6989,3 +6989,21 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D96で「1.5号」構想を記録。1号完了後・2号(新GSIデータ)着手前に、同一ソースデータ+新パイプライン(D95のレイヤー分離修正+D93/D94のlineage機能)で全国フルビルドを実行する中間ステージングラン。terrariumはstarsで1号を上書き、lineageは新規公開、両方とも2号完成時にさらに上書きされる。D90のdisk5デタッチ判断は再度保留(1.5号のインフラとして継続使用)。D95のlineage位置づけ(「2号本編とは独立、一次リリース後」)は本エントリで訂正——1.5号のスコープに含まれる。実装着手前にディスク容量・所要時間を確認すること。
+
+## D97: `aggregation_repair_3344` 完走 -- 6,373/6,373全件完了、D76復旧作業が完了
+
+**Status**: Recorded, 2026-09-01 18:00 JST頃。
+
+**内容**: 2026-08-31 05:29 JSTに開始した`aggregation_repair_3344`(D76の3,344件誤削除からの復旧)が完走。最終確認:
+- `aggregation-store/{generation_id}/*-aggregation.csv.done`が6,373件(=対象csv総数と一致、完全カバー)。
+- ログにエラー・トレースバックなし。
+- 残存する269件の`.todo`ファイルは、"already done, skip"パス(既に有効な`.done`が存在する項目を処理せずスキップする分岐)が`.todo`を削除しない仕様のため生じた無害な残骸——実害なし、優先度低で後日クリーンアップ検討。
+- 5ワーカー(D84)への引き上げは最後まで安定して機能、増速効果が持続した。
+
+**対応**: D76のresume promptに従い、次の手順に着手:
+1. **downsampling再収束**: `check_downsampling_readiness.py`で確認したところ、8,223件中`.done`8,020・処理待ち74・子タイル未整備129——想定通り(aggregationがまさに終わったばかりのため)。`downsampling_reconverge`スクリーンセッションで`downsampling_run.py`(`PRIORITY_MODE=quadrans DOWNSAMPLING_STRICT=1 DOWNSAMPLING_WORKERS=3`、publish_cycle.pyの標準設定に合わせた)を起動、進行中。
+2. 以降、bundle.py+merge_japan_bundles.py→pmtiles cluster試行(D81)→global-overview.pmtilesとのmerge→check_pmtiles_integrity.py→視覚確認(D79の512pxグリッド仮説検証)→starsへrsync、と進める予定。
+
+### Resume prompt
+
+> D97でaggregation_repair_3344が完走(6,373/6,373)。現在downsampling再収束中(`downsampling_reconverge`スクリーン、74件処理待ち+129件が子タイル整備待ちだった)。完了後: (1) `check_downsampling_readiness.py`で0 not-readyを再確認、(2) `bundle.py`+`merge_japan_bundles.py`で`japan-z8plus.pmtiles`再構築(TMPDIR明示指定を忘れないこと)、(3) D81に従い`pmtiles cluster japan-z8plus.pmtiles`を試す、(4) `global-overview.pmtiles`をバックアップから復元、(5) `pmtiles merge`で最終成果物作成、(6) `check_pmtiles_integrity.py`、(7) D79の512pxブロック仮説を倉橋島等で視覚確認、(8) starsへrsync。starsへの最終rsyncは公開に関わる操作なので、実行前にHidenoriに一声かけること。
