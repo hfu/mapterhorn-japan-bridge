@@ -7253,3 +7253,23 @@ stars側を管理する別セッション(`stars-fd`)に事前通知済み。
 ### Resume prompt
 
 > D106でHidenoriさんの承認を得てstarsへのrsyncを開始(旧ファイル削除→新ファイル転送、`publish_rsync`スクリーン、想定完了07:20+5.5h≈12:50 JST頃)。完了後: 転送先での`check_pmtiles_integrity.py`相当の確認(または単純なファイルサイズ/日付確認)→公開URLが200を返すことを確認→Hidenoriさんに完了報告。転送を待たずに1.5号の準備(D95/D96/D93/D94の実装、Hidenoriさんの追加指示によるファイル名リファクタリング含む)を並行して進めること。
+
+## D107: 1.5号向けにpmtiles-storeレイヤー名前空間分離を実装(D95案A) -- aggregation/downsampling層、elevation/lineageデータ種別の両軸で分離
+
+**Status**: Recorded, 2026-09-02 07:40 JST頃。Hidenoriさんの指示(starsへのrsync継続中に1.5号準備着手、命名リファクタリングを1.5号で積極的に行う)を受けて実装。EnterPlanModeで計画を提示・承認を得てから実装。
+
+**内容**: `utils.get_pmtiles_folder(x, y, z)` を `get_pmtiles_folder(x, y, z, layer, datatype='elevation')` に変更。返り値は `pmtiles-store/{layer}/{datatype}/...`(layer∈{aggregation, downsampling}、datatype∈{elevation, lineage})。D74-D76の根本原因(両層が同じファイル命名規則を共有し名前だけでは区別不能)を、ディレクトリ構造そのものに識別子を組み込むことで解消(D95案A)。
+
+新規`utils.resolve_layer(aggregation_id, z, x, y, child_z)`も追加。downsampling_run.pyが子タイルを参照する際、その子が「ネイティブaggregation leaf」か「downsamplingピラミッドの中間成果物」かは、ファイル名だけでは判定不能(downsampling_covering.pyのカバレッジ生成が本質的に再帰的なため、同じz-x-y-child_zの組がどちらの層にもなりうる)——`{z}-{x}-{y}-{child_z}-aggregation.csv`が存在するかどうかで判定する関数として実装。
+
+**更新した呼び出し箇所**(`grep -rn get_pmtiles_folder`で11箇所確認、うち本番パイプラインの8箇所を更新): `aggregation_tile.py`(自身の書き込み、layer='aggregation'固定)、`downsampling_run.py`(3箇所——1箇所は自身の出力でlayer='downsampling'固定、残り2箇所は子タイル参照でresolve_layer()による動的判定)、`check_downsampling_done_integrity.py`(downsampling自身の出力監査、layer='downsampling'固定)、`check_downsampling_readiness.py`(子タイル参照、resolve_layer()で動的判定)、`mjbmon_snapshot.py`(aggregation層の監視、layer='aggregation'固定)。`bundle.py`は`get_pmtiles_folder()`を使わず独自globだったため、`pmtiles-store/{aggregation,downsampling}/{datatype}/**`を横断的にglobするよう変更。
+
+**対象外とした2ファイル**: `check_aggregation_dirty_gap.py`・`check_covering_gaps.py`は1号の特定generation_id(`01M0MWK852631SHCHPA66F21WQ`等)をハードコードしたD52/D56当時の一回限りの調査スクリプトであり、標準運用の一部ではないため更新しなかった。
+
+**重要な副作用(意図的)**: この変更後、これらのスクリプトは1号の既存データ(フラット構造、`pmtiles-store/{z7親}/...`)を発見できなくなる。1号は全工程完了・stars公開rsync進行中(D106)であり、以後これらのスクリプトを1号のgeneration_idに対して再実行する必要はない想定。1.5号は新しいgeneration_idで最初からレイヤー分離済み構造に書き込むため、1号のデータへの移行・変更は一切行っていない。
+
+**動作確認**: `get_pmtiles_folder()`への新シグネチャでの呼び出し・`layer`未指定時のTypeError発生を実機で確認。全7ファイルの構文チェック(`py_compile`)通過。
+
+### Resume prompt
+
+> D107でpmtiles-storeレイヤー分離を実装・push済み(`hfu/mapterhorn` `8545a12`)。1号のstars公開rsync(D106)には影響なし(pmtiles-store構造とは無関係)。次はlineageタイル機能(D93/D94)の実装——`lineage_inspect.py`のcompute_provenance()を共有関数化し`aggregation_run.py`にEMIT_LINEAGEフラグで組み込む、downsampling_run.pyのcreate_tile()にdatatype分岐を追加してlineage_downsample.pyの多数決ロジックを接続、新規lineage_tile.pyでカテゴリ値のPMTiles書き出しを実装。その後、命名リファクタリング(mapterhorn-japan-bridge.z8plus.pmtiles等)とpipelines-rehearsal/での小規模リハーサルテストを経てから、Hidenoriさんに1.5号の全国スケールlaunch可否を確認すること。
