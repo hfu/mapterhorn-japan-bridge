@@ -20,6 +20,19 @@ count against D68's 183,847 baseline — see `DECISIONS.md`'s own recent
 entries for the live status, don't trust this snapshot once it's
 stale.
 
+## 0. Generation ID <-> human-readable label (D109)
+
+"1号"/"1.5号"/"2号" are conversational shorthand that, before this table,
+lived only in DECISIONS.md prose -- no single place in the repo mapped
+them to the actual `generation_id` ULIDs the code operates on. Kept here,
+updated whenever a new generation starts:
+
+| Label | generation_id | Status |
+|---|---|---|
+| 1号 | `01M0MWK852631SHCHPA66F21WQ` | Complete, published to stars (D106) |
+| 1.5号 | *(not yet created)* | In prep -- see section 6 |
+| 2号 | *(not started)* | Gated on GSI's next quarterly DEM1A update (section 1) |
+
 ## 1. What triggers 2号
 
 **Corrected understanding, from a direct exchange with Oliver Wipfli
