@@ -7235,3 +7235,21 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 **留保事項**: (1) このエリアはz13以上のカバレッジが無く(水域寄りのため)、確認できたのはz12までであり、元々報告があった正確なズームレベルとは異なる可能性がある。(2) 目視確認は私(エージェント)による静的な陰影起伏図でのスクリーニングであり、Hidenoriさん自身による実機・実ビューアでの最終確認とは異なる。(3) D74-D76の一連の破損・復旧作業自体が、D79が疑ったブロック境界問題とは無関係に、何らかの形で症状を解消した可能性もあり、根本原因(D79の仮説が正しかったかどうか)は依然未確定のまま。
 
 **結論**: 現時点で確認できる範囲では、報告されていた市松模様アーティファクトは再現しなかった。starsへの公開後、Hidenoriさん自身による実ビューアでの最終確認を推奨する。
+
+## D106: 1号のstars公開を開始 -- Hidenoriさんの承認を得てrsync実行中(旧ファイル311.4GB削除→新ファイル220.65GB転送、想定約5.5時間)
+
+**Status**: Recorded, 2026-09-02 07:20 JST頃。
+
+**内容**: D105までの全工程(downsampling→bundle→merge→cluster→merge→整合性チェック→D79視覚確認)完了後、Hidenoriさんに公開の意思確認を行い、明示的な承認(「starsへrsyncして1号を公開する」)を得た。
+
+`publish_cycle.py`の既存rsync行(`bundle-store/mapterhorn-japan-bridge.pmtiles`、overview結合前)をそのまま使うのではなく、D96以降の運用に合わせて**overview結合済みファイル**(`bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`)を、公開ビューアが参照するURL(`style.json`の`https://stars.optgeo.org/mapterhorn-japan-bridge`)に合わせて`mapterhorn-japan-bridge.pmtiles`という名前で`stars`側にrsyncするよう変更した(転送時にリネーム)。
+
+**旧ファイルとの比較**: `stars`側の旧ファイル(311.4GB、8/30 12:22付け、2,568,241タイル)は、新ファイル(220.65GB、1,777,785タイル)より明らかに大きい。D74の発見(8/30 22:50、旧ファイル生成後)——「pmtiles-store全体の50%の位置に、削除されずに残った新旧混在の重複pmtilesファイルが存在し、bundle.pyがそれを全て拾い集めていた」——を踏まえると、旧ファイルはこの重複データによって水増しされていた可能性が高いと判断(D72のCLEAN判定は孤立タイルの有無のみを見ており、同一位置の重複ファイル問題とは別軸だったため、この水増しをすり抜けていたと考えられる)。新ファイルの方が正確である可能性が高い。
+
+**手順**: `stars`側の空き容量(152GB)が新ファイルサイズ(220.65GB)に対して不足していたため、D50/D51の教訓(2倍ヘッドルームを避けるため旧ファイルを先に削除)に従い、まず`ssh stars@stars.local rm -f /home/stars/data/mapterhorn-japan-bridge.pmtiles`を実行(auto modeの分類器が自動ブロック→Hidenoriさんに明示確認の上で承認を得て実行)。その後`rsync -av --partial --progress`で新ファイルを転送開始(`publish_rsync`スクリーン、11MB/s、想定完了まで約5.5時間)。転送中は`stars.optgeo.org/mapterhorn-japan-bridge`が404になる(意図した一時的な公開URL停止)。
+
+stars側を管理する別セッション(`stars-fd`)に事前通知済み。
+
+### Resume prompt
+
+> D106でHidenoriさんの承認を得てstarsへのrsyncを開始(旧ファイル削除→新ファイル転送、`publish_rsync`スクリーン、想定完了07:20+5.5h≈12:50 JST頃)。完了後: 転送先での`check_pmtiles_integrity.py`相当の確認(または単純なファイルサイズ/日付確認)→公開URLが200を返すことを確認→Hidenoriさんに完了報告。転送を待たずに1.5号の準備(D95/D96/D93/D94の実装、Hidenoriさんの追加指示によるファイル名リファクタリング含む)を並行して進めること。
