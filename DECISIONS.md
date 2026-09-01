@@ -7163,3 +7163,19 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D101の「PRIORITY_MODEはデッドコード」という診断は誤りだったとD102で訂正済み——実際にはquadrans優先度が正しく機能している。約2件/分という遅さはI/Oバウンドな処理特性(D44/D56)によるものと理解し直した。次の一手はワーカー数(`DOWNSAMPLING_WORKERS=3`→増加)の実測チューニング検討。ソート順序側の追加調査は不要。
+
+## D103: downsampling再収束完了(8,219/8,223)、`bundle.py`再実行が`ENOSPC`でクラッシュ→原因はD100の古いstale成果物が未削除のまま残っていたこと
+
+**Status**: Recorded, 2026-09-02 03:59 JST頃。
+
+**内容**: `downsampling_repair2`が03:31に完走。`check_downsampling_readiness.py`で確認したところ、8,219/8,223 done、ready-not-run 0、not-ready(子タイル欠落)4件——D98時点の8件から改善(aggregation修復の効果で一部が真に準備完了した可能性)。残り4件は構造的な欠落(`6-54-25-{8,9,10,11}`)で、D52/D77と同種の許容できるギャップと判断し、そのまま先に進めた。
+
+`bundle.py 1`を`bundle_rebuild2`スクリーンで起動したところ、数分で`OSError: [Errno 28] No space left on device`でクラッシュ。調査したところ、`bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`(D100で生成された、孤立タイルを含む既知のstale成果物、204.9GB)が削除されずそのまま残っており、これが新規bundle出力と共存しようとして空き容量を圧迫していたことが直接の原因と判明(`disk_headroom.log`では03:47:39時点で833GB freeと出ていたため、瞬間的な競合か、実際にはより早い時点で枯渇していた可能性がある——正確な瞬間は特定できていない)。
+
+**対応**: `bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`(D100が明示的に「そのまま使わないこと」と警告していた成果物)と、クラッシュ時の空の部分ファイル(z6タイル群・`planet.pmtiles`・`mapterhorn-japan-bridge.pmtiles`)を削除。空き容量は776Gi→967Giに回復。`bundle_rebuild3`スクリーンで`bundle.py 1`を再起動。
+
+**教訓**: 今後、downsampling再収束後にbundle.pyを再実行する前には、**前回サイクルの`bundle-store`配下の古い成果物を先に削除してから実行する**ことをチェックリスト化すべき(D95の「号2向け準備」に追記候補)。
+
+### Resume prompt
+
+> D103でbundle.py再実行が古いstale成果物によるディスク枯渇でクラッシュ→原因ファイルを削除して`bundle_rebuild3`で再起動済み。完了後は D99/D100と同じ流れ: `merge_japan_bundles.py`(`TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/`)→`pmtiles cluster`→`pmtiles merge`(`global-overview-backup.pmtiles`と)→`check_pmtiles_integrity.py`→D79視覚確認→Hidenoriに一声かけてからstarsへrsync。pmtiles-store側にも同様の古い中間成果物(cluster後ファイル等)が残っていないか、mergeステージに進む前に確認すること。
