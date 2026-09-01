@@ -7296,3 +7296,19 @@ stars側を管理する別セッション(`stars-fd`)に事前通知済み。
 ### Resume prompt
 
 > D108でlineageタイル機能を実装・実機統合テストで検証済み(`hfu/mapterhorn` `2cdd5ed`・`291e0c3`)。次: bundle.py/merge_japan_bundles.pyをdatatype対応させ、terrarium/lineage別々のアーカイブを構築できるようにする。その後、命名リファクタリング(`mapterhorn-japan-bridge.z8plus.pmtiles`等)→pipelines-rehearsal/での小規模全工程リハーサル→複数回レビュー→Hidenoriさんに1.5号全国launch可否を確認、という順で進める。1号のstars公開rsync(D106)には無関係、並行して進行中。
+
+## D109: bundle.py/merge_japan_bundles.pyをdatatype対応、ファイル名リファクタリングでwith/without-overviewの曖昧さを解消(1.5号向け)
+
+**Status**: Recorded, 2026-09-02 08:25 JST頃。D107/D108の続き、Hidenoriさんの明示的な指示(「ファイル名は混乱のないようにリファクタリングする、2号を高速化するため1.5号で済ませる」)への対応。
+
+**内容**:
+- `bundle.py`: `BUNDLE_DATATYPE`環境変数(`elevation`/`lineage`)を追加。`get_parent_to_filepaths()`は既にD107でdatatype対応済み。`get_name_from_parent()`がlineage時に出力ファイル名へ`-lineage`サフィックスを付与し、bundle-store上でelevation/lineageの成果物が衝突しないようにした。
+- `merge_japan_bundles.py`: `MERGE_DATATYPE`環境変数を追加。**命名リファクタリング**: 従来`bundle-store/mapterhorn-japan-bridge.pmtiles`という同一名を、overview結合前(このスクリプトの出力)・結合後(公開用最終成果物)の両方が名乗りうる状態だった——これがD103のENOSPC事故(古い方を消し忘れて容量不足)の遠因。今後は結合前の中間ファイルを`mapterhorn-japan-bridge.z8plus.pmtiles`(D46以前の`japan-z8plus.pmtiles`命名を踏襲)、lineage(overview結合が不要——Mapterhorn本家のグローバル製品にはlineageデータが存在しないため)は`mapterhorn-japan-bridge-lineage.pmtiles`をそのまま最終名とする。**`mapterhorn-japan-bridge.pmtiles`という名前は、以後「overview結合済みの公開可能な最終成果物」だけを指す**——曖昧な"どちらか"が存在しなくなった。`INPUTS`のglobもdatatypeでフィルタし、elevation/lineageのbundle-store成果物を取り違えないようにした。
+
+**動作確認**: 合成ファイル名でのフィルタリングロジックのテスト、実際のモジュールimport・`get_name_from_parent()`/`OUTPUT`定数の値を実機確認。
+
+**既知の未対応ギャップ(意図的に今回は触れず)**: `publish_cycle.py`(自動化用の日次サイクルスクリプト、D50/D51時代のもの)は今も`bundle-store/mapterhorn-japan-bridge.pmtiles`を直接rsync元にしており、overview結合ステップ自体を含んでいない——D77(z0-7グローバル接合)以前の設計のまま。今夜のD97-D106の1号再構築は全て手動実行(publish_cycle.pyは未使用)だったため実害はなかったが、このスクリプト自体を将来自動化に使うなら、rsync元ファイル名の更新だけでなく、overview結合ステップの追加も必要——名前だけ変えて中身が伴わない見せかけの修正を避けるため、今回は意図的に手を付けていない。1.5号でも引き続き手動実行を前提とする。
+
+### Resume prompt
+
+> D109でbundle.py/merge_japan_bundles.pyのdatatype対応・命名リファクタリング完了(`hfu/mapterhorn` `750b237`)。以降の手動実行コマンド: `pmtiles merge bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles /Volumes/Migrate-2025-04/global-overview-backup.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles`(elevation最終成果物)。lineageは`bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`がそのまま最終成果物(overview結合不要)。`publish_cycle.py`はoverview結合ステップが無いまま未修正——将来自動化に使う前に要対応、今回はスコープ外として明記のみ。次: 命名リファクタリングの残り(generation_id↔人間可読ラベルの対応表をPLAN.mdに追加)→pipelines-rehearsal/での小規模リハーサル→複数回レビュー→Hidenoriさんに1.5号launch可否を確認。
