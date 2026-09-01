@@ -7179,3 +7179,21 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D103でbundle.py再実行が古いstale成果物によるディスク枯渇でクラッシュ→原因ファイルを削除して`bundle_rebuild3`で再起動済み。完了後は D99/D100と同じ流れ: `merge_japan_bundles.py`(`TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/`)→`pmtiles cluster`→`pmtiles merge`(`global-overview-backup.pmtiles`と)→`check_pmtiles_integrity.py`→D79視覚確認→Hidenoriに一声かけてからstarsへrsync。pmtiles-store側にも同様の古い中間成果物(cluster後ファイル等)が残っていないか、mergeステージに進む前に確認すること。
+
+## D104: `bundle.py`の`ENOSPC`クラッシュの真因判明 — pmtilesライブラリの`Writer`が内部スクラッチファイルを`tempfile.TemporaryFile()`(=`TMPDIR`、起動ディスク側)に作成していた
+
+**Status**: Recorded, 2026-09-02 04:18 JST頃。D103の対処後、`bundle_rebuild3`で全く同じ`ENOSPC`が再発したことを受けて調査。
+
+**内容**: D103で`bundle-store`上の古いstale成果物を削除し空き容量を967Giまで回復させたにもかかわらず、`bundle_rebuild3`(`bundle.py 1`)が同一エラーで再クラッシュ。クラッシュ直後の`bundle-store`実際の使用量はわずか5.4GB(`planet.pmtiles`が5.78GB、他は0バイトの空ファイル)——`Migrate-2025-04`側の空き容量(962Gi)には遠く及ばず、ボリューム容量不足という診断が誤りだったことが判明。
+
+`.venv`内の`pmtiles`ライブラリ(`pmtiles/writer.py`)の`Writer.__init__`を確認したところ、`self.tile_f = tempfile.TemporaryFile()`という行があり、**実際のタイルバイトデータは`out_filepath`(`bundle-store/{name}.pmtiles`、`Migrate-2025-04`上)ではなく、Pythonのデフォルト一時ディレクトリ(`TMPDIR`環境変数、未設定時は`/var/folders/.../T/`、起動ディスク側)に一旦バッファされる**ことが判明。`df /`で確認したところ起動ディスクは99GB程度しか空きがなく(APFSコンテナ`disk3`のCapacity Not Allocated: 105.9GB)、`BUNDLE_WORKERS`のデフォルト4ワーカーが同時に大きなアーカイブを構築すると、各ワーカーの一時ファイルの合計が起動ディスクの空き容量を容易に超えてしまう——これが実際の`ENOSPC`の発生源だった。
+
+`/Volumes/pmtiles-store/tmp-store/writer-scratch/`ディレクトリに、D100当時の`merge_japan_bundles.py`実行が残した201.6GBの孤立一時ファイル(`pmtiles1351744159`、Sep 1 19:43付け)が見つかったことも、この仮説を裏付ける傍証——**D99で`merge_japan_bundles.py`に`TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/`を指定していたのは、まさにこの同じ問題への対処だった**が、その教訓が`bundle.py`には適用されていなかった。
+
+**対応**: 孤立一時ファイルを削除。`bundle-store`をクリアし、`bundle.py 1`に`TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/`を指定して`bundle_rebuild4`スクリーンで再起動。
+
+**教訓**: `pmtiles`ライブラリの`Writer`を使うスクリプト(`bundle.py`・`merge_japan_bundles.py`のいずれも該当)は、**`TMPDIR`を明示的に`pmtiles-store`側に向けない限り、常にこの潜在的なリスクを抱える**。D95の号2向け準備チェックリストに「`bundle.py`にも`TMPDIR`指定を追加する」ことを恒久修正として追記する価値がある(現状は都度スクリーン起動時に手動で環境変数を渡す運用で回避)。
+
+### Resume prompt
+
+> D104でbundle.pyのENOSPCクラッシュの真因が判明: pmtilesライブラリのWriterが内部一時ファイルをTMPDIR(起動ディスク側、空き~100GB)に作成するため、ワーカー並列実行で容易に枯渇する。TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/を指定して`bundle_rebuild4`で再起動済み。今後: bundle.py完走後は D99/D100と同じ流れ(merge_japan_bundles.py→pmtiles cluster→pmtiles merge→check_pmtiles_integrity.py→D79視覚確認→Hidenoriに一声かけてrsync)。恒久対処として、bundle.py自体にTMPDIR設定をハードコードするか、起動時ラッパースクリプトに含めることを検討(号2向けPLAN.mdにも追記候補)。
