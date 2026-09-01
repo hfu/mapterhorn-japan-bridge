@@ -7197,3 +7197,5 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D104でbundle.pyのENOSPCクラッシュの真因が判明: pmtilesライブラリのWriterが内部一時ファイルをTMPDIR(起動ディスク側、空き~100GB)に作成するため、ワーカー並列実行で容易に枯渇する。TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/を指定して`bundle_rebuild4`で再起動済み。今後: bundle.py完走後は D99/D100と同じ流れ(merge_japan_bundles.py→pmtiles cluster→pmtiles merge→check_pmtiles_integrity.py→D79視覚確認→Hidenoriに一声かけてrsync)。恒久対処として、bundle.py自体にTMPDIR設定をハードコードするか、起動時ラッパースクリプトに含めることを検討(号2向けPLAN.mdにも追記候補)。
+
+**追記(04:57 JST)**: Hidenoriさんの「TMPDIR問題には何度も悩まされている、slate固有かもしれないがパターンかもしれない」という指摘を受け、恒久対処を実施。`bundle.py`・`merge_japan_bundles.py`双方の冒頭に`os.environ.setdefault('TMPDIR', ...)`を追加し、以後は毎回手動で環境変数を渡さなくても自動的に`pmtiles-store/tmp-store/writer-scratch/`が使われるようにした(`hfu/mapterhorn`フォーク側、コミット済み・push済み)。この問題の本質は**slate固有ではなく、pmtilesライブラリの`Writer`クラスが`tempfile.TemporaryFile()`をパス指定なしで使う汎用的な性質**であり、実データを起動ディスクより大きい外部ボリュームに置く構成であればどの環境でも再現しうる。号2・1.5号を含め今後は自動的に回避される。
