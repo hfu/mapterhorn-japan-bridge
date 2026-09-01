@@ -7007,3 +7007,15 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D97でaggregation_repair_3344が完走(6,373/6,373)。現在downsampling再収束中(`downsampling_reconverge`スクリーン、74件処理待ち+129件が子タイル整備待ちだった)。完了後: (1) `check_downsampling_readiness.py`で0 not-readyを再確認、(2) `bundle.py`+`merge_japan_bundles.py`で`japan-z8plus.pmtiles`再構築(TMPDIR明示指定を忘れないこと)、(3) D81に従い`pmtiles cluster japan-z8plus.pmtiles`を試す、(4) `global-overview.pmtiles`をバックアップから復元、(5) `pmtiles merge`で最終成果物作成、(6) `check_pmtiles_integrity.py`、(7) D79の512pxブロック仮説を倉橋島等で視覚確認、(8) starsへrsync。starsへの最終rsyncは公開に関わる操作なので、実行前にHidenoriに一声かけること。
+
+## D98: downsampling再収束完了(8,215/8,223、残8件は構造的に子タイル欠落)、bundle.py起動
+
+**Status**: Recorded, 2026-09-01 18:20 JST頃。
+
+**内容**: `downsampling_reconverge`スクリーン(`PRIORITY_MODE=quadrans DOWNSAMPLING_STRICT=1 DOWNSAMPLING_WORKERS=3`)が完走。8,223件中8,215件が`.done`、`ready_not_run`は0——1パスで安定収束。残る8件は`check_downsampling_readiness.py`で「子タイルが1/1〜88/208件欠落」と報告されており、いずれもz6/z7の低ズームタイル(x=54-55,y=25およびx=110,y=51付近)。`DOWNSAMPLING_STRICT=1`によりこれらは安全にスキップされている(`.done`を打たず、実害なく将来の再実行で拾われる設計)。D77が指摘した「日本近海の外洋には接合後も構造的な欠落が残る」という既知の現象と同種の可能性が高いが、この8件が実際にそれに該当するかは今回深掘りしていない——最終的な`check_pmtiles_integrity.py`で孤立タイルとして検出されるかどうかで実質的な影響を判断する。
+
+**対応**: D76手順の次段階、`bundle.py`を起動(`bundle_rebuild`スクリーン、`TMPDIR=/Volumes/pmtiles-store/tmp-store/writer-scratch/`・`BUNDLE_WORKERS=2`、publish_cycle.pyの標準設定に合わせた)。bundle-storeは事前に空だったため、既存ファイルの削除ステップは不要だった。Mission Timelineの見積もりでは約4時間規模。
+
+### Resume prompt
+
+> D98でdownsampling再収束完了(8,215/8,223、残8件はz6/z7低ズームの構造的欠落、DOWNSAMPLING_STRICTで安全スキップ)。`bundle.py`(`bundle_rebuild`スクリーン)起動済み、完了まで数時間規模。完了後: `merge_japan_bundles.py`→`pmtiles cluster japan-z8plus.pmtiles`(D81)→`global-overview.pmtiles`復元→`pmtiles merge`→`check_pmtiles_integrity.py`(この時点でD98の8件の欠落が孤立タイルとして実際に現れるか確認)→D79の視覚確認→starsへrsync(Hidenoriに一声かけてから)。
