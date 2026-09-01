@@ -7031,3 +7031,25 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 ### Resume prompt
 
 > D99でbundle.pyが想定よりはるかに早く完走(約30分、想定4時間)。`merge_japan_bundles.py`(`merge_bundles`スクリーン)起動済み。完了後: `pmtiles cluster japan-z8plus.pmtiles`を試す(D81)→`global-overview.pmtiles`復元→`pmtiles merge`→`check_pmtiles_integrity.py`→D79の視覚確認→starsへrsync(Hidenoriに一声かけてから)。Mission Timelineの見積もり(bundle 4h・merge 0.5h)は実績に応じて更新を検討すること。
+
+## D100: bundle.py・merge_japan_bundles.py・pmtiles cluster(D81実証)・最終pmtiles merge完走、しかし整合性チェックで大規模なdownsampling stale markerを発見
+
+**Status**: Recorded, 2026-09-01 20:50 JST頃。
+
+**内容(順調に進んだ部分)**:
+- `bundle.py`完走(約30分、想定4時間より大幅に速い)、23ファイル生成、エラーなし。
+- `merge_japan_bundles.py`完走(約15分)、`bundle-store/mapterhorn-japan-bridge.pmtiles`(201.65GB、2,001,757タイル)生成。
+- **`pmtiles cluster`が実際に成功、D81を確定的に実証**(`clustered: true`、ディレクトリサイズは元の99.91%——bundle.py自体の書き込み順序が既にほぼ最適だったことも判明)。
+- `global-overview-backup.pmtiles`(z0-7、Mapterhorn由来、3.27GB)と`pmtiles merge`で結合、`mapterhorn-japan-bridge-with-overview.pmtiles`(204.9GB、z0-16、2,015,281タイル=z8+の2,001,757+global-overviewの13,524、`clustered: true`維持)を生成。約17分で完走。
+
+**内容(重大な発見)**: `check_pmtiles_integrity.py`を実行したところ、**1,818,530件の孤立タイル**(z9:39、z10:472、z12:5,075、z13:5,392、z14:4,288、**z16:1,803,264**)を検出——D72のCLEAN基準から大幅な悪化。z0-7スプライス前のz8+単体ファイルでも全く同じ結果だったため、今回のマージ処理は原因から除外。
+
+サンプルのz16孤立タイルを1件追跡した結果、対応する`10-917-373-15-downsampling.done`マーカー(2026-08-26 04:51、この一連のインシデントより前の非常に古い日付)は存在するが、それが指すはずの`10-917-373-15.pmtiles`はpmtiles-store上に存在しないことを確認。`check_downsampling_done_integrity.py`(D53/D69で実績のある、`.done`マーカーのみを削除する安全なツール)で監査したところ、**`.done`マーカー8,215件中7,079件(86%)がstale**(参照先ファイルが存在しない)と判明。newest stale markerのmtimeは2026-08-31 03:57:48——`aggregation_repair_3344`開始(05:29)の直前であり、D74-D76のカスケード中に、downsampling層の`.done`ブックキーピングがD53/D69と同じメカニズム(aggregation_run.pyの出力ファイル名変更でdownsampling `.done`が指すファイルが消える)で大規模に無効化されたと考えられる。D75で修復した4,396件は氷山の一角で、その後さらに広範囲が影響を受けていた可能性が高い。
+
+**対応**: ツール自身のdocstringが明記する安全条件(「aggregation_run.py完了後にのみ--fix」)を満たしていたため、`--fix`を実行し7,079件のstaleマーカーを削除(コミット時点で実データは一切削除していない、マーカーのみ)。`downsampling_repair2`スクリーンで`downsampling_run.py`を再実行、8,223件全件を対象に再構築中。
+
+**starsへの公開は完全に保留**——この問題が解消し、`check_pmtiles_integrity.py`が改めてCLEANに近い結果を返すまで、rsyncは実行しない。
+
+### Resume prompt
+
+> D100で最終merge(z0-16、204.9GB)まで完走したが、`check_pmtiles_integrity.py`で1,818,530件の孤立タイル(z16だけで1,803,264件)を検出。原因はdownsampling `.done`マーカーの大規模staleness(8,215件中7,079件、86%)——D53/D69と同じクラスのバグがaggregation_repair_3344のファイル名変更で大規模に再発したもの。`check_downsampling_done_integrity.py --fix`で7,079件のstaleマーカーを削除済み、`downsampling_repair2`スクリーンで8,223件全件を再構築中。完了後: (1) `check_downsampling_readiness.py`で0 not-readyを確認、(2) `bundle.py`+`merge_japan_bundles.py`+`pmtiles cluster`+`pmtiles merge`を**やり直す**(今の`mapterhorn-japan-bridge-with-overview.pmtiles`は孤立タイルを含む不完全な成果物なので、そのまま使わないこと)、(3) `check_pmtiles_integrity.py`で改めて確認(0件目標)、(4) D79の視覚確認、(5) starsへrsync(Hidenoriに一声かけてから)。starsへの公開は絶対にこの修正完了前に行わないこと。
