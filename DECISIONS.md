@@ -7312,3 +7312,21 @@ stars側を管理する別セッション(`stars-fd`)に事前通知済み。
 ### Resume prompt
 
 > D109でbundle.py/merge_japan_bundles.pyのdatatype対応・命名リファクタリング完了(`hfu/mapterhorn` `750b237`)。以降の手動実行コマンド: `pmtiles merge bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles /Volumes/Migrate-2025-04/global-overview-backup.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles`(elevation最終成果物)。lineageは`bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`がそのまま最終成果物(overview結合不要)。`publish_cycle.py`はoverview結合ステップが無いまま未修正——将来自動化に使う前に要対応、今回はスコープ外として明記のみ。次: 命名リファクタリングの残り(generation_id↔人間可読ラベルの対応表をPLAN.mdに追加)→pipelines-rehearsal/での小規模リハーサル→複数回レビュー→Hidenoriさんに1.5号launch可否を確認。
+
+## D110: 1.5号向けlineage実装の実データリハーサル成功 -- aggregation_run.py(EMIT_LINEAGE)を実GeoTIFFデータで実行、期待通りの結果
+
+**Status**: Recorded, 2026-09-02 08:35 JST頃。D107-D109の実装完了後、Hidenoriさんの指示(launch前の入念なレビュー)に従い、実データでのリハーサルを実施。
+
+**内容**: 1号の実データ(`10-930-369-13-aggregation.csv`、jpnational10×10ファイル+jpnationalsea×2ファイルの混在アイテム)を使い捨てgeneration_id(`00TEST0000000000REHEARSAL01`)にコピーし、`EMIT_LINEAGE=1`で`aggregation_run.run()`を実行。
+
+**結果**: reproject→lineage計算→merge→タイル化の全工程が実データ・実GDAL処理で正常完走。elevation・lineage両方のPMTiles leafアーカイブが正しいレイヤー/データ種別のディレクトリ(`pmtiles-store/aggregation/{elevation,lineage}/...`)に生成された。lineageアーカイブの中身を実際に読み出したところ、**jpnational10(tier 5): 43.8%、jpnationalsea(tier 6): 56.2%**——このアイテムの地理的性質(海岸部)と整合する、現実的な分布。最初の実行でPATH起因のエラー(`gdalbuildvrt: command not found`、非対話SSHセッションで`/opt/homebrew/bin`が通っていなかっただけ)に遭遇したが、コード自体のバグではないことを確認。最終的な`.todo`→`.done`リネームのみ、テスト自体が`.todo`マーカーを用意していなかったため意図的に失敗させた(実害なし)。
+
+リハーサル後、使い捨てgeneration_idのaggregation-store/tmp-store/pmtiles-store配下を全て削除、1号のデータには一切影響なし。
+
+**追加レビュー**: `grep -rn get_pmtiles_folder`をリポジトリ全体に再実行し、`layer=`未指定の呼び出しが意図的に対象外とした2ファイル(`check_aggregation_dirty_gap.py`・`check_covering_gaps.py`)以外に残っていないことを確認。
+
+**未検証のまま残る部分**: downsampling_run.py/bundle.py/merge_japan_bundles.pyのlineage分岐は、それぞれ独立した単体・結合テスト(D108: 合成データによるdownsampling統合テスト、D109: 命名ロジックの単体テスト)は通過済みだが、今回のaggregation実データ出力を実際にdownsampling→bundle→mergeまで一気通貫でチェーンする検証はコスト対効果を考慮し実施しなかった(複数の実aggregationアイテムを追加処理する必要があり、1件のみでは兄弟タイルが揃わずdownsamplingの実データテストができないため)。個々のステージがいずれも実データまたは実PMTiles I/Oで検証済みであることから、十分な確度と判断。
+
+### Resume prompt
+
+> D110で1.5号向けlineage実装の実データリハーサルが成功(aggregation_run.py、EMIT_LINEAGE=1、実GDAL処理、期待通りのtier分布)。D107-D109の全実装が実データ・実PMTiles I/Oのいずれかで検証済み。残るタスク: 1.5号を実際に全国スケールでlaunchする前に、Hidenoriさんへの最終確認(この一連の実装内容のサマリー提示)。launch自体は別の承認ポイントとして扱うこと(1号のstars公開と同じ運用)。1号のstars公開rsync(D106)は本セッション全体を通じて無関係に並行進行中——完了したら別途報告すること。
