@@ -67,9 +67,9 @@ public): 7 instruments (Progress Trend, Current Stage, Status Map,
 Resources, Mission Timeline, Live Viewer — embeds the production
 viewer directly), kiosk-style cycle mode (fullscreen, arrow-key
 navigation, Open MCT chrome hidden via CSS — patterns shared with
-sibling session `sas0`, whose own Open MCT field notes now live at
-`github.com/dwg7/sas0/blob/main/OPENMCT-NOTES.md`, not duplicated
-here).
+sibling sessions `sas0`/`claude-mct` -- Open MCT field notes now
+live at `github.com/dwg7/cafebabe/blob/main/patterns/open-mct.md`
+(migrated from sas0 2026-09-02), not duplicated here).
 
 ### Resume prompt
 

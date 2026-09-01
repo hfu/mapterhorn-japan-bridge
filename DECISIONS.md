@@ -6954,13 +6954,13 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 
 **追記(2026-09-01 03:35〜03:50 JST頃)**: D91のドラフト(「Open MCT実地ノウハウ集」)をsas0エージェント・claude-mctエージェントに回付し、3者(mapterhorn-monitor/sas0/claude-mct)の実装を突き合わせるレビューを実施。当初の仮説のうち「Plot/Telemetry APIはproviderパターンと根本的に相性が悪い」「`openmct.on('start', ...)`が4.3.0-rc1全般で発火しない」の2点が言い過ぎだったと判明(他環境での反証)。巡回モードのフルスクリーン化(Hidenoriからの要望)についてもsas0に相談し、Open MCT自身のUI chrome(ツリー・ヘッダー・Inspectパネル)を隠すCSSクラスをsas0の実地DOM調査から流用、実装・push済み。
 
-**ドキュメントのマスターはsas0リポジトリに移管完了**: **https://github.com/dwg7/sas0/blob/main/OPENMCT-NOTES.md** (`docs/`配下ではなくリポジトリルート — `docs/`はGitHub Pages配信対象そのものなので、フロントマターなしのMarkdownを置くと生テキストのまま配信されてしまうため、とのsas0の判断)。技術的な詳細・3者統合の全内容はこのURLを参照。以降の更新もここで行われる。このDECISIONS.mdには重複させない。
+**ドキュメントのマスターはcafebabeリポジトリに移管(2026-09-02、旧sas0リポジトリから再移管)**: **https://github.com/dwg7/cafebabe/blob/main/patterns/open-mct.md** (`docs/`配下ではなくリポジトリルート — `docs/`はGitHub Pages配信対象そのものなので、フロントマターなしのMarkdownを置くと生テキストのまま配信されてしまうため、とのsas0の判断)。技術的な詳細・3者統合の全内容はこのURLを参照。以降の更新もここで行われる。このDECISIONS.mdには重複させない。
 
 **教訓**: 一つの環境だけで得た知見を「〜は使えない」と断定的に書くと、他の環境での反証で覆ることがある。複数の独立した実装を持つチームでは、この種のドキュメントは早い段階で横展開してレビューを受け、マスターは実際にその技術を最も深く使っているチームが持つのが良い。
 
 ### Resume prompt
 
-> D91の技術的詳細(Plot/Telemetry APIの評価訂正・`'start'`イベントの環境依存性・SharedWorkerの2系統の原因・巡回モードのフルスクリーン化)は、mapterhorn-japan-bridge内ではなく https://github.com/dwg7/sas0/blob/main/OPENMCT-NOTES.md が正本。参照する際はこのURLを見ること、このDECISIONS.mdには複製しないこと。巡回モードのフルスクリーン化自体は実装・push済みだが、実機での最終視覚確認はブラウザ自動化ツールの制約で未実施——次回Hidenoriが実機で確認すること。
+> D91の技術的詳細(Plot/Telemetry APIの評価訂正・`'start'`イベントの環境依存性・SharedWorkerの2系統の原因・巡回モードのフルスクリーン化)は、mapterhorn-japan-bridge内ではなく https://github.com/dwg7/cafebabe/blob/main/patterns/open-mct.md が正本。参照する際はこのURLを見ること、このDECISIONS.mdには複製しないこと。巡回モードのフルスクリーン化自体は実装・push済みだが、実機での最終視覚確認はブラウザ自動化ツールの制約で未実施——次回Hidenoriが実機で確認すること。
 
 ## D92: 公開ビューアの3D地形表示をデフォルトONに変更(未検証)
 
