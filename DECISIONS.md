@@ -7273,3 +7273,26 @@ stars側を管理する別セッション(`stars-fd`)に事前通知済み。
 ### Resume prompt
 
 > D107でpmtiles-storeレイヤー分離を実装・push済み(`hfu/mapterhorn` `8545a12`)。1号のstars公開rsync(D106)には影響なし(pmtiles-store構造とは無関係)。次はlineageタイル機能(D93/D94)の実装——`lineage_inspect.py`のcompute_provenance()を共有関数化し`aggregation_run.py`にEMIT_LINEAGEフラグで組み込む、downsampling_run.pyのcreate_tile()にdatatype分岐を追加してlineage_downsample.pyの多数決ロジックを接続、新規lineage_tile.pyでカテゴリ値のPMTiles書き出しを実装。その後、命名リファクタリング(mapterhorn-japan-bridge.z8plus.pmtiles等)とpipelines-rehearsal/での小規模リハーサルテストを経てから、Hidenoriさんに1.5号の全国スケールlaunch可否を確認すること。
+
+## D108: lineageタイル機能を実装・実機統合テストで検証(D93/D94/D96) -- aggregation側emission、downsampling側多数決、いずれも実データ経路で動作確認
+
+**Status**: Recorded, 2026-09-02 08:10 JST頃。1号のstars公開rsync(D106)と並行して実装。
+
+**内容**: D93が見積もり・D94がアルゴリズムを先行実装していたlineageタイル機能を、D107のレイヤー分離基盤の上に実装。
+
+**新規ファイル**:
+- `lineage_provenance.py`: `lineage_inspect.py`から`compute_provenance()`・`GLOBAL_TIER`・`global_tier_of()`を共有関数として抽出。新規`local_provenance_to_global()`で、タイル固有のLOCAL group-indexをGLOBAL_TIER(0-6、nodata=255)に変換(タイル間で値の意味を揃えるため必須、`lineage_inspect.py`自身が既に指摘していた罠)。
+- `lineage_tile.py`: `aggregation_tile.py`のcreate_tiles/create_tileと並行する構造で、in-memoryのカテゴリ配列を512pxブロックに切り出し、`utils.save_lineage_tile()`でWEBP化・`create_archive()`でPMTiles化。ブロックファイルは`{tmp_folder}/lineage-blocks/`という専用サブフォルダに書き出す設計——`aggregation_tile.py`が後で同じtmp_folderに`.webp`を書くため、`create_archive()`の無条件`*.webp`globが両datatypeを混同しないようにするため(実装中に発見した衝突リスク)。
+- `utils.save_lineage_tile()`: R=カテゴリ値、A=有効性のロスレスWEBPエンコード。往復テストで完全一致を確認済み。
+
+**変更ファイル**:
+- `aggregation_run.py`: `EMIT_LINEAGE`環境変数フラグ追加。**重要な設計訂正**: 当初D93は「`aggregation_merge.merge()`の直後に挿入」を推奨していたが、実装中に`aggregation_merge.merge()`が個別のreprojectedタイフ(`{i}-3857.tiff`)を自身の完了時に削除する(単一ソースの場合はリネームして消える)ことが判明——`compute_provenance()`はこれらのタイフを必要とするため、**`aggregation_reproject.reproject()`の直後・`merge()`の前**に挿入するよう訂正した(`lineage_inspect.py`自身がmerge()を呼ばずreproject()のみ使う設計だったことと整合)。
+- `downsampling_run.py`: `DOWNSAMPLING_DATATYPE`環境変数フラグ追加(`elevation`/`lineage`)。`create_tile()`に多数決分岐を追加、`lineage_downsample.majority_vote_downsample()`(D94実装済み)を接続。3箇所の`get_pmtiles_folder()`呼び出しに`datatype=DOWNSAMPLING_DATATYPE`を追加。
+
+**実機統合テスト**: 4枚の合成leaf lineageタイル(カテゴリ2×3・カテゴリ5×1)を実際に`lineage_tile.main()`で生成し、実際の`downsampling_run.create_tile()`(`DOWNSAMPLING_DATATYPE=lineage`)を呼び出して多数決の結果を検証——各象限が期待通りのカテゴリ値になることを確認、PASS。`resolve_layer()`・`get_pmtiles_folder()`・PMTiles読み書きを含む実データ経路での検証(モックなし)。
+
+**未実装**: `bundle.py`/`merge_japan_bundles.py`のlineage用アーカイブ構築(現状はelevation datatypeのみ対応)、ファイル名リファクタリング(with/without-overview命名解消)、`pipelines-rehearsal/`での全国規模想定の小規模リハーサル。
+
+### Resume prompt
+
+> D108でlineageタイル機能を実装・実機統合テストで検証済み(`hfu/mapterhorn` `2cdd5ed`・`291e0c3`)。次: bundle.py/merge_japan_bundles.pyをdatatype対応させ、terrarium/lineage別々のアーカイブを構築できるようにする。その後、命名リファクタリング(`mapterhorn-japan-bridge.z8plus.pmtiles`等)→pipelines-rehearsal/での小規模全工程リハーサル→複数回レビュー→Hidenoriさんに1.5号全国launch可否を確認、という順で進める。1号のstars公開rsync(D106)には無関係、並行して進行中。
