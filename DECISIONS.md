@@ -7201,3 +7201,19 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 **追記(04:57 JST)**: Hidenoriさんの「TMPDIR問題には何度も悩まされている、slate固有かもしれないがパターンかもしれない」という指摘を受け、恒久対処を実施。`bundle.py`・`merge_japan_bundles.py`双方の冒頭に`os.environ.setdefault('TMPDIR', ...)`を追加し、以後は毎回手動で環境変数を渡さなくても自動的に`pmtiles-store/tmp-store/writer-scratch/`が使われるようにした(`hfu/mapterhorn`フォーク側、コミット済み・push済み)。この問題の本質は**slate固有ではなく、pmtilesライブラリの`Writer`クラスが`tempfile.TemporaryFile()`をパス指定なしで使う汎用的な性質**であり、実データを起動ディスクより大きい外部ボリュームに置く構成であればどの環境でも再現しうる。号2・1.5号を含め今後は自動的に回避される。
 
 **追記(05:02 JST)**: `bundle_rebuild4`が43分で正常完走(エラーなし、23ファイル、`bundle-store`合計289GB)。恒久TMPDIR修正が効き、クラッシュなく完走したことを確認。`merge_japan_bundles.py`を`merge_bundles2`スクリーンで起動(恒久修正によりTMPDIR手動指定は不要)。
+
+## D105: D104のTMPDIR恒久修正が実は無効だった — `os.environ.setdefault()`はmacOSが既に設定済みの`TMPDIR`を上書きしない
+
+**Status**: Recorded, 2026-09-02 05:16 JST頃。
+
+**内容**: D104で`bundle.py`・`merge_japan_bundles.py`双方に`os.environ.setdefault('TMPDIR', 'pmtiles-store/tmp-store/writer-scratch/')`を追加したが、`merge_bundles2`スクリーン(シェル側で明示的な`TMPDIR`指定なし、コード側の恒久修正のみに依存)を実行したところ、800,000タイル処理時点で全く同じ`ENOSPC`が再発。
+
+原因: macOSのSSH/ログインシェルセッションでは、**`TMPDIR`環境変数がセッション開始時点で既に`/var/folders/.../T/`に設定されている**(launchdによる自動設定)。`os.environ.setdefault()`はキーが「存在しない」場合のみ値を設定する仕様のため、既に値が入っている`TMPDIR`に対しては何もしない——D104の恒久修正は最初から一度も効いていなかった。ちなみに`bundle_rebuild4`(D104本文で完走を報告した実行)が成功したのは、コード側の修正ではなく、**そのスクリーン起動コマンド自体にシェルレベルで明示的に`export TMPDIR=...`を含めていたから**(この修正コードを書く前に起動していたため)。
+
+**対応**: `os.environ.setdefault(...)`を`os.environ['TMPDIR'] = ...`(無条件上書き)に変更し、念のため`tempfile.tempdir = None`でモジュール側のキャッシュもクリア。合わせて`merge_bundles3`スクリーンでは、コード修正に加えシェル側でも明示的に`TMPDIR`をexportして二重に担保して再起動。
+
+**教訓**: `os.environ.setdefault()`は「呼び出し元が明示的に設定した値を尊重する」という意図で使ったが、**「システムが常に何かしらの値を事前設定している」変数(`TMPDIR`はその典型)には`setdefault`は事実上無力**——「未設定」を「呼び出し元の意図的な指定」と取り違えてはいけない、という一般的な教訓。今後同様の環境変数デフォルト設定を書く際は、対象の変数がOS/シェルによって常に事前設定されるものかどうかを先に確認すること。
+
+### Resume prompt
+
+> D105でD104の「恒久修正」が実は無効だった(os.environ.setdefault()がmacOSの事前設定済みTMPDIRを上書きしない)ことが判明、無条件上書きに修正・push済み。merge_bundles3で再起動(コード修正+シェル側exportの二重担保)。完了後はD99/D100と同じ流れ: pmtiles cluster→pmtiles merge(global-overview-backup.pmtilesと)→check_pmtiles_integrity.py→D79視覚確認→Hidenoriに一声かけてrsync。以降bundle.py/merge_japan_bundles.pyを直接起動する際も、コード側の修正を過信せずシェル側のTMPDIR明示指定を当面は併用すること。
