@@ -7219,3 +7219,5 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 > D105でD104の「恒久修正」が実は無効だった(os.environ.setdefault()がmacOSの事前設定済みTMPDIRを上書きしない)ことが判明、無条件上書きに修正・push済み。merge_bundles3で再起動(コード修正+シェル側exportの二重担保)。完了後はD99/D100と同じ流れ: pmtiles cluster→pmtiles merge(global-overview-backup.pmtilesと)→check_pmtiles_integrity.py→D79視覚確認→Hidenoriに一声かけてrsync。以降bundle.py/merge_japan_bundles.pyを直接起動する際も、コード側の修正を過信せずシェル側のTMPDIR明示指定を当面は併用すること。
 
 **追記(05:43 JST)**: `merge_bundles3`が正常完走(エラーなし、`bundle-store/mapterhorn-japan-bridge.pmtiles`、217.4GB、1,777,785タイル)。D81に従い`pmtiles cluster bundle-store/mapterhorn-japan-bridge.pmtiles`を`pmtiles_cluster2`スクリーンで起動。
+
+**追記(06:13 JST)**: `pmtiles cluster`が正常完走(11分、エラーなし、`total directory size 3817864 (99.761849% of original)`——D100実績とほぼ同水準)。`global-overview-backup.pmtiles`(3.27GB)を`/Volumes/Migrate-2025-04/global-overview-backup.pmtiles`で確認し、`pmtiles merge bundle-store/mapterhorn-japan-bridge.pmtiles /Volumes/Migrate-2025-04/global-overview-backup.pmtiles bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`を`pmtiles_merge2`スクリーンで起動。
