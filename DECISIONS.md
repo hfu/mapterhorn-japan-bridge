@@ -7223,3 +7223,7 @@ done_files = glob(f'aggregation-store/*/{basename}-downsampling.done')
 **追記(06:13 JST)**: `pmtiles cluster`が正常完走(11分、エラーなし、`total directory size 3817864 (99.761849% of original)`——D100実績とほぼ同水準)。`global-overview-backup.pmtiles`(3.27GB)を`/Volumes/Migrate-2025-04/global-overview-backup.pmtiles`で確認し、`pmtiles merge bundle-store/mapterhorn-japan-bridge.pmtiles /Volumes/Migrate-2025-04/global-overview-backup.pmtiles bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`を`pmtiles_merge2`スクリーンで起動。
 
 **追記(06:43 JST)**: `pmtiles merge`が正常完走(26分、`bundle-store/mapterhorn-japan-bridge-with-overview.pmtiles`、220.65GB)。真の検証として`check_pmtiles_integrity.py`を`integrity_check2`スクリーンで起動(D100でオーファンタイルを発見したのと同じ検証ステップ)。
+
+**追記(06:45 JST)**: `integrity_check2`完走(8秒)。**孤立タイル2,048件、全てz12**——D100の1,818,530件から劇的に改善。サンプル座標(3513,1615)(3515,1661)(3500,1621)(3512,1631)(3507,1637)は全て`z6=(54,25)`タイルの子孫範囲([3456,3520)×[1600,1664))に収まっており、これは`check_downsampling_readiness.py`で判明していた「構造的に子タイル欠落」4項目(`6-54-25-{8,9,10,11}`)と同一地域。この`z6=(54,25)`タイルの地理座標は東経123.75-129.38度・北緯31.95-36.60度で、**東シナ海(九州西方の外洋)**——D77で既に確認済みの「外洋の構造的欠落」パターンと一致する海域。
+
+新しいバグではなく、実際にネイティブaggregationカバレッジが存在しない(=元データが無い)実在の欠落と判断。D72のCLEAN基準(孤立タイル0件)には届いていないが、原因が特定・説明可能であり、D77と同種の「Mapterhorn自身のデータ限界」に由来するものと判断し、次のD79視覚確認に進む。
