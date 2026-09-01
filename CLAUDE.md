@@ -29,47 +29,43 @@ step, and how this differs from `hfu/fusi` (an earlier, unrelated,
 non-fork DEM→PMTiles toolchain whose role this project has since
 mostly absorbed).
 
-**Scope, updated 2026-08-21 (DECISIONS.md D16) — this paragraph moves
-fast, verify against `HANDOVER.md`/`DECISIONS.md` before trusting it**:
-`jpnational5`/`jpnational10`/`jpnationalsea` are national scope.
-`jpnational1` (1m) is deliberately still Kyushu/Okinawa/Shikoku/
-western-Chugoku only — not frozen, just sequenced after the other
-three so the downstream pipeline gets stress-tested at a large-but-not-
-largest scale first (D16). Hokkaido was un-frozen and fully redone as
-part of `japan-geotiff-dem`'s own JCI 2026-09 (see that repo's own
-docs) — the D12-era Hokkaido freeze below is historical, not current.
-`aggregation_run.py` for this D16 build is **in progress** (started
-2026-08-20 22:26, D21's queue-shuffle fix applied mid-run 2026-08-21
-~05:22) — check `find aggregation-store/*/ -name '*.done' | wc -l`
-against the real item count from `aggregation_covering.py`'s own
-output before assuming it's done or estimating an ETA; item cost is
-highly uneven (D21), don't trust a linear extrapolation.
+**Scope, updated 2026-09-01 — this paragraph moves fast, verify
+against `HANDOVER.md`/`DECISIONS.md` before trusting it**: all four
+sources (`jpnational1`/`5`/`10`/`sea`) are full national scope as of
+1号 (generation `01M0MWK852631SHCHPA66F21WQ`). 1号's own aggregation
+completed and was fully repaired after a cascading incident (D74-D76,
+D97) that deleted then rebuilt 3,344 aggregation outputs and (found
+mid-verification) 7,079 downsampling outputs (D100/D101) — check
+`DECISIONS.md`'s latest entries and `HANDOVER.md`'s current-state
+section before assuming 1号 has actually finished and published;
+as of this writing it has not yet been re-verified clean or rsynced
+to `stars`. **Do not treat `find aggregation-store/*/ -name '*.done'
+| wc -l` alone as proof of correctness anymore** — this exact class of
+stale-marker bug (D53/D69/D100) has recurred at increasing scale;
+always cross-check against `check_downsampling_done_integrity.py`
+and `check_pmtiles_integrity.py` before trusting a `.done` count.
 
-**`japan-geotiff-dem`'s own JCI 2026-09 finished 5m too, not just 1m**
-(2026-08-21, that repo's own `HANDOVER.md`) — meaning `jpnational5`'s
-local snapshot here (downloaded before that 5m refresh completed) is
-now somewhat stale relative to the live bucket, the same class of drift
-D19's `source_prune_obsolete.py` was built to handle for `jpnational1`,
-potentially at much larger scale (~92k files changed nationally this
-cycle). Not yet refreshed — a real decision point once the current D16
-build settles, not decided here.
+**Upstream sync with `mapterhorn/mapterhorn` (D22's original ask) has
+happened twice now** (D63, D82) — most upstream churn since has been
+new source-catalog entries for other countries (low-risk, additive)
+plus a shift toward a multi-host distributed worker architecture that
+doesn't apply to this project's single-machine (`slate`) model. Not a
+standing todo anymore; re-check only if upstream's architecture
+direction becomes relevant again (e.g. if 号2's scale ever demands
+distributing across more than one machine).
 
-**Next major initiative after the current build settles: a careful,
-analysis-first sync of `hfu/mapterhorn` against its `upstream` remote**
-(`mapterhorn/mapterhorn`), explicitly requested by Hidenori. As of
-2026-08-21, `hfu/mapterhorn` is 9 commits behind `upstream/main`
-(`fdd6adc..ef97ada`) — mostly new source-catalog additions for other
-countries (low-risk, additive) plus `57f8481` ("Update worker, reduce
-memory usage"), which is directly relevant given real memory pressure
-already observed on `slate` during this build (D21's investigation:
-~244MB free system memory while running 4 parallel workers). Do this
-**carefully**: read and understand each upstream commit before merging
-(not a blind `git merge`/diff-apply), check for conflicts with this
-fork's own Japan-specific changes (D11's requantization/`macrotile_z`
-fixes, D18/D20's priority-merge logic, D21's shuffle), and absorb *why*
-upstream changed what it changed, not just *what*. This has not started
-as of this checkpoint — see `HANDOVER.md`'s own entry for the current
-plan.
+**Next planned initiative: 「1.5号」** (Hidenori's decision, D96) — a
+staging/regression run using 1号's own already-downloaded source data
+but a structurally-fixed pipeline (D95: separate the aggregation and
+downsampling layers' file namespaces, the root design flaw behind
+D74-D76/D100), plus the lineage-tile feature (D93/D94). Runs *before*
+real 2号 (which is gated on GSI actually shipping a new DEM1A update,
+not yet landed as of this writing — see `PLAN.md` §1). 1.5号's
+terrarium output replaces 1号 on `stars`; its lineage output is new.
+Do not implement D95's namespace-separation fix, or start 1.5号 itself,
+until 1号 is fully clean, re-verified, and published — see
+`HANDOVER.md`'s current-state section for exactly what's still
+pending.
 
 ## Source priority order (read before touching aggregation code)
 
