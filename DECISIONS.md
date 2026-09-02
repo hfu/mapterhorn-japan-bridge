@@ -7330,3 +7330,17 @@ stars側を管理する別セッション(`stars-fd`)に事前通知済み。
 ### Resume prompt
 
 > D110で1.5号向けlineage実装の実データリハーサルが成功(aggregation_run.py、EMIT_LINEAGE=1、実GDAL処理、期待通りのtier分布)。D107-D109の全実装が実データ・実PMTiles I/Oのいずれかで検証済み。残るタスク: 1.5号を実際に全国スケールでlaunchする前に、Hidenoriさんへの最終確認(この一連の実装内容のサマリー提示)。launch自体は別の承認ポイントとして扱うこと(1号のstars公開と同じ運用)。1号のstars公開rsync(D106)は本セッション全体を通じて無関係に並行進行中——完了したら別途報告すること。
+
+## D111: 1号のstars公開が完全に完了 -- rsync完走・公開URL疎通確認済み
+
+**Status**: Recorded, 2026-09-02 12:45 JST頃。D106で開始したrsyncが完走。
+
+**内容**: `publish_rsync`スクリーンのrsyncが100%完走(220,652,140,119バイト、5時間17分49秒、平均11.04MB/s)。転送先(`stars@stars.local:/home/stars/data/mapterhorn-japan-bridge.pmtiles`)のファイルサイズが送信元と完全一致することを確認。公開URL(`https://stars.optgeo.org/mapterhorn-japan-bridge/{z}/{x}/{y}`)への疎通確認も実施——HTTP 200、`content-type: image/webp`、実際にタイルデータが返ってくることを確認した。
+
+**1号(`01M0MWK852631SHCHPA66F21WQ`)、これでミッションコンプリート**——D74-D76の重大インシデントからの復旧(aggregation_repair_3344)、D100の大規模stale markerクライシスの発見・修正、D101-D105の一連の技術的発見(PRIORITY_MODE誤診断の訂正、TMPDIR問題の真因特定と恒久修正)を経て、D106-D111で公開完了に至った。
+
+`stars-fd`セッションに完了報告済み。
+
+### Resume prompt
+
+> D111で1号のstars公開が完全に完了(rsync完走・ファイルサイズ一致・公開URL疎通確認済み)。1号のミッションはこれで完了。並行して実装済みの1.5号準備(D107-D110: レイヤー分離・lineageタイル・命名リファクタリング・実データリハーサル)は、全国スケールでの実際のlaunchの承認待ち。次のセッションはHidenoriさんとの1.5号launch可否の相談から始めること。
