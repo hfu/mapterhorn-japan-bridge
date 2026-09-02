@@ -7510,3 +7510,56 @@ Fableの指摘(z6 x=55/z7 x=109列の対馬・五島ワークユニットのz8-1
 ### Resume prompt
 
 > D114で「壁」問題を再整理: 実は(A)レンダラ×タイル欠損(-32768の奈落、対馬・五島の広域+z13以降の既知バンド)、(B)aggregation_merge.pyのboundary_tile erosionが常に境界ピクセルを消す構造的バグによるハード段差(長崎半島・江田島型、upstream mapterhornにも存在)、(C)配信衛生(maxzoom誇大申告・z8-11中抜け・RGB/RGBA世代混在)の3系統の合成と判明。対馬・五島のz8-11欠損(経度129.375°が境界)は生データが実在することを確認済みで、bundle.py(1.5号向けD107レイヤー分離済み)が1号の旧フラット構造を拾えない互換性問題を回避するため`bundle_1go_rebuild.py`(git archaeology、commit 78a3263ベース)を用意し、slate上のscreenセッション`bundle_rebuild`で再構築を実行中。**次回セッション**: (1) bundle再構築→merge_japan_bundles.py→z0-7スプライス→ローカル検証、を完遂し、Hidenoriさんに再公開の可否を確認する。(2) 系統(B)の本格修正(ゼロフィルをmask再計算前に移動、upstream issue化の検討)を設計・実装・検証する。(3) 系統(C)(RGB/RGBA世代混在、maxzoom誇大申告)への対処を検討する。1.5号のスコープにこれら全てを明示的に含める。
+
+
+## D115: 対馬・五島z8-11欠損の真因発見・修正完了。git identity再発防止、get_pmtiles_folderフォールバック、publish_cycle.pyガード、Fableコードレビュー、Opus修正計画
+
+**Status**: Recorded, 2026-09-03 07:10 JST頃。D114の「bundle再結合だけで直る」という診断が誤りだったと判明し、実際の根本原因を特定・修正した。
+
+### D114診断の誤り
+
+D114で「対馬・五島のz8-11データは`pmtiles-store/{z7バケット}/`に既に存在する」と確認した際、実は**経度129.375°より東側(=もともと壊れていなかった側)を確認していた**——座標取り違えのミス。Fableへの再検証委任(ローカルの`pmtiles.Reader`で直接タイル抽出)で発覚。真に欠損している西側(z8のx=219、z9のx=439等)は、`aggregation-store`にdownsampling作業項目自体(`.todo`すら)が存在しないことが判明——「結合し忘れ」ではなく「生成未実施」だった。
+
+### bundle再構築の事故と復旧
+
+診断誤りに気づく前、bundle.py(D107で1.5号向けにレイヤー分離構造をglobするよう既に書き換え済み)が1号の旧フラット構造データを拾えない問題を発見し、`bundle_1go_rebuild.py`(git archaeology、コミット78a3263ベース)を用意して回避。1回目の`pmtiles cluster`実行時、**ブートディスク(`/`、228GB)がほぼ満杯(残り1.2GB)なのに気づかずTMPDIRを明示指定しなかった**ため、310GBのアーカイブが破損(`pmtiles verify`で発覚: `Tile data offset=... out of bounds`)。原因は`/private/var/folders/.../T/`に残っていた97GBの孤立一時ファイル(過去のcluster失敗の残骸)。削除して復旧、TMPDIRを最初から`/Volumes/pmtiles-store/tmp-store/writer-scratch/`に固定してbundle→merge→clusterをやり直し、2回目は成功(`pmtiles verify`クリーン)。
+
+### 真の根本原因(downsampling_covering.pyのチェーン機構)
+
+`downsampling_covering.py`の`get_extents_from_coverings()`は、ズームレベルごとにネイティブaggregation.csvまたは既存downsampling.csv(トレイリング数字が一致するもの)をglobで拾い、`mercantile.simplify()`で近隣アイテムを結合しながらズームを1段ずつ下げていく設計。対馬・五島周辺では、この結合が**z6タイル(54,25)まで一気に単純化**され、`6-54-25-{8,9,10,11}-downsampling.csv`という、個々のアイテム名とは全く異なる名前で出力されていた——探すべきファイル名のパターンを見誤っていたことが、当初「データがない」ように見えた一因。
+
+実際にはこれらのファイルは存在し(`.todo`付き)、**一度も処理されていなかった**。理由: `6-54-25-11-downsampling.csv`が参照する133ファイルのうち2つ(`7-108-50-12.pmtiles`、`7-108-51-12.pmtiles`——東シナ海、九州西方沖の完全な海域、jpnationalseaのみ)が存在せず(`.done`マーカーはあるのに実ファイルが無い、stale markerの典型例)、`DOWNSAMPLING_STRICT=1`によりz11レベルの処理全体がスキップされ続けていた。z11が生成されないため、それを入力とするz10、z9、z8も連鎖的にスキップ——全国で「未完了」だったのはこの4項目のみ(progress.jsonのD98由来「4件not_ready」と一致)。
+
+**修正**: この2つの海域アイテムの`.done`マーカーを削除し`aggregation_run.py`で再生成(問題なく完了)。その後`downsampling_run.py`を再実行し、z11→z10→z9→z8の4段階すべてが正常完了。**全国のdownsampling未完了項目が0/8223になった**。実データ検証(ローカルpmtiles直接デコード)で、対馬・五島の該当座標すべてに標高分散22〜122、最大886mの実地形が入っていることを確認——空洞ではなく本物のデータ。
+
+### get_pmtiles_folder フォールバック(1.5号で撤去予定)
+
+新たに生成されたdownsampling出力は、D107で書き換え済みの`utils.get_pmtiles_folder()`が新レイヤー構造(空)を向いてしまい、1号の実データ(旧フラット構造)を読めない問題に直面。「別ファイルにフォークする」パターン(`bundle_1go_rebuild.py`)をこれ以上増やすことへの懸念(Hidenoriさん)を受け、`utils.get_pmtiles_folder()`本体に**z7バケット単位のフォールバック**(新レイヤー構造にバケットが無ければ旧フラット構造を試す)を追加。呼び出し側(`downsampling_run.py`等)は無変更。**「remove before flight」**——(B)(C)修正・1.5号ローンチ完了後、1号を読む必要がなくなった時点でこのフォールバックを削除する、とコード内コメントに明記済み。新規生成された`6-54-25-{8..11}.pmtiles`は旧フラット構造(`/Volumes/pmtiles-store/6-54-25/`)へ手動移動し、1号の他データと揃えた。
+
+### publish_cycle.pyの危険性とガード
+
+Opusへの計画立案委任で、**`publish_cycle.py`を現状のまま実行すると、ローカル最終アーカイブ削除→bundle.pyが新レイヤー構造(空)に対して0件生成(エラーにならず正常終了)→merge_japan_bundles.pyも空入力→`ssh stars rm -f`で公開版削除→rsyncは削除済みファイルを送ろうとして失敗、という「3箇所すべて消えて何も残らない」という最悪パスが判明**。`publish_cycle.py`の`main()`冒頭に即座に`sys.exit(1)`する安全装置を追加、コミット済み。D107以降の命名変更(`.z8plus.pmtiles`)への追従およびz0-7スプライス手順の欠落も含め、本格修正はPhase 1(Opus計画)で対応予定。
+
+### git identity の再発とpre-commitフック導入
+
+D114執筆時、リポジトリのgit設定(`fujimura.hidenori@gmail.com`)が**公開リポジトリへの実メールアドレス露出**という別の問題を引き起こしていたと判明(Hidenoriさん指摘)。GitHub提供のnoreplyアドレス形式`<ID>+<login>@users.noreply.github.com`(`gh api user`でID=18297確認)に切り替え——表示名の誤り(handygeospatial表示)と実メール露出、両方を同時に解決。**その後も設定が2回、静かに元に戻る事象を確認**(原因未特定)。cafebabe(別セッション)の提案でpre-commitフック(`user.email`が期待値と異なればコミット拒否)をmapterhorn-japan-bridge・hfu-mapterhorn・mapterhorn-monitorの3リポジトリに導入——実際に今夜のうちに1回、フックが不正な設定を検知してコミットをブロックし、有効性を実証した。既にpush済みの数コミット分(誤った実メールアドレスを含む)の履歴書き換えは、Hidenoriさんの判断で見送り。
+
+### Fableによる独立コードレビュー(D116候補、未反映の詳細多数)
+
+Fableへ`hfu-mapterhorn/pipelines`全体の読み取り専用コードレビューを依頼、16件の指摘を受領(P0緊急1件は即対応=97GB孤立ファイル削除、残り15件は未着手)。主な指摘: `extract_z8plus.py`/`build_global_overview.py`のTMPDIR未設定、`utils.run_command()`が終了コードを見ていない(source_to_cog.py等での変換失敗後の無条件delete)、`aggregation_merge.py`の`merged-3857.tiff`が非原子的書き込み(D48のresumeロジックが部分書き込みを完了と誤認しうる)、`remove_dangling_pmtiles.py`が最新世代のみを基準に削除する危険な設計、`.done`マーカーがdatatypeでスコープされておらず1.5号のlineageパスが無視される、等。詳細はセッションログ参照、次回セッションでの正式なDECISIONS.md反映が必要。
+
+### Opusによる修正順序計画(未反映、詳細多数)
+
+上記コードレビュー結果と(B)(C)を統合した、フェーズ分けされた修正計画をOpusに依頼・受領。要旨: Phase 0(今夜の続き)→Phase 1(publish_cycle.py本格修正・TMPDIRラッパー・remove_dangling_pmtiles.py安全化などの「即座の危険物処理」)→Phase 2(`run_command`終了コードチェック等、複数日運用への耐性強化、1.5号前に必須)→Phase 3((B)の本格修正、1.5号のクリティカルパス)→Phase 4(1.5号ローンチ)。Hidenoriさんの判断が必要な項目(H1〜H6)を明示的に分離。詳細はセッションログ参照。
+
+### (B)修正: Opus設計→Fable実装検証(進行中)
+
+`aggregation_merge.py`のboundary_tileバグに対し、Opusが精緻な設計(122-124行目の削除が本質、書き換えではない。数値例で144m幅の緩やかなランプへの変換を実証)を作成。Fableへ実装・合成テスト・実データ(江田島)リハーサル・visual確認を依頼、結果待ち。副次的発見: downsampling時のalpha加重平均で陸地標高が海側に「にじみ出る」別メカニズムの可能性も指摘され、この修正で同時に解消するか検証中。
+
+### 現在の状態
+
+`bundle_1go_rebuild.py`(3回目、対馬・五島の真の修復データを含む)実行中(screen: bundle_rebuild3)。完了後: merge_japan_bundles.py→pmtiles cluster→pmtiles merge(z0-7接合)→ローカル検証(Fable)→Hidenoriさんに公開可否確認。(B)修正はFableの実装・検証待ち、完了後に別途this pipelineへの組み込みを判断。Hidenoriさんより今後12時間の自律モード運用を指示されている。
+
+### Resume prompt
+
+> D115で対馬・五島z8-11欠損の真因を特定・修正完了: `downsampling_covering.py`が地域全体をz6タイル(54,25)の連鎖アイテムに単純化し、東シナ海の2つの海域アイテム(`7-108-50-12`/`7-108-51-12`、stale .doneマーカー)がDOWNSAMPLING_STRICTでチェーン全体をブロックしていた。再生成し全国0/8223未完了に。実データ検証済み(標高分散22-122、最大886m)。`utils.get_pmtiles_folder()`に旧フラット構造への一時フォールバックを追加(1.5号完了後に削除予定、コード内に明記)。`publish_cycle.py`に安全装置追加(現状のまま実行すると全アーカイブ消失のバグを発見)。git identity再発防止のpre-commitフックを3リポジトリに導入(実際に1回機能を確認)。Fableのコードレビュー16件・Opusの修正順序計画を受領済みだが、DECISIONS.mdへの詳細反映は次回セッションの課題として残る(セッションログ参照)。(B)修正はOpus設計→Fable実装検証が進行中。**次回セッション**: (1) bundle_rebuild3→merge→cluster→verify→公開判断を完遂、(2) Fableの(B)実装検証結果を確認し本番反映を判断、(3) Fableコードレビュー16件・Opus修正計画をDECISIONS.md/PLAN.mdに正式反映、(4) Phase 1(publish_cycle.py本格修正等)に着手。
