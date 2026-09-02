@@ -7563,3 +7563,31 @@ Fableへ`hfu-mapterhorn/pipelines`全体の読み取り専用コードレビュ�
 ### Resume prompt
 
 > D115で対馬・五島z8-11欠損の真因を特定・修正完了: `downsampling_covering.py`が地域全体をz6タイル(54,25)の連鎖アイテムに単純化し、東シナ海の2つの海域アイテム(`7-108-50-12`/`7-108-51-12`、stale .doneマーカー)がDOWNSAMPLING_STRICTでチェーン全体をブロックしていた。再生成し全国0/8223未完了に。実データ検証済み(標高分散22-122、最大886m)。`utils.get_pmtiles_folder()`に旧フラット構造への一時フォールバックを追加(1.5号完了後に削除予定、コード内に明記)。`publish_cycle.py`に安全装置追加(現状のまま実行すると全アーカイブ消失のバグを発見)。git identity再発防止のpre-commitフックを3リポジトリに導入(実際に1回機能を確認)。Fableのコードレビュー16件・Opusの修正順序計画を受領済みだが、DECISIONS.mdへの詳細反映は次回セッションの課題として残る(セッションログ参照)。(B)修正はOpus設計→Fable実装検証が進行中。**次回セッション**: (1) bundle_rebuild3→merge→cluster→verify→公開判断を完遂、(2) Fableの(B)実装検証結果を確認し本番反映を判断、(3) Fableコードレビュー16件・Opus修正計画をDECISIONS.md/PLAN.mdに正式反映、(4) Phase 1(publish_cycle.py本格修正等)に着手。
+
+
+## D116: (B)修正(aggregation_merge.pyのboundary_tile侵食ゲートバグ)を本番へ導入
+
+**Status**: Recorded, 2026-09-03 07:24 JST頃。D114/D115で特定した「壁」現象の defect (B) に対するOpus設計→Fable実装検証が完了し、`hfu-mapterhorn/pipelines/aggregation_merge.py`へ導入・コミット済み(`1b6e4e1`)。
+
+### 修正内容
+
+122-124行目(旧コード)で、マージ済み最終状態(`merged_tile`)から`binary_mask`/`eroded`を再計算し、それを`boundary_tile`にANDしていた処理を削除。この再計算は、恒久的に埋まらない領域(=実際の海岸線で、優先順位の低いソースも一切届かない側)に隣接する境界を数学的に必ず消してしまう(Opusの証明)——結果、その境界は本来のブラー処理(緩やかな陸→海のランプ化)を経ないまま`-9999→0`の穴埋めだけを受け、ブロック境界に鋭い崖として現れていた。ブロックループ中に段階的に蓄積される`boundary_tile`(98-115行目)は元々正しいため、削除のみで足り書き換えは不要(Opusの設計方針どおり)。あわせて`-9999→0`の穴埋めをブラーの発火条件から外して常時実行に変更、ゲートを`boundary_tile.any()`に変更、`blur_fits_in_overlap`ガード(maxzoom≤11でのみ到達しうるが実運用では未到達、`aggregation_covering.py`のmacrotile_z=12フロアにより)を追加。D113の単一ソースグループ修正(`contains_nodata_pixels`判定付きの再エンコード)も、誤った批判コメント(117-120行目のフレームゼロ化を犯人扱いしていた)を修正した上で正式採用。
+
+### 検証結果(Fable、実装後に私自身も再実行し再確認)
+
+- **合成テスト**(江田島規模、762×762、maxzoom16、overlap125、sigma30): 全PASS。海岸ケースで残留-9999が275,844px→0、最大隣接段差が(公開相当の)100mの崖→1.43mへ。healed seamケースは新旧でbit-identical。全面nodataケースは0出力・ブラー未発火(0回)を確認。
+- **実データリハーサル**(使い捨てID `00TEST0000000ETAJIMA03`、作業後削除済み): 江田島`10-889-408-16`(1,423ソース)・長崎半島`11-1762-826-16`(1,089ソース)いずれも新旧**bit-identical**。今回のリハーサル入力には常に海グループ(jpnationalsea)が全域を埋めているため、バグの発火条件(恒久的未充填領域)自体が発生しない——「改善効果」は合成テストのみで証明されるが、「退行なし」の強い証拠として成立する。
+- **副次発見**: downsampling時のアルファ加重平均によるにじみ出し(陸地標高が海側に部分的に漏れ出る、独立した第二のメカニズム)も、この修正で副次的に解消されることを確認。海が透明0mから不透明0mになる仕様変化を伴う(raster-dem描画自体には影響なし、タイルインスペクタの見た目のみ変化)。
+- **ガード到達可能性**: 全生成IDの最小maxzoomは12(z12でbuffer_pixels=7、4·sigma=4<7で条件を満たさない)——`blur_fits_in_overlap`ガードは現状デッドコードと確認済み。
+
+### 導入時のインシデント(aalto/slate取り違え)
+
+Hidenoriさんへ「slate上で以下のcpコマンドを実行してください」と提案したところ、実際にはローカル(aalto)で実行してしまっていたことが判明。ただしコマンドが参照するパス(`/Volumes/Migrate-2025-04/...`、`/tmp/aggregation_merge_new.py`)はaaltoに一切存在しないため、単にエラーで終わり、データ損失や誤ったファイル上書きは発生しなかった(確認済み)。最終的にHidenoriさんの承認を得て、Claude自身がslate上でBash経由により、バックアップ作成→インストール→合成テスト再実行→コミットの一連の手順を完遂した。
+
+### 現在の状態
+
+`aggregation_merge.py`の(B)修正は本番へ導入・コミット済み。今後の`aggregation_run.py`実行(1号の追加repairおよび将来の1.5号)から新コードが有効になる——ただし現在進行中の`bundle_rebuild3`はすでに計算済みのpmtilesファイルを束ねる工程であり、この修正の影響を受けない。(C)(serving hygiene: RGB/RGBA混在・maxzoom over-declaration)は未着手。Fableコードレビュー16件・Opus修正順序計画の詳細反映は引き続き次回セッションの課題。
+
+### Resume prompt
+
+> D116で(B)修正(`aggregation_merge.py`のboundary_tile侵食ゲートバグ)を本番へ導入完了(コミット`1b6e4e1`)。合成テスト全PASS(残留-9999 275,844px→0、崖100m→1.43m)、実データリハーサルはbit-identical(今回の入力では発火条件が発生しないための「退行なし」証拠、改善効果自体は合成テストで証明)。副次的にdownsampling時のアルファにじみ出しも解消(海が透明0m→不透明0mへ仕様変化、renderingには無影響)。導入手順中、Hidenoriさんが提案コマンドをslateでなくaaltoで実行してしまう小さな取り違えがあったが実害なし(パスが存在せずエラーで終了)、最終的にClaudeがslate上で承認を得て実行・検証・コミット。**次回セッション**: (1) bundle_rebuild3→merge→cluster→verify→公開判断を完遂、(2) (C)(serving hygiene)着手を検討、(3) Fableコードレビュー16件・Opus修正計画をDECISIONS.md/PLAN.mdに正式反映、(4) Phase 1(publish_cycle.py本格修正等)に着手。
