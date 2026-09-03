@@ -8221,3 +8221,27 @@ D124の4コミット(hfu-mapterhorn: `7badda7`・`56d3cec`、mapterhorn-japan-br
 ### Resume prompt
 
 > D127でHidenoriさんから1.5号(generation_id `01M1MKD73P0KDT719H21NJV9VR`)の全国規模launch承認を得て着手した。launch前の最終3条件(pmtiles clusterのランブック追加・ダッシュボード運用の了承・headroom監視のpmtiles-store拡張)は全て満たしてから実行。ランブックはD127に確定版を記録。**次のアクション**: aggregation_covering.py実行→名簿突き合わせ(K4)→aggregation_run.py(EMIT_LINEAGE=1)をscreenで起動、以降は定期的な進捗監視とダッシュボード更新を継続する。完了(50-70時間後)まで、downsampling→bundle→cluster→merge→publish承認、と続く。
+
+
+## D128: 1.5号 全国aggregation本体、起動完了(07:23 JST)
+
+**Status**: Recorded, 2026-09-04 07:24 JST。D127の承認を受け、実際に起動した。
+
+### 実施内容
+
+1. `AGGREGATION_ID=01M1MKD73P0KDT719H21NJV9VR uv run python3 aggregation_covering.py` 実行、covering生成成功。
+2. 名簿突き合わせ(D123/K4パターン)実行、**完全クリーン**: 総CSV数6,373件(1号と完全一致)、`.todo`化6,373件、孤児0・不整合0・座標重複0、source-store全体(jpnational1: 291,779件・jpnational5: 422,119件・jpnational10: 4,981件・jpnationalsea: 275件)との双方向突き合わせも完全一致。
+3. `AGGREGATION_ID=01M1MKD73P0KDT719H21NJV9VR EMIT_LINEAGE=1 uv run python3 aggregation_run.py` をscreenセッション(`agg15go`)で起動。5ワーカー、6,373件の処理を開始。
+4. 起動確認: load average 6.91まwhile上昇(ワーカー稼働確認)、`pmtiles-store`への書き込み開始を確認(872Gi使用、起動前869Giから増加)。
+
+### 見込み
+
+D124/D125の実測ベースで、aggregation本体だけで約50-70時間(2-3日)。完了後、downsampling(elevation・lineage両方)→bundle→**pmtiles cluster**(D127で追加確定)→merge(z0-7接合)→verify→Hidenoriさんの公開承認、と続く。
+
+### 現在の状態
+
+**1.5号、正式に稼働中**。定期監視(15分おき、ディスク・メモリ・進捗)を継続する。`check_disk_headroom.py`は既にpmtiles-storeもカバーする形に拡張済み(D127)。
+
+### Resume prompt
+
+> D128で1.5号(`01M1MKD73P0KDT719H21NJV9VR`)の全国aggregation本体が正式に起動(07:23 JST、screen: `agg15go`、5ワーカー、EMIT_LINEAGE=1)。起動前の名簿突き合わせは完全クリーン。見込み所要時間50-70時間。**次のアクション**: 定期監視を継続、完了次第downsampling(elevation・lineage)→bundle→pmtiles cluster→merge→verifyへ進む。公開はHidenoriさんの別途承認が必要。
