@@ -56,16 +56,26 @@ distributing across more than one machine).
 
 **Next planned initiative: 「1.5号」** (Hidenori's decision, D96) — a
 staging/regression run using 1号's own already-downloaded source data
-but a structurally-fixed pipeline (D95: separate the aggregation and
-downsampling layers' file namespaces, the root design flaw behind
-D74-D76/D100), plus the lineage-tile feature (D93/D94). Runs *before*
-real 2号 (which is gated on GSI actually shipping a new DEM1A update,
-not yet landed as of this writing — see `PLAN.md` §1). 1.5号's
-terrarium output replaces 1号 on `stars`; its lineage output is new.
-Do not implement D95's namespace-separation fix, or start 1.5号 itself,
-until 1号 is fully clean, re-verified, and published — see
-`HANDOVER.md`'s current-state section for exactly what's still
-pending.
+but a structurally-fixed pipeline (D95/D107: separate the aggregation
+and downsampling layers' file namespaces AND add a generation_id
+directory level, the root design flaw behind D74-D76/D100/D123), plus
+the lineage-tile feature (D93/D94). Runs *before* real 2号 (which is
+gated on GSI actually shipping a new DEM1A update — see `PLAN.md`
+§1, working estimate end of November 2026). 1.5号's terrarium output
+replaces 1号 on `stars`; its lineage output is new.
+
+**Status as of D124/D125 (2026-09-04): implemented, rehearsed, and
+independently graded — not yet launched at national scale.** 1号 was
+fully cleaned, re-verified, and published first (D118-D122), exactly
+as this section used to require before any of the above could start.
+The namespace-separation fix and the generation_id layer are both
+implemented in production `pipelines/` and proven via a real chained
+rehearsal with zero writes into 1号's tree; a second, independent
+reviewer graded the actual diff against its own pre-derived safety
+checklist (verdict: "push it", one blocker found and fixed, D125). The
+national-scale run itself (~50-70h) is deliberately held for
+Hidenori's own explicit go — see `DECISIONS.md` D124/D125 for the
+launch runbook and open items, not this section.
 
 ## Source priority order (read before touching aggregation code)
 
@@ -232,12 +242,26 @@ priority" means *base layer*, not *painted-over-first*. See
 
 After `bundle.py` produces `planet.pmtiles` + per-region
 `{z}-{x}-{y}.pmtiles` files, `merge_japan_bundles.py` merges **all** of
-them (not just the new ones) into one file, always named
-`mapterhorn-japan-bridge.pmtiles` (`japan.pmtiles` before D46), and
-`publish_cycle.py` `rsync`s it to `stars` over the same key every time.
-This is a full rebuild each time, not an incremental append — accepted
-cost for a temporary bridge product at its current scale (see D7 for
-the tradeoff). `merge_japan_bundles.py` is checked in to `hfu-
+them (not just the new ones) into one intermediate file, named
+`mapterhorn-japan-bridge.z8plus.pmtiles` since D109 (`japan.pmtiles`
+before D46, plain `mapterhorn-japan-bridge.pmtiles` between D46 and
+D109 — three different names for this same intermediate step across
+this file's own history, a live illustration of why D109 introduced
+the `.z8plus` suffix in the first place). A separate manual `pmtiles
+merge` step splices in the z0-7 global overview to produce the final
+`mapterhorn-japan-bridge.pmtiles` (the plain name now refers to *only*
+this final, publishable product). This is a full rebuild each time, not
+an incremental append — accepted cost for a temporary bridge product
+at its current scale (see D7 for the tradeoff).
+
+**`publish_cycle.py` is currently hard-disabled** (`sys.exit(1)` at the
+top of `main()`, D115) — it was found to have a catastrophic bug
+(would delete the local archive, bundle an empty tree under the
+post-D107 layout, then delete the *live* archive on `stars` and rsync
+nothing) that was never actually exercised because 1号 was always
+published by hand. Do not remove the guard without first doing the
+repair D115 names. Until then, publishing is a manual `rsync`, per the
+runbook in `DECISIONS.md` D124/D125. `merge_japan_bundles.py` is checked in to `hfu-
 mapterhorn`'s own `pipelines/`, a generalization of `hfu/mapterhorn`'s
 own `pipelines/merge_bundles.py` to `glob("bundle-store/*.pmtiles")`
 instead of that script's hardcoded two-file `INPUTS` list.

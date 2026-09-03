@@ -377,21 +377,33 @@ clustered化される」という設計をより単純化できる(z8+側単体�
 
 ## 5. 環境変数リファレンス
 
+**2026-09-04訂正**: 以下の表は2026-08-30/31時点のもので、D107/D120/D124の
+変更を反映していなかった(独立ドキュメント監査で発見)。TMPDIR行を訂正し、
+1.5号のlaunch runbookが要求する6変数を追加した。
+
 | 変数 | 既定値 | publish_cycle.pyでの上書き | 影響範囲 |
 |---|---|---|---|
 | `TILE_ENCODING` | `terrarium` | (無し) | aggregation_reproject/tile, downsampling_run, utils.macrotile_z。`rgb`はorthophoto/Freetown用途、標高データでは絶対に使わない |
-| `AGGREGATION_WORKERS` | 4 | (無し) | aggregation_run.py の並列度 |
+| `AGGREGATION_WORKERS` | 4(D84で5に運用実績あり) | (無し) | aggregation_run.py の並列度 |
 | `DOWNSAMPLING_WORKERS` | 5 | 3 | downsampling_run.py の並列度 |
 | `BUNDLE_WORKERS` | 4 | 2 | bundle.py の並列度 |
 | `DOWNSAMPLING_STRICT` | 0 (off) | 1 (on) | 子タイル欠如時にスキップするか、有る分だけで進めるか |
 | `PRIORITY_MODE` | `proximity` | `quadrans` | downsampling処理順序(結果には影響しない) |
 | `CENTER_LAT`/`CENTER_LON` | Freetown座標 | (無し、quadrans使用時は無効) | proximityモード時のみ意味を持つ |
-| `TMPDIR` | OS既定(内蔵SSD) | `/Volumes/Migrate-2025-04/tmp` | **pmtiles.writer.Writerの一時バッファ置き場。単独実行時は要手動指定** |
+| `TMPDIR` | 各スクリプトが起動時に強制上書き(`pmtiles-store/tmp-store/writer-scratch/`) | (無効化済み——各スクリプト側の上書きが後勝ちする) | **この表は元々「publish_cycle.py経由でのみ正しく設定される」前提だったが、D120/D124以降、aggregation_run.py・downsampling_run.py・bundle.py・merge_japan_bundles.py・bundle_1go_rebuild.py・extract_z8plus.py・build_global_overview.pyが全てモジュール冒頭で自前設定する。単独実行時の手動指定はもはや不要。Go CLIは`pipelines/pmtiles`ラッパー経由で呼ぶこと(生の`pmtiles`コマンドは使わない、D120)** |
+| `AGGREGATION_ID` | (未設定時は自動採番) | — | `aggregation_covering.py`。1.5号のlaunch runbookはこれを明示指定して新世代を確実に対象にする(D124) |
+| `EMIT_LINEAGE` | `0`(off) | — | `aggregation_run.py`。`1`でlineageタイルも同時生成(D93/D94/D108) |
+| `DOWNSAMPLING_DATATYPE` | `elevation` | — | `downsampling_run.py`。`lineage`でlineage側のdownsamplingパスを実行(D108/D124) |
+| `BUNDLE_DATATYPE` | `elevation` | — | `bundle.py`。`lineage`でlineage側をbundle(D107) |
+| `BUNDLE_GENERATION` | (未設定時は最新世代) | — | `bundle.py`。明示指定しない場合`get_aggregation_ids()[-1]`——1.5号のような複数世代並存下では明示指定を推奨(D124) |
+| `MERGE_DATATYPE` | `elevation` | — | `merge_japan_bundles.py`。`lineage`でlineage側のアーカイブ名(`-lineage.pmtiles`)を出力(D107) |
 
 モジュール定数(環境変数ではないが挙動を左右する、コードを直接編集しないと
 変えられない): `aggregation_reproject.py`/`aggregation_merge.py` の
 `SILENT`/`FAIL_ON_WARNING`(共にデフォルト `SILENT=True`, `FAIL_ON_WARNING=False`
-——3.3節の脆弱性の直接原因)。
+——3.3節の脆弱性の直接原因。ただし`utils.run_command()`自体はD120以降、
+終了コード非ゼロなら`RuntimeError`を投げるようになった——握りつぶされるのは
+「終了コード0だがstderrに警告」というケースのみに縮小)。
 
 ## 6. 既知の構造的落とし穴(2026-08-30/31 実地で発見)
 
