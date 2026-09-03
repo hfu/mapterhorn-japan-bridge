@@ -14,20 +14,67 @@ mapterhorn-japan-bridge の生成パイプライン(`hfu/mapterhorn` の `pipeli
 
 ## 1. ディレクトリの役割
 
+**このセクションは2段構成**: 1-1は1号(現行公開世代、`01M0MWK852631SHCHPA66F21WQ`)が
+実際に使っている(そして今後もそのまま凍結される)構造。1-2は1.5号(名前空間分離+
+generation_id階層+lineage機能を検証する次世代、2026-09-04着手)が実装・検証中の
+**目標構造**——各種タスク(実装・レビュー・リハーサル)はこの1-2を正として仕事を揃える。
+実装完了・レビュー完了までは「目標」であって「現状」ではない点に注意。
+
+### 1-1. 1号(現行、凍結・変更しない)
+
 | ディレクトリ | 役割 | 典型的なサイズ |
 |---|---|---|
 | `source-store/{source}/` | GSI等から取得した生ラスタ(GeoTIFF)。`bounds.csv` に一覧あり | 数百GB |
 | `aggregation-store/{aggregation_id}/` | covering(何を作るかの計画)と進捗マーカー。ULIDで世代管理 | 小さい(CSV/空ファイルのみ) |
-| `pmtiles-store/` | aggregation・downsamplingの**実データ出力**。世代非依存でフラット | 最大の実データ(現在数百GB) |
+| `pmtiles-store/{z7bucket}/*.pmtiles`(z≥7)、`pmtiles-store/*.pmtiles`(z&lt;7) | aggregation・downsamplingの**実データ出力**。**世代非依存・レイヤー非依存でフラット** | 最大の実データ(1号で約869GB) |
 | `tmp-store/{aggregation_id}/{item}/` | aggregation_run.py の作業用一時ディレクトリ | 一時的 |
 | `bundle-store/` | bundle.py・merge_japan_bundles.py の出力置き場 | 数百GB(一時的) |
 
-**重要**: `pmtiles-store` は**世代(aggregation_id)をまたいで共有**され、かつ**世代間で
-一切消去されない**(DECISIONS.md D12 の未解決事項として明記されている)。つまり
-「今の aggregation-store の内容」と「pmtiles-store に物理的に存在するファイル」は
-常に一致しているとは限らない。何かを削除・整理する際は、必ず**現在の
-aggregation-store のcsvファイル名を正とする**か、`check_downsampling_done_integrity.py`
-のような既存の照合ツールを使うこと(後述「6. 既知の構造的落とし穴」参照)。
+**重要(1号固有・D74-D76の根本原因)**: `pmtiles-store`は**世代(aggregation_id)をまたいで
+共有**され、かつ**aggregation層とdownsampling層も同じ命名規則`{z}-{x}-{y}-{child_z}.pmtiles`
+を共有**する(4節参照)。6,373件のaggregation位置のうち3,344件がdownsampling層とも
+座標が一致し、横断的なクリーンアップ操作がどちらのレイヤーのファイルかを見誤ると
+誤削除が起きる。1号はこの構造のまま**今後も変更しない**(2026-09-04のD123で、この
+構造に対する全国再生成が同型の事故を再現しかねないと判明したため、1号への追加
+書き込みは行わない方針が確定した)。
+
+### 1-2. 1.5号(目標構造、実装・検証中)
+
+```
+pmtiles-store/
+  {layer}/                    -- 'aggregation' | 'downsampling'
+    {datatype}/                -- 'elevation' | 'lineage'
+      {generation_id}/          -- 1.5号のULID(1号には無い階層)
+        {z7bucket}/              -- z>=7、mercantile.parent(zoom=7)
+          {z}-{x}-{y}-{child_z}.pmtiles
+        {z}-{x}-{y}-{child_z}.pmtiles   -- z<7、バケット分割なし
+```
+
+`utils.get_pmtiles_folder(x, y, z, layer, datatype, generation_id)`が唯一の解決関数
+(1号時代の`get_pmtiles_folder(x, y, z)`から`layer`/`datatype`/`generation_id`の3引数が
+追加された)。**この関数を経由せず`pmtiles-store`に直接globする箇所は、1.5号の文脈では
+すべてバグの疑いがある**——既知の直接glob箇所(2026-09-04時点の棚卸し、`grep -rn
+"pmtiles-store/\*" --include="*.py"`で再確認すること):
+
+| ファイル | 用途 | 1.5号対応状況 |
+|---|---|---|
+| `bundle.py` | 最終アーカイブ組み立て | `get_parent_to_filepaths()`が3階層(layer/datatype/generation_id)対応必須 |
+| `remove_dangling_pmtiles.py` | 孤立ファイル削除 | **最重要**——D76と同じ機構の温床、generation_id・layer・datatype全てでスコープすること |
+| `bundle_1go_rebuild.py` | 1号専用の一時復元ツール | 1号のみが対象、1.5号では**使わない**(旧フラット構造前提のため) |
+| `check_stale_duplicates_v2.py` | D74由来の重複チェック | 要確認 |
+| `create_index.py` | インデックス生成 | 要確認 |
+| `validate_pixels.py` | ピクセル検証 | 要確認 |
+| `downsampling_run.py`の`check_and_fix_pmtiles()` | 破損ファイル検出 | `glob('**/*.pmtiles')`が全世代を横断するため要スコープ確認 |
+
+**1号との共存**: 1.5号の書き込みは`{generation_id}`階層より下でのみ発生するため、
+1号の旧フラット構造(1-1節)とは物理的に別ディレクトリになる——ただし**これは
+`get_pmtiles_folder()`が正しく実装されている場合に限る**。D115の一時フォールバック
+(z≥7のみ、旧フラット構造への退避)が残っている限り、この分離は保証されない
+(2026-09-04のD123で、実行検証によりこのフォールバックが全layer/datatype組み合わせを
+1号のフラット構造に収束させることが確認されている——1.5号launch前に必ず削除する)。
+
+**generation_id ↔ 世代名の対応表**: `PLAN.md`セクション0を正とする。このファイルには
+複製しない。
 
 ## 2. パイプライン全体の流れ
 
