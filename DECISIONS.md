@@ -8180,3 +8180,44 @@ D124の4コミット(hfu-mapterhorn: `7badda7`・`56d3cec`、mapterhorn-japan-br
 ### Resume prompt
 
 > D126でドキュメントstaleness監査(Opus)が完了、`START_HERE.md`新設+P0級の古い記述4点(1.5号着手指示・アーカイブ命名・publish_cycle.py無効化の未記載・環境変数表)を修正・push済み(`e702900`)。P1/P2/P3級の指摘(`.done`マーカー説明・HANDOVER.mdの新旧併存・ワーカー数食い違い・FORK_NOTES.mdの数字)は未対応のまま次回に持ち越し。**次のアクション**: 余裕があれば残りのstaleness項目を対応、なければ1.5号launchの最終判断を優先する。
+
+
+## D127: 【重要】1.5号 全国規模launch承認・着手。ランブック最終確定(pmtiles cluster追加・headroom監視拡張)
+
+**Status**: Recorded, 2026-09-04 07:20 JST頃。D124(実装)・D125(独立採点)・D126(ドキュメント監査)を経て、Hidenoriさんから明示的なlaunch承認を得た。「Lift off」。
+
+### launch前最終確認(Hidenoriさんとの対話)
+
+1. **`pmtiles cluster`のランブック追加を承認**。D118(1号復旧)の実績通り、`merge_japan_bundles.py`(z8plus中間ファイル生成)の直後・最終`pmtiles merge`(z0-7オーバービュー接合)の直前に位置づける。
+2. **ダッシュボード(progress.json)の更新責任がエージェント(私)に依存することを了承**——完全自律更新ではなく、私の応答頻度に依存する限界を開示した上で、その運用を継続することで合意。
+3. **`check_disk_headroom.py`を`pmtiles-store`もカバーするよう拡張してから進める**、という条件付きで承認。実装・動作確認・commit・push済み(`6b11542`)——15分ごとの既存screenループが次回実行時に自動的に新版を使う(再起動不要)。両ボリュームとも記録開始を確認(Migrate-2025-04残り1,038.5GB、pmtiles-store残り1,067.0GB)。
+
+### 確定した1.5号ランブック(D124/D125からの更新)
+
+```
+1. AGGREGATION_ID=01M1MKD73P0KDT719H21NJV9VR uv run python3 aggregation_covering.py
+2. 【新規、D123パターンの名簿突き合わせ、K4】aggregation-store/{new_gen}/の
+   総CSV数・.todo化数・孤児・不整合・座標重複ゼロ・source-store全体との
+   双方向突き合わせを実行、対馬・五島パターンを最初期に検知する
+3. AGGREGATION_ID=01M1MKD73P0KDT719H21NJV9VR EMIT_LINEAGE=1 uv run python3 aggregation_run.py
+   (screenセッション、TMPDIR自動設定済み)
+4. 完了後: downsampling_covering.py → downsampling_run.py
+   (DOWNSAMPLING_DATATYPE=elevation、続けてlineage)
+5. bundle.py(BUNDLE_DATATYPE=elevation・lineage、BUNDLE_GENERATION明示)
+6. merge_japan_bundles.py(MERGE_DATATYPE=elevation・lineage)
+7. 【新規追加、今回確定】./pmtiles cluster (z8plus中間ファイル)
+8. ./pmtiles verify
+9. ./pmtiles merge (global-overview-backup.pmtilesとのz0-7接合)
+10. ./pmtiles verify(最終)
+11. meta-store/bundle/*.json を事前にクリア(D125のD4項目、bundleステージ直前)
+12. ロールバックコマンド(必要時): rm -rf pmtiles-store/{aggregation,downsampling}/*/01M1MKD7*/ aggregation-store/01M1MKD7*/
+13. Hidenoriさんの最終承認を得てからstarsへ手動rsync(publish_cycle.pyは使わない)
+```
+
+### 着手
+
+上記ステップ1・2を実行し、着手を記録する。ステップ3(全国aggregation本体、EMIT_LINEAGE=1、50-70時間見込み)をscreenセッションで起動する。
+
+### Resume prompt
+
+> D127でHidenoriさんから1.5号(generation_id `01M1MKD73P0KDT719H21NJV9VR`)の全国規模launch承認を得て着手した。launch前の最終3条件(pmtiles clusterのランブック追加・ダッシュボード運用の了承・headroom監視のpmtiles-store拡張)は全て満たしてから実行。ランブックはD127に確定版を記録。**次のアクション**: aggregation_covering.py実行→名簿突き合わせ(K4)→aggregation_run.py(EMIT_LINEAGE=1)をscreenで起動、以降は定期的な進捗監視とダッシュボード更新を継続する。完了(50-70時間後)まで、downsampling→bundle→cluster→merge→publish承認、と続く。
