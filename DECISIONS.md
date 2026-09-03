@@ -8150,3 +8150,33 @@ D124の4コミット(hfu-mapterhorn: `7badda7`・`56d3cec`、mapterhorn-japan-br
 ### Resume prompt
 
 > D125で、D124(1.5号 pre-launch hardening)の独立採点が完了。「push可、正味で大きな安全性向上」との判定。唯一のBLOCKER級指摘(F1: `downsampling_run.py`のTMPDIR未設定)を含む4点の残課題を発見、即座に対応(F1修正・J1/J2クリーンアップ完了、ランブック項目はD125に明記)。**次のアクション**: (1) F1/J1/J2の修正をコミット・push、(2) `pmtiles cluster`ステップの要否をHidenoriさんに確認、(3) `test_lineage_downsampling.py`再実行、(4) ディスク容量の逐条計算と1号フラットストア保持方針の確定、(5) 全て揃った上でHidenoriさんの帰還を待ち、全国規模launchの最終承認を得る。
+
+
+## D126: ドキュメントstaleness監査(Opus)完了。START_HERE.md新設、CLAUDE.md/PIPELINE_DESIGN.mdの重大な古い記述を修正
+
+**Status**: Recorded, 2026-09-04 07:25 JST頃。D124/D125の採点と並行して、別のOpusインスタンスへ「プロジェクト内の全`.md`ドキュメントが実装と乖離していないか」の監査を委任した。
+
+### 発見された最重要級(P0、「新セッションを実際に誤誘導しうる」)staleness
+
+- **`CLAUDE.md`が1.5号を「まだ着手すべきでない」と指示していた**——実際にはD107/D124で実装・リハーサル・採点まで完了済み。同様に`HANDOVER.md`の古いresume promptにも同型の古い指示が残存。
+- **最終アーカイブのファイル名が3箇所で食い違っていた**(`CLAUDE.md`・`README.md`・`PIPELINE_DESIGN.md`)。D109以降、中間ファイルは`mapterhorn-japan-bridge.z8plus.pmtiles`、最終公開物のみが`mapterhorn-japan-bridge.pmtiles`を名乗るが、複数箇所が旧命名のまま。
+- **`publish_cycle.py`がD115で完全に無効化(`sys.exit(1)`)されている事実が、それを操作手順として説明している複数ドキュメントのどこにも書かれていなかった**——読んだ人がそのまま実行しようとしうる、最も実害の大きい発見。
+- **環境変数リファレンス表(`PIPELINE_DESIGN.md`§5)のTMPDIR行が完全に古く**、1.5号のlaunch runbookが依存する6変数(`AGGREGATION_ID`/`EMIT_LINEAGE`/`BUNDLE_DATATYPE`/`BUNDLE_GENERATION`/`DOWNSAMPLING_DATATYPE`/`MERGE_DATATYPE`)が表に一切載っていなかった。
+
+### 対応
+
+上記4点全て修正・commit・push済み(`e702900`)。加えて、cafebabeプロジェクト的な「まずこれを読め」文書として**`START_HERE.md`を新設**——プロジェクトの位置づけ・3リポジトリ+2ホストのトポロジー・1号/1.5号/2号の意味・「今夜起きた6つの本物のインシデントから逆算した不変条件」・現在状態への案内、をコンパクトにまとめ、各詳細は既存ドキュメントへポインタで委ねる設計。
+
+### 未対応のまま残った指摘(P1/P2/P3、優先度は相対的に低い)
+
+- `.done`マーカーの説明(§3.2/§3.7)が「空ファイル」のまま、D124後の実際のJSON manifest形式を反映していない
+- `PIPELINE_DESIGN.md`のフロー図自体(§2)にファイル名の古さが残る
+- `HANDOVER.md`に9/1時点の「Current state」セクションが9/4時点のものと並存し、矛盾する古い指示(publish保留・PRIORITY_MODEが死んだコードだという誤った記述)を含んだまま
+- ワーカー数既定値が`PIPELINE_DESIGN.md`と`PLAN.md`で微妙に食い違う(コード既定値 vs 運用実績値の混同)
+- `hfu-mapterhorn/FORK_NOTES.md`の「upstream比20コミット先行」が実際は94コミット
+
+これらは次回セッションでの対応候補として残す(監査自体の全文は今回のセッションログに保存済み、再度の監査委任は不要)。
+
+### Resume prompt
+
+> D126でドキュメントstaleness監査(Opus)が完了、`START_HERE.md`新設+P0級の古い記述4点(1.5号着手指示・アーカイブ命名・publish_cycle.py無効化の未記載・環境変数表)を修正・push済み(`e702900`)。P1/P2/P3級の指摘(`.done`マーカー説明・HANDOVER.mdの新旧併存・ワーカー数食い違い・FORK_NOTES.mdの数字)は未対応のまま次回に持ち越し。**次のアクション**: 余裕があれば残りのstaleness項目を対応、なければ1.5号launchの最終判断を優先する。
