@@ -1,110 +1,80 @@
 # HANDOVER
 
-Session log for `mapterhorn-japan-bridge`. Read `CLAUDE.md` first for
-the standing rules (especially the repo×machine split table) and
+Session log for `mapterhorn-japan-bridge`. Read `START_HERE.md` first
+if this is your first time in this project at all; read `CLAUDE.md`
+for the standing rules (especially the repo×machine split table) and
 `DECISIONS.md` for why things are the way they are; this file is what
 actually happened, session by session.
 
-**Compacted 2026-09-01**: the full session-by-session narrative from
-2026-08-08 through 2026-08-31 (D1–D73 era: pipeline validation,
-national build, first "mission complete" at D73) now lives in
-`HANDOVER-archive.md`, unedited. This file keeps only the current
-state and a short recent-context summary, so a cold resume doesn't
-have to read ~3,900 lines to find out what matters right now. Compact
-again the same way once this file itself grows unwieldy — archive
-everything above this section, keep only a fresh current-state
+**Compacted 2026-09-04**: the 2026-09-01 "current state" section (D74-
+D101 era: the D74-D76 incident cascade, its repair, and the immediate
+aftermath) has been moved into `HANDOVER-archive.md`, unedited. This
+file keeps only the current state and a short recent-context summary.
+Compact again the same way once this file itself grows unwieldy --
+archive everything above the current-state section, keep only a fresh
 snapshot.
 
-## Current state (2026-09-04): 1.5-go prepped and rehearsed, launch awaiting Hidenori
+## Current state (2026-09-04, ~07:30 JST): 1.5-go national aggregation LAUNCHED
 
-**Read DECISIONS.md D124 first** -- it is the authoritative record of
-this unattended-window session. Short version: all five 1.5-go
-pre-launch conditions are implemented in production pipelines/ code
-(done-manifests with datatype+fingerprint, generation_id store layer
-with the D115 fallback hard-gated to 1-go, run_command exit checking,
-./pmtiles TMPDIR wrapper, safe remove_dangling_pmtiles) and proven by
-a chained two-sibling rehearsal (both datatypes, full
-aggregation->downsampling->bundle->merge->verify, elevation
-byte-identical to 1-go, zero writes into production stores). 1.5-go's
-generation_id `01M1MKD73P0KDT719H21NJV9VR` is recorded in PLAN.md
-section 0. Commits are LOCAL ONLY on slate (hfu/mapterhorn 7badda7 +
-56d3cec, this repo 36cc87b + the HANDOVER/D124 commits) -- not
-pushed. The national run was NOT started; D124 has the runbook and
-the open questions to answer before the go.
+**Read DECISIONS.md D122 through D128 for the full arc** (all short,
+worth reading in order) -- summary:
 
-## Current state (2026-09-01, ~21:05 JST)
+- **1-go** is complete, published, stable, and untouched (D122; a
+  major west-Japan z13+ publish gap and the Tsushima/Goto z8-11 gap
+  were both found and fixed first, D117/D115).
+- A proposed shortcut ("1.4-go": patch 1-go in place) was aborted
+  *before* launch when an independent comparison found it would trip
+  a D76-class collision (D123). Pivoted to the fuller "1.5-go"
+  arrangement instead: new generation_id, full namespace separation +
+  generation_id store layer + lineage + hardening, validated in one
+  national run rather than paying the 50-70h cost twice.
+- **D124**: all five pre-launch conditions implemented in production
+  `pipelines/` and proven via a real chained two-sibling rehearsal
+  (both datatypes, zero writes into 1-go's tree, elevation byte-
+  identical to 1-go, freshness invalidation proven live).
+- **D125**: a second, independent reviewer graded the actual diff
+  against a pre-derived checklist (not trusting either agent's self-
+  report) -- verdict "push it", one blocker found (`downsampling_run.py`
+  had no TMPDIR override) and fixed immediately, plus three small
+  cleanup/runbook items, all resolved.
+- **D126**: a parallel documentation audit found and fixed several
+  places docs would have actively misled a new session (publish_
+  cycle.py's hard-disable was undocumented; the launch runbook's own
+  env vars were missing from the reference table) and added
+  `START_HERE.md` as a new onboarding entry point.
+- **D127/D128**: Hidenori reviewed the launch checklist directly
+  (code/data/cleanup/staleness, each confirmed Go), asked for and got
+  two final additions (a `pmtiles cluster` step in the runbook,
+  matching 1-go's own D118 precedent; disk-headroom monitoring
+  extended to cover `pmtiles-store` as well as `Migrate-2025-04`),
+  then approved: **"lift off."** `aggregation_covering.py` generated
+  1.5-go's roster (generation_id `01M1MKD73P0KDT719H21NJV9VR`); a
+  D123-style bidirectional cross-check against `source-store` came
+  back completely clean (6,373 items, exact match with 1-go's own
+  count). `aggregation_run.py` is running now in screen session
+  `agg15go` on `slate` (5 workers, `EMIT_LINEAGE=1`).
 
-**1号's mission-complete moment (D73) was short-lived**: hours later,
-a stale-file cleanup cascaded into three compounding incidents
-(D74→D75→D76) that deleted first 212GB of genuinely-stale files, then
-4,396 legitimate downsampling outputs, then 3,344 legitimate
-aggregation outputs. Recovery (`aggregation_repair_3344`) ran
-2026-08-31 05:29 → 2026-09-01 18:00 JST (D97, 6,373/6,373 clean).
+**Everything is pushed** to `origin/main` in both `hfu/mapterhorn` and
+this repo as of D125.
 
-**Then, mid-rebuild verification, a second and larger incident of the
-same class was found**: `check_pmtiles_integrity.py` on the freshly
-rebuilt archive found 1.8M orphaned tiles. Root cause: 86% (7,079 of
-8,215) of downsampling `.done` markers were stale — pointing at
-`pmtiles-store` files the aggregation repair's own renames had already
-invalidated (same mechanism as D53/D69, much larger blast radius this
-time). Markers cleared (`check_downsampling_done_integrity.py --fix`,
-D100), rebuild in progress (D101) — **slower than expected (~2
-items/min against 7,079 items), root cause not yet confirmed** (a
-`PRIORITY_MODE` env var was found to be dead code — always sorts by
-proximity to Freetown regardless — plausibly related to D21's own
-"clustered expensive tiles" pattern, not yet fixed).
+**What happens next, unattended**: the aggregation phase alone is
+~50-70h by 1-go's own timing history. After it completes: downsampling
+(elevation then lineage) -> `bundle.py` (both datatypes) ->
+`merge_japan_bundles.py` (both datatypes) -> **`./pmtiles cluster`**
+(new step, D127) -> `./pmtiles verify` -> `./pmtiles merge` (z0-7
+splice) -> `./pmtiles verify` -> **stop and get Hidenori's explicit
+publish approval** before any `rsync` to `stars` (`publish_cycle.py`
+stays hard-disabled, D115). The rollback command if anything needs to
+be undone: `rm -rf pmtiles-store/{aggregation,downsampling}/*/01M1MKD7*/
+aggregation-store/01M1MKD7*/` -- 1-go is untouched by construction, so
+this is a clean, low-risk revert.
 
-**Publish to `stars` is on hold** until: downsampling reconverges
-clean → bundle→merge→cluster→merge redone (the current
-`mapterhorn-japan-bridge-with-overview.pmtiles` is stale, don't
-publish it) → `check_pmtiles_integrity.py` clean → the actual
-checkerboard-artifact visual check (D79's 512px-block hypothesis,
-the original motivation for this whole rebuild) → Hidenori's
-go-ahead for the `rsync` itself.
-
-**After that**, per Hidenori's 2026-09-01 decision (D96): don't detach
-`pmtiles-store`/disk5, don't wait for the next GSI update yet. Instead
-run **「1.5号」** — same source data, new pipeline (D95's
-aggregation/downsampling layer-namespace-separation fix, implemented
-for the first time; D93/D94's lineage-tile feature) — as a staging
-run and regression test before real 2号 (gated on GSI's next quarterly
-DEM1A update, ~end of October 2026, still not landed as of this
-writing).
-
-**Standing operating mandate** (Hidenori, 2026-08-31 06:24, still in
-force): balance three pillars autonomously for ~48h — production
-management (the 15-min tick cadence via task `bb37v4xay`), dashboard
-development (`hfu/mapterhorn-monitor`, live at
-`hfu.github.io/mapterhorn-monitor/`, Open MCT-based), and code review
-(`DECISIONS.md`'s ongoing entries). Ask when genuinely blocked;
-otherwise keep going.
-
-**Dashboard** (`hfu/mapterhorn-monitor`, separate repo, pushed and
-public): 7 instruments (Progress Trend, Current Stage, Status Map,
-Resources, Mission Timeline, Live Viewer — embeds the production
-viewer directly), kiosk-style cycle mode (fullscreen, arrow-key
-navigation, Open MCT chrome hidden via CSS — patterns shared with
-sibling sessions `sas0`/`claude-mct` -- Open MCT field notes now
-live at `github.com/dwg7/cafebabe/blob/main/patterns/open-mct.md`
-(migrated from sas0 2026-09-02), not duplicated here).
-
-### Resume prompt
-
-> Resuming `mapterhorn-japan-bridge`/`hfu/mapterhorn` (via `slate-via-
-> spacex`) and `hfu/mapterhorn-monitor`. Converse in Japanese (repo
-> language policy: repo content itself stays English).
->
-> **First**: check `downsampling_repair2` screen / `check_downsampling_
-> readiness.py` progress. If 0 not-ready: re-run `bundle.py` → `merge_
-> japan_bundles.py` → `pmtiles cluster` → `pmtiles merge` (with
-> `global-overview-backup.pmtiles`) → `check_pmtiles_integrity.py`. If
-> clean, do the D79 checkerboard visual check, then ask Hidenori before
-> `rsync` to `stars`. If still rebuilding, keep the 15-min tick cadence
-> (dashboard update + brief report) and investigate D101's slow-
-> throughput root cause if it's still unresolved.
->
-> Read `DECISIONS.md`'s most recent entries (D95 onward) and `PLAN.md`
-> before assuming anything about 1.5号/2号 timing. Don't touch
-> `get_pmtiles_folder()`/aggregation-downsampling file-naming code
-> until 1号 is genuinely done (D95's structural fix waits for that).
-> Full history before 2026-09-01: `HANDOVER-archive.md`.
+**Monitoring**: `check_disk_headroom.py` runs autonomously in a
+detached screen (`disk_headroom`, 15-min loop, now covers both
+volumes, D127) independent of any session. The `mapterhorn-monitor`
+dashboard (`progress.json`) is **not** autonomous -- it is updated by
+whichever agent session is watching, each time it checks in. If you
+are resuming this project mid-run, check `screen -ls` on `slate` for
+`agg15go` (or whatever screen the current phase is running in) and
+`disk_headroom.log`'s tail before assuming anything about progress
+from a stale dashboard snapshot.
