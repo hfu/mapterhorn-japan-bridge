@@ -7875,3 +7875,240 @@ Fableへ、以下5条件の実装+チェーン化リハーサル完走を委任(
 ### Resume prompt
 
 > D123で、1.4号アレンジ(全国aggregation再生成を1号の既存generation_idにそのまま適用)がD76型の衝突バグ(aggregation_tile.pyのクリーンアップglobが、旧フラット構造下でdownsampling正規ファイル最大3,344件を誤削除しうる)を持つことをFableが launch直前に発見。起動準備(6,373件の`.done`→`.todo`変換)は即座に完全ロールバックし、1号データは無傷。**1.5号アレンジ(新generation_id、名前空間分離+lineage+ファイル名整理を一度に検証)へ全面転換**。Hidenoriさん不在の10時間で、Fableに前提条件整備(datatypeスコープ・generation_id階層・堅牢化3点)とチェーン化リハーサルの完走を委任、**全国規模の実際のlaunchはHidenoriさんの帰還後の最終承認まで意図的に保留**。**次のアクション**: Fableの実装+リハーサル結果を確認、Hidenoriさんの帰還を待って全国launchの可否を最終確認する。
+
+
+## D124: 1.5号 pre-launch hardening implemented and proven by chained rehearsal -- generation_id store layer, .done manifests (datatype + inputs fingerprint), D120 Phase-2 trio. National launch NOT started, awaiting Hidenori's explicit go
+
+**Status**: Recorded, 2026-09-04. Hidenori's instruction: take the safe
+(「1.5号 arrangement」) path, spend up to ~10 unattended hours preparing
+and rehearsing so that on his return the ONLY remaining step is his own
+final approval to launch the 50-70h national run. All five conditions
+from the prior comparison report are implemented in production
+`pipelines/` code and proven end to end in an isolated
+`pipelines-rehearsal/` environment. **The national run was deliberately
+not started.**
+
+### 1. `.done` manifests (D119 P2.B + D120 Fable #6) -- the lineage hard blocker and the overview-freshness hole, closed by one mechanism
+
+`.done` markers are no longer empty touch files. `utils.py` gained a
+manifest layer (`write_done_manifest()` / `read_done_manifest()` /
+`done_covers()` / `done_is_current()` / `downsampling_done_path()` /
+`stat_input_entry()` / `content_input_entry()`), format
+`mjb-done-manifest/1`: JSON carrying `datatypes` (which datatype(s) the
+marker certifies), `generation_id`, per-input entries (covering CSVs by
+content sha256 -- deliberately NOT mtime, coverings are rewritten
+byte-identical every publish cycle; child PMTiles by size+mtime_ns; a
+missing child recorded as an explicit `missing` entry), and an overall
+`inputs_fingerprint`.
+
+- `aggregation_run.py`: skip check is now `done_covers(done_path,
+  ['elevation','lineage'] if EMIT_LINEAGE else ['elevation'])` -- an
+  elevation-only marker no longer silently satisfies an EMIT_LINEAGE
+  run (previously a lineage pass over an aggregated generation would
+  have been a national-scale no-op). Completion writes the manifest
+  atomically; `.todo` removal is now best-effort (D110's rehearsal
+  tripped on the old hard rename).
+- `downsampling_run.py`: elevation keeps the historical
+  `-downsampling.done` name; lineage gets its own
+  `-downsampling.lineage.done` (deliberately does NOT match the legacy
+  `*-downsampling.done` audit globs, keeping old tooling
+  elevation-only). The skip check is `done_is_current()`: datatype
+  coverage AND inputs-fingerprint freshness -- a repaired/replaced
+  child now automatically invalidates every overview above it. This is
+  the structural fix for D119's 949/8,223 (11.5%) stale overviews.
+  Pre-run entries are recorded (not post-run), so a child changing
+  mid-run correctly reads as stale next pass. Legacy empty markers
+  (all of 1号) parse as elevation-only/freshness-unknown and are never
+  churned.
+- Consequence to be aware of: running `EMIT_LINEAGE=1` against a
+  generation whose items have elevation-only manifests rebuilds those
+  items entirely (elevation included). Intended, but worth knowing
+  before pointing it at 1号.
+
+### 2. `generation_id` directory level -- the D74-D76-class 1.5号/2号 collision, structurally closed
+
+`utils.get_pmtiles_folder()` now REQUIRES `generation_id` (no default;
+a missed call site fails loudly as TypeError/ValueError instead of
+silently sharing a path -- partial application was D74-D76's failure
+mode). Layout: `pmtiles-store/{layer}/{datatype}/{generation_id}/
+{z7bucket}/`. The D115 legacy-flat fallback is now hard-gated to
+`FLAT_LEGACY_GENERATION_ID = '01M0MWK852631SHCHPA66F21WQ'` (1号): only
+1号-addressed calls can ever resolve to the old flat tree, so a
+1.5号/2号/rehearsal write or cleanup glob can never land in 1号's live
+data. This also closes the independently-found A1 hazard (an Opus
+pre-launch checklist, verified by execution 2026-09-04): before this
+change, ALL four (layer, datatype) combos collapsed into the same 1号
+flat directory for every z>=7 bucket whose layered dir didn't exist
+yet -- i.e. a fresh 1.5号 write would have landed inside 1号's flat
+store and aggregation_tile.py's stale-cleanup glob would then have
+deleted 1号 production files at that position. Verified closed by
+execution: all 8 (generation, layer, datatype) combos at a position
+where 1号's flat bucket exists resolve to 8 distinct generation-scoped
+paths; bare calls are refused.
+
+Every call site updated and audited twice (straight read + a
+multiline-aware re-grep of every `get_pmtiles_folder(` call):
+`aggregation_tile.py`, `lineage_tile.py` (new `aggregation_id` param,
+threaded from `aggregation_run.emit_lineage()`), `downsampling_run.py`
+(x3 -- the third, inside worker-process `create_tile()`, was initially
+missed and caught by the re-grep pass, validating D95's warning),
+`check_downsampling_done_integrity.py` (+`--datatype` flag),
+`check_downsampling_readiness.py` (+`DOWNSAMPLING_DATATYPE` env),
+`check_aggregation_dirty_gap.py` and `check_covering_gaps.py` (both
+predated D95's required `layer` arg and would have raised TypeError if
+run -- fixed), `mjbmon_snapshot.py`, and `bundle.py`'s glob patterns
+(now `.../{datatype}/{generation_id}/...`; generation defaults to the
+latest aggregation-store id, `BUNDLE_GENERATION` overrides, printed in
+the first log lines). 1号-era flat tools (`bundle_1go_rebuild.py`,
+`create_index.py`, `check_stale_duplicates_v2.py`) deliberately
+untouched.
+
+### 3. aggregation_tile.py cleanup-glob collision: verified inert, not re-asserted
+
+The stale-cleanup glob (`{out_folder}/{z}-{x}-{y}-*.pmtiles`, also in
+`lineage_tile.py`) was traced under the new layout: `out_folder` is now
+layer-, datatype-, AND generation-scoped, and the legacy-flat fallback
+is unreachable for any non-1号 generation, so the glob can only ever
+match this generation's own prior output at this exact position.
+Confirmed empirically: after the full rehearsal, 1号's flat bucket at
+the rehearsal position (`pmtiles-store/7-116-46/`, 267 files) has an
+identical `ls -la` md5 to its pre-rehearsal baseline, and the
+production layered tree contains 0 files.
+
+### 4. 1.5号 generation_id minted and recorded
+
+`01M1MKD73P0KDT719H21NJV9VR`, minted via the same `ULID()` mechanism
+`aggregation_covering.py` uses, recorded in PLAN.md section 0's
+existing table (checked first -- the 1.5号 row was a placeholder, no
+duplicate created). `aggregation_covering.py` gained an
+`AGGREGATION_ID` env override so the launch run uses exactly this
+pre-recorded id: `AGGREGATION_ID=01M1MKD73P0KDT719H21NJV9VR uv run
+python3 aggregation_covering.py`. The aggregation-store directory is
+deliberately NOT pre-created (it would become get_aggregation_ids()'s
+"latest" and confuse every latest-generation tool before launch).
+
+### 5. D120 Phase-2 trio (「1.5号前に必須」)
+
+- **`utils.run_command()` (Fable #3)**: now raises RuntimeError on
+  nonzero exit (default `check=True`, stderr tail included). One call
+  site fixed to survive this: `downsampling_covering.py`'s
+  `rm *-downsampling.csv` (exits 1 on a fresh generation's empty glob)
+  became an in-process glob+remove. All other call sites audited --
+  the source_*.py mv/convert/rm chains are exactly the "unconditional
+  delete after failed conversion" hazard this fixes.
+- **TMPDIR (Fable #2)**: new `pipelines/pmtiles` shell wrapper
+  force-points TMPDIR at `<script-dir>/pmtiles-store/tmp-store/
+  go-cli-scratch` and execs the real Go CLI -- manual invocations
+  become `./pmtiles merge ...`, no per-screen-session `export TMPDIR`
+  to remember (which bit the 2026-09-03 session repeatedly). Resolves
+  relative to its own location, so the rehearsal env's scratch lands in
+  the rehearsal store. Also added the force-override header (same block
+  as bundle.py) to `extract_z8plus.py` and `build_global_overview.py`,
+  the two scripts Fable #2 named.
+- **`remove_dangling_pmtiles.py` (Fable #5)**: rewritten. Was:
+  latest-generation-only baseline vs a SHARED flat store, immediate
+  deletion -- structurally the D74-D76 accident. Now: operates on
+  exactly one explicitly-named generation_id, scans ONLY that
+  generation's own subtrees (other generations structurally out of
+  reach), REFUSES 1号 outright (flat layout, no safe automated
+  reasoning), and dry-runs by default (`--delete` required). All four
+  behaviors smoke-tested (clean env: 0 dangling; 1号: refused; planted
+  orphan: survives dry run, removed by `--delete`).
+
+### Chained rehearsal (closing D110's gap: that rehearsal was single-item, unchained)
+
+Isolated `pipelines-rehearsal/` recreated (the old one was deleted for
+disk space): production `*.py` via symlinks (the real code under test),
+own `aggregation-store`/`bundle-store`/`meta-store`, own
+`pmtiles-store` -> `/Volumes/pmtiles-store/rehearsal-1p5-store`,
+shared read-only `source-store`. `uv run --no-sync --project
+../pipelines` reuses the production venv (a fresh venv fails: no
+imagecodecs cp314 wheel). Disposable generation
+`00TESTREHEARSAL15GOCHAINED1`; items `10-930-369-13` +
+`10-931-368-13` -- diagonal SIBLINGS under z9 parent `9-465-184`
+(Etorofu), chosen so downsampling genuinely combines two archives.
+
+Full chain, all real code, both datatypes:
+`EMIT_LINEAGE=1 aggregation_run.py` -> `downsampling_covering.py` ->
+`downsampling_run.py` (elevation, STRICT) -> (lineage, STRICT) ->
+`bundle.py` x2 -> `merge_japan_bundles.py` x2 -> `./pmtiles verify` x2.
+All exit 0, no warnings. Measured results:
+
+- **Locations**: all 20 archives exactly at `pmtiles-store/{layer}/
+  {datatype}/00TESTREHEARSAL15GOCHAINED1/7-116-46/`; production
+  layered tree 0 files before AND after; 1号 flat bucket md5-identical
+  to baseline; no writes anywhere in production.
+- **Chaining**: `9-465-184-9-downsampling.csv` references BOTH sibling
+  archives; the merged z9 tile has exactly the two diagonal quadrants
+  valid (65,536 px each), NE from `10-931-368`, SW from `10-930-369`.
+- **Elevation**: rehearsal z13 leaves byte-identical to 1号's
+  production archives at the same positions (3/3 sampled); chained z9
+  tile range [0, 1576.4] m, mean 117.7 m -- consistent with Etorofu
+  (Chirippu-dake ~1560 m).
+- **Lineage**: leaves 100% tier 6 (sea) on ocean tiles; chained z9
+  majority-vote tile 49.9% tier 5 (DEM10B land) / 50.1% tier 6 (sea).
+  Merged `mapterhorn-japan-bridge-lineage.pmtiles` 172 tiles, verify
+  clean, z8 top tile present.
+- **Manifests**: every marker carries the datatype-scoped,
+  fingerprinted format (sample recorded in the .done files themselves).
+- **Freshness, live**: `touch` on one leaf archive -> re-run rebuilt
+  exactly that leaf's chain (z12->z11->z10->z9->z8, each logging
+  "done marker exists but inputs changed -- rebuilding stale overview
+  (D119)") while the untouched sibling's items stayed done. Second
+  clean re-run: 8/8 "already done (and inputs unchanged)".
+- **172 tiles** per datatype = 128 z13 + 32 z12 + 8 z11 + 2 z10 +
+  1 z9 + 1 z8, both datatypes equal -- internally consistent.
+
+### Open questions for Hidenori (launch gate -- none of these are code blockers)
+
+1. **Push**: changes are committed locally on slate
+   (`hfu/mapterhorn` and this repo) but NOT pushed -- push when you've
+   reviewed, or say the word.
+2. **Disk plan**: `/Volumes/pmtiles-store` has ~994Gi free; 1.5号's
+   layered store will be roughly 1号-sized (~580GB) + lineage (5-15%).
+   Fits, but decide whether 1号's flat store (~579GB) stays through
+   the whole run. `Migrate-2025-04` (bundle-store side) has ~675Gi.
+3. **EMIT_LINEAGE semantics on 1号**: see section 1's consequence note.
+4. **z<7 gap (D119)**: unchanged for 1号 (67 z6 flat files still
+   invisible to layered tools); 1.5号 stops at z8 (min_output_zoom=8),
+   so no z<7 files will ever exist for it -- moot for launch, revisit
+   only if a sub-z8 product is ever wanted.
+5. **`publish_cycle.py`**: still hard-guarded off (D115) -- 1.5号
+   publish remains manual, per the D109 runbook, now via `./pmtiles`.
+6. **Rehearsal cleanup**: `pipelines-rehearsal/` (+ its ~20MB store at
+   `/Volumes/pmtiles-store/rehearsal-1p5-store`) kept for your
+   inspection; delete or reuse for the next rehearsal as you prefer.
+
+### Launch runbook (after explicit go)
+
+```
+cd ~/github/hfu-mapterhorn/pipelines
+AGGREGATION_ID=01M1MKD73P0KDT719H21NJV9VR uv run python3 aggregation_covering.py
+EMIT_LINEAGE=1 uv run python3 aggregation_run.py            # ~50-70h national
+uv run python3 downsampling_covering.py
+DOWNSAMPLING_STRICT=1 PRIORITY_MODE=quadrans uv run python3 downsampling_run.py
+DOWNSAMPLING_DATATYPE=lineage DOWNSAMPLING_STRICT=1 PRIORITY_MODE=quadrans uv run python3 downsampling_run.py
+uv run python3 bundle.py 1                                   # elevation
+BUNDLE_DATATYPE=lineage uv run python3 bundle.py 1
+uv run python3 merge_japan_bundles.py                        # -> .z8plus
+MERGE_DATATYPE=lineage uv run python3 merge_japan_bundles.py # -> -lineage (final)
+./pmtiles merge bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles \
+    /Volumes/Migrate-2025-04/global-overview-backup.pmtiles \
+    bundle-store/mapterhorn-japan-bridge.pmtiles             # overview splice, via wrapper
+./pmtiles verify bundle-store/mapterhorn-japan-bridge.pmtiles
+./pmtiles verify bundle-store/mapterhorn-japan-bridge-lineage.pmtiles
+```
+
+### Resume prompt
+
+> D124: 1.5号の準備・リハーサル完了、launch待ち。5条件すべて実装済み
+> (.doneマニフェスト=D119 P2.B、generation_id階層+全呼び出し箇所監査、
+> cleanup-glob安全性の実証、1.5号ID=`01M1MKD73P0KDT719H21NJV9VR`を
+> PLAN.md §0に記録、D120 Phase-2三点セット)。隣接兄弟2アイテムでの
+> chained rehearsal が全工程 (aggregation EMIT_LINEAGE=1 ->
+> downsampling両datatype -> bundle -> merge -> verify) 完走、elevation
+> は1号とバイト一致、lineage多数決・鮮度無効化も実測で確認、本番への
+> 書き込みゼロをmd5で確認。**全国launchは未実行**——上の runbook を、
+> D124のopen questions (push可否、ディスク計画) に答えてから、明示的な
+> goで実行すること。slateローカルにコミット済み・未push。
+
