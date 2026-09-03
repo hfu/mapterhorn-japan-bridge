@@ -15,6 +15,23 @@ again the same way once this file itself grows unwieldy — archive
 everything above this section, keep only a fresh current-state
 snapshot.
 
+## Current state (2026-09-04): 1.5-go prepped and rehearsed, launch awaiting Hidenori
+
+**Read DECISIONS.md D124 first** -- it is the authoritative record of
+this unattended-window session. Short version: all five 1.5-go
+pre-launch conditions are implemented in production pipelines/ code
+(done-manifests with datatype+fingerprint, generation_id store layer
+with the D115 fallback hard-gated to 1-go, run_command exit checking,
+./pmtiles TMPDIR wrapper, safe remove_dangling_pmtiles) and proven by
+a chained two-sibling rehearsal (both datatypes, full
+aggregation->downsampling->bundle->merge->verify, elevation
+byte-identical to 1-go, zero writes into production stores). 1.5-go's
+generation_id `01M1MKD73P0KDT719H21NJV9VR` is recorded in PLAN.md
+section 0. Commits are LOCAL ONLY on slate (hfu/mapterhorn 7badda7 +
+56d3cec, this repo 36cc87b + the HANDOVER/D124 commits) -- not
+pushed. The national run was NOT started; D124 has the runbook and
+the open questions to answer before the go.
+
 ## Current state (2026-09-01, ~21:05 JST)
 
 **1号's mission-complete moment (D73) was short-lived**: hours later,
