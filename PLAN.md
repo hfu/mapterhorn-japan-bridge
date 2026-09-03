@@ -84,6 +84,45 @@ once 1号 is done — see section 4).
 Consistent with the end-of-October expectation above; nothing to act
 on yet.
 
+**Timing refined, 2026-09-03**: Hidenori's own current expectation is
+**end of November 2026**, not end of October as estimated above —
+carrying the same "next quarterly DEM1A update" trigger, just a
+slightly later point in that window. Treat November as the current
+working estimate; the October note above is kept for its reasoning,
+not as a still-authoritative date.
+
+**Elevation-datum-revision status, verified 2026-09-03 (was an open
+question in this file until now)**: GSI's own FAQ
+(`https://www.gsi.go.jp/sokuchikijun/hyoko2024rev-QA.html`) plus a
+follow-up search both confirm the 2025-04-01 revision (affecting
+DEM1A/5A/5B/5C — not DEM10A/10B or the 50m mesh, which GSI explicitly
+left unrevised "許容精度の観点から") was rolled out as a **complete bulk
+update of all provided data and metadata, effective from
+2025-07-31, including files whose underlying feature had no change**
+("地物の更新がなかったファイルも含め、全ての提供データとメタデータが更新されました").
+Practical implication: **any file pulled from GSI's live download
+service at any point since 2025-07-31 — including every one of the
+quarterly updates this section is tracking, and therefore whatever 2号
+eventually ingests — is inherently already on the revised datum.**
+This was previously tracked in this project as an open/uncertain item;
+it can be considered resolved. (The `yyyymmdd` embedded in GSI's own
+mesh filenames, e.g. `-DEM1A-20250507.tif`, is the underlying survey/
+feature creation date, not a reprocessing timestamp — seeing an old
+date there is not evidence of pre-revision values.)
+
+**New item surfaced by that same check, not yet resolved**: the 2025-04
+revision was not only an elevation-value change — **the coordinate
+reference system itself moved from JGD2011 to JGD2024** ("座標参照系が
+「JGD2011」から「JGD2024」に変更"). Neither this file, `DECISIONS.md`, nor
+`japan-geotiff-dem`'s own docs mention this CRS change anywhere (checked
+via grep, no hits). Since 2号 means a full fresh re-download from GSI,
+every source file 2号 ingests will be JGD2024, not JGD2011 — worth
+confirming before 2号 starts that `aggregation_reproject.py` and any
+other place in the pipeline that assumes/declares a source CRS handles
+this correctly rather than silently mislabeling JGD2024 data as
+JGD2011. Not investigated further here; flagged for section 3 or 4's
+own pre-2号 checklist.
+
 ## 2. Scope: what actually needs refreshing
 
 - `jpnational1`/`jpnational5`/`jpnational10`/`jpnationalsea` all need
