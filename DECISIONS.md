@@ -8245,3 +8245,51 @@ D124/D125の実測ベースで、aggregation本体だけで約50-70時間(2-3日
 ### Resume prompt
 
 > D128で1.5号(`01M1MKD73P0KDT719H21NJV9VR`)の全国aggregation本体が正式に起動(07:23 JST、screen: `agg15go`、5ワーカー、EMIT_LINEAGE=1)。起動前の名簿突き合わせは完全クリーン。見込み所要時間50-70時間。**次のアクション**: 定期監視を継続、完了次第downsampling(elevation・lineage)→bundle→pmtiles cluster→merge→verifyへ進む。公開はHidenoriさんの別途承認が必要。
+
+
+## D129: slateがカーネルパニックで再起動、原因特定とワーカー数削減による復旧(19:54 JST)
+
+**Status**: Recorded, 2026-09-04 20:15 JST。
+
+### 発生した事象
+
+定期監視中、19:56 JSTのチェックでslateのuptimeが「2分」であることを検知(直前のチェックでは3日超)。外部ボリューム(`Migrate-2025-04`・`pmtiles-store`)が両方ともアンマウント、`agg15go`・`disk_headroom`のscreenセッションが両方とも消失していた。
+
+### 根本原因
+
+`/Library/Logs/DiagnosticReports/`のパニックログ(19:54:34発生)を確認したところ、以下が判明:
+
+```
+panic_string: "watchdog timeout: no checkins from watchdogd in 91 seconds"
+Compressor Info: 69% of compressed pages limit (OK) and 100% of segments limit (BAD) with 42 swapfiles
+```
+
+メモリコンプレッサーのセグメント上限に到達し、watchdogdへの応答が91秒間止まったことでカーネルパニックが発生した。これは本日繰り返し観測していた一過性のメモリpressure level 4スパイク(都度self-clearしたため「既知の良性パターン」と判断していたもの)が、実際には約12.5時間かけて徐々に悪化していたメモリ枯渇の兆候だったことを意味する。
+
+`get_worker_count()`(`aggregation_run.py`)のデフォルト5ワーカーという設定は、D84(2026-09-01)でCPU使用率(4ワーカー時アイドル46-47%)のみを根拠に4→5へ引き上げられたものであり、**個々のワーカーがdenseなソースタイル処理時に見せるメモリスパイク(実測で単一ワーカーが最大7.7GB RSSまで達した例あり)は考慮されていなかった**。slateの物理メモリは16GB(`hw.memsize`)、5ワーカーが同時に大きめのタイルに当たる確率が約12時間の連続稼働のうちに積み重なり、最終的にコンプレッサーのセグメント上限を突破したとみられる。
+
+### データ整合性の確認
+
+再起動後、以下を確認しクリーンであることを検証:
+- ボリュームは両方とも正常にマウント可能(`diskutil mount`成功、破損兆候なし)
+- 名簿(`*-aggregation.csv`)は6,373件のまま不変
+- `.done`マーカーは2,982件(クラッシュ直前の19:41チェック時点の2,965件から17件増、19:50頃まで正常に書き込まれていたことを確認)
+- `tmp-store/01M1MKD73P0KDT719H21NJV9VR/`に5件の未完了アイテムのスクラッチディレクトリが残存(クラッシュ時点で処理中だった分)。`aggregation_run.py`は`os.makedirs(tmp_folder, exist_ok=True)`で既存ディレクトリを安全に再利用する設計のため、手動クリーンアップ不要——再実行時に自然に上書き・完走・`shutil.rmtree`で片付く。
+- データ破損・誤ったpmtiles-store書き込みの兆候なし(atomic writeパターンにより未完了アイテムの部分データは最終アーカイブに混入しない)
+
+### 復旧措置
+
+1. `diskutil mount disk6s2` / `diskutil mount disk8s1` で両ボリュームを再マウント。
+2. `disk_headroom`監視screenを再起動。
+3. `agg15go`を**`AGGREGATION_WORKERS=3`(5から削減)**で再起動。他の環境変数(`AGGREGATION_ID`・`EMIT_LINEAGE=1`)は変更なし。コード変更は一切なし(env var一つのみの変更)。
+4. 起動確認: 「using 3 workers」「start aggregating 3391 items...」を確認、3ワーカーとも生存・CPU busy、load averageが6.5-7.5台から4台前半へ低下、`.done`が再開後8分で2,982→3,026(約5.5件/分、ワーカー減にもかかわらず実用的なペースを維持)。
+
+### 教訓・今後への申し送り
+
+- `get_worker_count()`のデフォルト値決定は、CPU使用率だけでなくワーカーあたりの実メモリ使用量分布(特にdenseなタイルでのスパイク)も考慮すべき。次回(2号想定)着手前に、D84の根拠にこのメモリ観点を追記・再検討することを推奨。
+- 「一過性のメモリpressureスパイクはself-clearするので無害」という当日の判断は、単発では正しかったが、**繰り返し頻度や傾向を見ずに個々のスパイクだけを見ていた**ことが今回の見落としにつながった。今後は同種のスパイクが繰り返し観測される場合、頻度・深刻度の傾向自体を追跡指標として扱う。
+- データはロスなし、生成物の整合性も無傷。所要時間への影響は再起動までの空白時間(約20分弱)とワーカー減による多少のペース低下のみで、50-70時間という見積もりの範囲内に収まる見込み。
+
+### Resume prompt
+
+> D129: 19:54 JSTにslateがカーネルパニック(メモリコンプレッサーのセグメント上限到達、watchdog timeout)で再起動、`agg15go`・`disk_headroom`のscreenセッションが失われた。データ整合性を確認(名簿6,373件不変、`.done`2,982件で正常に途切れていた、破損なし)した上で、両ボリュームを再マウントし、`disk_headroom`を再起動、`agg15go`を**`AGGREGATION_WORKERS=3`(5から削減)**で再起動して復旧した。20:11時点で3,026/6,373件、正常稼働を確認。**次のアクション**: 定期監視を継続、今後もメモリpressureの繰り返し傾向に注意する。完了後の工程(downsampling以降)は変更なし。
