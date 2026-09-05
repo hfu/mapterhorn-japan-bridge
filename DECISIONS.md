@@ -154,3 +154,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D132](DECISIONS1.md#d132-15号-全国aggregation本体完走1505-jst頃downsamplingelevation着手) | 1.5号 全国aggregation本体、完走(15:05 JST頃)。downsampling(elevation)着手 | Recorded |
 | [D133](DECISIONS1.md#d133-downsampling_runpyもデフォルト5ワーカーだったと判明hidenoriさんの判断で5のまま継続監視強化) | downsampling_run.pyもデフォルト5ワーカーだったと判明。Hidenoriさんの判断で5のまま継続、監視強化 | Decided |
 | [D134](DECISIONS1.md#d134-downsamplingelevation完走203x-jst頃lineage側着手) | downsampling(elevation)完走(20:3x JST頃)。lineage側着手 | Recorded |
+| [D135](DECISIONS1.md#d135-downsamplinglineage完走両datatypeのdownsampling完了bundleステージへ) | downsampling(lineage)完走。両datatypeのdownsampling完了、bundleステージへ | Recorded |

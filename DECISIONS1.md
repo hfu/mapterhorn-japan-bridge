@@ -1381,3 +1381,50 @@ D127ランブック通り、elevation完走後にlineageへ逐次進む形。
 > `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
 > `meta-store/bundle/*.json`はbundleステージ直前にクリアすること
 > (D125のD4項目)。公開はHidenoriさんの別途承認が必要(D127)。
+
+
+## D135: downsampling(lineage)完走。両datatypeのdownsampling完了、bundleステージへ
+
+**Status**: Recorded, 2026-09-05 22:37 JST頃。
+
+### 完了確認
+
+`downsampling_run.py`(lineage、`DOWNSAMPLING_DATATYPE=lineage
+DOWNSAMPLING_STRICT=1 PRIORITY_MODE=quadrans`)が20:37 JST着手から
+約2時間で完走した。
+
+- `*-downsampling.lineage.done`マーカーと`*-downsampling.csv`
+  (covering)がともに8,223件で一致。
+- プロセスは正常終了、load averageが1.8-3.2まで低下。
+- D133で開始した強化監視の結果、lineage側もworker RSS 0.12-0.17GB・
+  swap 74MB前後で全期間安定、悪化傾向なし。elevationよりさらに軽量
+  (カテゴリ値の単一バンドPNGのため)。
+
+**これでdownsampling(elevation・lineage両方)が完了**。
+
+### 着手: bundleステージ
+
+D125のD4項目通り、`meta-store/bundle/*.json`(1号時代の古いメタデータ
+23件)を事前にクリアしてから`bundle.py`を実行。
+
+`bundle.py 1`(elevation、BUNDLE_DATATYPE未指定=デフォルトelevation)を
+screen(`bundle15go_elev`)で起動。起動ログで以下を確認:
+- datatype: elevation
+- generation: `01M1MKD73P0KDT719H21NJV9VR`(1.5号、latest
+  aggregation-store idとして正しく自動検出)
+- 4ワーカー
+
+elevation完走後、`BUNDLE_DATATYPE=lineage`で同様にlineage側を実行する。
+
+### Resume prompt
+
+> D135: 1.5号のdownsampling(lineage)が2026-09-05 22:37 JST頃に完走
+> (8,223/8,223)。これでdownsampling(elevation・lineage両方)完了。
+> D133の強化監視は全期間で悪化傾向なしと確認。`meta-store/bundle/
+> *.json`(1号時代の23件)をクリアした上で`bundle.py 1`
+> (elevation、screen `bundle15go_elev`)を起動、generation/datatype
+> とも正しく認識されていることをログで確認済み。**次のアクション**:
+> bundle(elevation)完走を待ち、`BUNDLE_DATATYPE=lineage`で同様に実行。
+> 両方完了後、`merge_japan_bundles.py`(両datatype)→
+> `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
+> 公開はHidenoriさんの別途承認が必要(D127)。
