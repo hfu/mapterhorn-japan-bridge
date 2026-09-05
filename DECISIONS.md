@@ -156,3 +156,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D134](DECISIONS1.md#d134-downsamplingelevation完走203x-jst頃lineage側着手) | downsampling(elevation)完走(20:3x JST頃)。lineage側着手 | Recorded |
 | [D135](DECISIONS1.md#d135-downsamplinglineage完走両datatypeのdownsampling完了bundleステージへ) | downsampling(lineage)完走。両datatypeのdownsampling完了、bundleステージへ | Recorded |
 | [D136](DECISIONS1.md#d136-bundleelevation完走lineage側着手) | bundle(elevation)完走。lineage側着手 | Recorded |
+| [D137](DECISIONS1.md#d137-bundlelineage完走両datatypeのbundle完了merge_japan_bundlespy着手) | bundle(lineage)完走。両datatypeのbundle完了、merge_japan_bundles.py着手 | Recorded |

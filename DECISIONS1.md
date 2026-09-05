@@ -1464,3 +1464,41 @@ uv run python3 bundle.py 1`を新規スクリーン(`bundle15go_lineage`)で
 > `merge_japan_bundles.py`(elevation・lineage両方)→
 > `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
 > 公開はHidenoriさんの別途承認が必要(D127)。
+
+
+## D137: bundle(lineage)完走。両datatypeのbundle完了、merge_japan_bundles.py着手
+
+**Status**: Recorded, 2026-09-06 00:08 JST頃。
+
+### 完了確認
+
+`bundle.py 1`(lineage、`BUNDLE_DATATYPE=lineage`)が23:37 JST着手から
+完走した。ログに「The following 23 file(s) were created:」——
+`planet-lineage.pmtiles`+22件の地域`-lineage.pmtiles`バンドルを確認、
+エラーなし。**これでbundle(elevation・lineage両方)が完了**。
+
+一時、`tail -15`で確認したログが偶然ファイル生成リストの末尾と一致し、
+「15分間ログ変化なし=停滞」と誤認しかけたが、`tail -60`で全文確認した
+ところ実際には正常完走していたことが判明——ログの一部だけを見て
+停滞と判断するのは早計だった、という教訓。
+
+### 着手: merge_japan_bundles.py(elevation)
+
+`merge_japan_bundles.py`をscreen(`merge15go_elev`)で起動。この工程は
+D49で過去に1号本番中にディスクを100%枯渇させた実績がある最も注意を
+要するステージ(pmtilesライブラリの内部temp fileがTMPDIRを無視して
+起動ディスクを圧迫した事故、D104/D105で恒久対応済み)。起動直後は
+D119由来の完全性チェック(bundle-storeの22件の地域バンドルの
+サイズ・マニフェスト検証)にCPU時間を使っており、正常に進行中
+(ディスクも安定)。
+
+### Resume prompt
+
+> D137: 1.5号のbundle(elevation・lineage両方)が完了(bundle.py×2回、
+> 各23ファイル生成、エラーなし)。`merge_japan_bundles.py`
+> (elevation、screen `merge15go_elev`)を起動、完全性チェック段階を
+> 正常に通過中。この工程はD49の過去のENOSPC事故があった要注意ステージ
+> ——ディスクを継続的に注視すること。**次のアクション**: merge
+> (elevation)完走を待ち、`MERGE_DATATYPE=lineage`で同様に実行。両方
+> 完了後`./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と
+> 進む。公開はHidenoriさんの別途承認が必要(D127)。
