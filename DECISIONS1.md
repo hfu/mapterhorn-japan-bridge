@@ -1287,3 +1287,60 @@ lineage側(`DOWNSAMPLING_DATATYPE=lineage`)はelevation完走後に着手する
 > `bundle.py`(両datatype)→`merge_japan_bundles.py`(両datatype)→
 > `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
 > 公開は引き続きHidenoriさんの別途承認が必要(D127)。
+
+
+## D133: downsampling_run.pyもデフォルト5ワーカーだったと判明。Hidenoriさんの判断で5のまま継続、監視強化
+
+**Status**: Decided, 2026-09-05 16:53頃〜17:08 JST。
+
+### 発見
+
+downsampling(elevation)の定期監視中、`.done`増加ペースの変化を追う過程で
+プロセス一覧を確認したところ、`downsampling_run.py`が`aggregation_run.py`
+とは別の`get_worker_count()`を持ち、デフォルトが**5のまま**であることが
+判明した。D131の「3ワーカー固定」はコード上`aggregation_run.py`にしか
+適用されておらず、現在稼働中のdownsampling(elevation、screen
+`ds15go_elev`)は実際には5ワーカーで動いていた(起動から約100分間、
+プロセス`54292-54296`がいずれもCPU 94-100%で稼働継続)。
+
+### 実測によるリスク評価
+
+Hidenoriさんに状況を報告した上で判断を仰いだ。判断材料として、5ワーカー
+稼働から約100分経過時点の実測値を確認:
+
+- 各ワーカーのRSS: **約1.67-1.68GB**(D129でaggregationワーカーが記録した
+  最大7.7-10.37GBの1/5以下)
+- swap使用量: 114MB/1024MB(ごくわずか)
+- メモリコンプレッサーのpages stored: 36,239(D129クラッシュ時の
+  「segmentsの100%到達」とは桁違いに低水準)
+- `kern.memorystatus_vm_pressure_level`: 1(正常)を約100分間維持
+
+downsamplingの1アイテムあたりのメモリフットプリントは、aggregationの
+生GeoTIFF処理よりはるかに軽い(既存の親タイルPMTilesからの読み込み・
+再エンコードが中心)ことが、この実測で裏付けられた。D129の故障機序
+(高並行度×長時間によるコンプレッサーsegment枯渇)が同じ確率で再現する
+根拠は、現時点の実測からは見出せない。
+
+### 決定
+
+**Hidenoriさんの判断: 5ワーカーのまま継続、監視を強化して様子を見る**。
+3ワーカーへの制限・再起動は行わない(D124の`.done`マニフェスト設計により
+再起動自体は安全だが、進行中アイテムのやり直し・スループット低下という
+コストが発生するため、実測が安全側に振れている現状ではその代償を払わない
+という判断)。
+
+以後の定期監視では、`.done`増加ペースに加えて、ワーカーRSS・swap使用量・
+メモリコンプレッサーのpages storedも定期的に確認し、悪化の兆候(RSSの
+継続的な増加傾向、pressure level上昇)が出た時点で3ワーカーへの切替えを
+再検討する。
+
+### Resume prompt
+
+> D133: downsampling_run.pyのデフォルトワーカー数もD131の見直し対象外の
+> まま5だったと判明(aggregation_run.pyのみ修正されていた)。約100分間の
+> 5ワーカー稼働実績を実測(ワーカーRSS約1.67GB、swap114MB、pressure
+> level 1で安定)した上でHidenoriさんに判断を仰ぎ、**5のまま継続、監視
+> 強化**の方針で合意。今後の定期監視ではワーカーRSS・swap・compressor
+> pages storedも合わせて確認し、悪化の兆候があれば3ワーカーへの切替えを
+> 再検討する。**次のアクション**: 監視強化を続けつつdownsampling
+> (elevation→lineage)の完走を待つ。

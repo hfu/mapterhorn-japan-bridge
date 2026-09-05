@@ -152,3 +152,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D130](DECISIONS1.md#d130-ワーカー数最適化分析5-vs-3の実測比較hidenoriさんの依頼による) | ワーカー数最適化分析(5 vs 3の実測比較、Hidenoriさんの依頼による) | Recorded |
 | [D131](DECISIONS1.md#d131-ワーカー数15号2号とも3で固定hidenoriさん最終決定) | ワーカー数、1.5号・2号とも3で固定(Hidenoriさん最終決定) | Decided |
 | [D132](DECISIONS1.md#d132-15号-全国aggregation本体完走1505-jst頃downsamplingelevation着手) | 1.5号 全国aggregation本体、完走(15:05 JST頃)。downsampling(elevation)着手 | Recorded |
+| [D133](DECISIONS1.md#d133-downsampling_runpyもデフォルト5ワーカーだったと判明hidenoriさんの判断で5のまま継続監視強化) | downsampling_run.pyもデフォルト5ワーカーだったと判明。Hidenoriさんの判断で5のまま継続、監視強化 | Decided |
