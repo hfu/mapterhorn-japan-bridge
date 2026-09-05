@@ -1673,3 +1673,60 @@ starsへの手動rsyncのみ(`publish_cycle.py`は引き続きハードガード
 > lineage.pmtiles`、204.6MB、zoom 8-16)ともにverify OK。**次のアクション**:
 > Hidenoriさんに公開承認を確認し、承認が得られ次第starsへの手動rsync
 > (両ファイル)を実施する。それまでは何も公開しない。
+
+
+## D142: Hidenoriさん公開承認、starsへの転送着手(D122方式、旧1号ファイル削除→新規転送)
+
+**Status**: Recorded, 2026-09-06 06:39 JST頃。
+
+### 承認内容
+
+Hidenoriさんより「公開承認する」の明示的承認を得た。starsのディスク
+空き容量(150GB、1.8TB中92%使用済み)を事前確認したところ、1号の
+現行公開ファイル(313.9GB)と1.5号のelevationアーカイブ(314.66GB)を
+同時に置けるだけの余裕がないことが判明——D122と全く同じ状況。この点を
+明示的にHidenoriさんへ再確認し(「旧ファイルを先に削除してから転送、
+転送中約8時間ライブサイトダウン」)、**D122と同方式での実施の承認**を
+別途得た。
+
+stars上の`/home/stars/data/`は複数プロジェクト共有ディレクトリ
+(kitaphoto17.pmtiles 190GB、seamlessphoto512.pmtiles 767GB、
+z18.pmtiles 424GBなど)であることを確認——削除対象は本プロジェクトの
+ファイル1件のみで、他プロジェクトへの影響はない。
+
+### 実施内容
+
+1. `/home/stars/data/mapterhorn-japan-bridge.pmtiles`(1号、313.9GB)
+   を削除。
+2. `bundle-store/mapterhorn-japan-bridge.pmtiles`(1.5号elevation、
+   314.66GB)を`stars.local:/home/stars/data/mapterhorn-japan-bridge.
+   pmtiles.new`へrsync転送開始。
+3. 続けて`mapterhorn-japan-bridge-lineage.pmtiles`(204.6MB、
+   lineageの初回公開)も同様に転送予定。
+
+**トラブル**: 当初`rsync --info=progress2`を使ったところ、slateの
+rsyncがmacOS標準の`openrsync`(protocol 29互換、BSD版)で該当
+オプション未対応と判明、即座に`-avW --progress`へ変更して再実行
+(旧ファイル削除は既に完了していたため、転送再開のみで対応)。
+
+転送速度は約11MB/s、推定所要時間7.5時間——D122の実績
+(313.9GBに約7時間48分)と一致、想定通り。
+
+### 未完了ステップ(転送完了後、screen `publish15go`が自動継続)
+
+- lineage転送
+- stars側`pmtiles verify`(elevation・lineage両方)
+- アトミックリネーム(`.new`→本番名)
+- `systemctl --user restart martin`
+
+### Resume prompt
+
+> D142: Hidenoriさんの公開承認を得て、starsへの1.5号公開作業に着手
+> (2026-09-06 06:39 JST頃)。D122と同方式(旧1号ファイル削除→新規
+> 転送)、Hidenoriさんに8時間ダウンタイムを明示して別途承認済み。
+> `publish_1p5go.sh`をscreen(`publish15go`)で実行中——elevation
+> 転送→lineage転送→stars側verify×2→アトミックリネーム×2→martin
+> 再起動、まで自動で進む設計。転送速度約11MB/s、推定7.5時間。
+> **次のアクション**: 定期的に`/tmp/publish_1p5go.log`を確認し、
+> 完走・エラーの有無を監視する。完走すればstarsの公開URLで実地確認
+> (D122と同様、既知の座標での応答確認)を行う。
