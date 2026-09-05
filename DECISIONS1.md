@@ -1344,3 +1344,40 @@ downsamplingの1アイテムあたりのメモリフットプリントは、aggr
 > pages storedも合わせて確認し、悪化の兆候があれば3ワーカーへの切替えを
 > 再検討する。**次のアクション**: 監視強化を続けつつdownsampling
 > (elevation→lineage)の完走を待つ。
+
+
+## D134: downsampling(elevation)完走(20:3x JST頃)。lineage側着手
+
+**Status**: Recorded, 2026-09-05 20:37 JST頃。
+
+### 完了確認
+
+`downsampling_run.py`(elevation、`DOWNSAMPLING_STRICT=1
+PRIORITY_MODE=quadrans`)が15:10 JST着手から約5.5時間で完走した。
+
+- `*-downsampling.done`マーカーと`*-downsampling.csv`(covering)が
+  ともに8,223件で一致。
+- プロセスは正常終了(screenの`exec bash`フォールバックのみが残存、
+  異常終了の痕跡なし)。
+- D133で開始した強化監視(ワーカーRSS・swap・compressor)の結果、
+  全期間を通じてswapは82-114MBの範囲で安定、累積的な右肩上がりは
+  一度も観測されず——5ワーカーのまま完走して問題なかった。
+
+### 着手: downsampling(lineage)
+
+`ds15go_elev`スクリーンを終了し、`DOWNSAMPLING_DATATYPE=lineage
+DOWNSAMPLING_STRICT=1 PRIORITY_MODE=quadrans uv run python3
+downsampling_run.py`を新規スクリーン(`ds15go_lineage`)で起動。
+D127ランブック通り、elevation完走後にlineageへ逐次進む形。
+
+### Resume prompt
+
+> D134: 1.5号のdownsampling(elevation)が2026-09-05 20:3x JST頃に完走
+> (8,223/8,223、covering数と一致、プロセス正常終了)。D133の強化監視
+> (5ワーカーのままのRSS・swap追跡)は全期間を通じて悪化傾向なしと
+> 確認済み。続けてdownsampling(lineage、screen `ds15go_lineage`)を
+> 起動。**次のアクション**: lineage側の完走を待ち、`bundle.py`
+> (elevation・lineage両方)→`merge_japan_bundles.py`(両方)→
+> `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
+> `meta-store/bundle/*.json`はbundleステージ直前にクリアすること
+> (D125のD4項目)。公開はHidenoriさんの別途承認が必要(D127)。
