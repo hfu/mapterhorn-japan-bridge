@@ -1627,3 +1627,49 @@ lineage.pmtiles`)は既に最終ファイルのため、別途`./pmtiles verify`
 > `./pmtiles verify bundle-store/mapterhorn-japan-bridge-lineage.
 > pmtiles`も実施。両方verify OKになれば、1.5号の全パイプライン
 > ステージが完了し、公開はHidenoriさんの承認を待つのみとなる(D127)。
+
+
+## D141: 1.5号 全パイプラインステージ完了(elevation・lineage両方verify OK)。公開承認待ち
+
+**Status**: Recorded, 2026-09-06 03:08 JST頃。
+
+### 完了確認
+
+`./pmtiles merge`によるz0-7グローバルオーバービュー接合(elevation)が
+02:08 JST着手から約49分で完走、`bundle-store/mapterhorn-japan-
+bridge.pmtiles`(最終公開名)を生成した。続けて両ファイルの最終
+`pmtiles verify`を実施:
+
+- **elevation**(`mapterhorn-japan-bridge.pmtiles`、314.66GB):
+  verify OK(258ms)。`pmtiles show`で確認したメタデータ:
+  bounds全球(-180〜180, -85.05〜85.05——z0-7グローバルオーバービュー
+  接合により正しく全球化)、zoom 0-16、center (140.9, 41.85)
+  zoom 12(D87の風不死岳設定が正しく反映)、addressed tiles
+  2,581,585、**clustered: true**。center座標が意味のある値になって
+  おり、PLAN.md §4で警告されていた「1号のcenterが[0,0,2]という
+  無意味な値になっていた不具合」は再発していない。
+- **lineage**(`mapterhorn-japan-bridge-lineage.pmtiles`、204.6MB):
+  verify OK(42ms)。bounds日本域(118.125〜157.5, 16.64〜48.92)、
+  zoom 8-16(min_output_zoom=8通り)、center同じく(140.9, 41.85)、
+  addressed tiles 2,568,061(elevation splice前と一致)、
+  **clustered: false**(D124ランブック通り、clusterはelevationのみ
+  対象)。
+
+**これで1.5号(`01M1MKD73P0KDT719H21NJV9VR`)の全パイプラインステージ
+(aggregation→downsampling×2→bundle×2→merge×2→cluster→verify→
+z0-7接合→verify)が完了した。**
+
+### 残るステップ
+
+D127ランブック最終項目、**Hidenoriさんの明示的な公開承認**を得てから
+starsへの手動rsyncのみ(`publish_cycle.py`は引き続きハードガード、
+使用しない)。
+
+### Resume prompt
+
+> D141: 1.5号の全パイプラインステージが完了(2026-09-06 03:08 JST頃)。
+> elevation(`mapterhorn-japan-bridge.pmtiles`、314.66GB、zoom 0-16、
+> clustered、center正常)・lineage(`mapterhorn-japan-bridge-
+> lineage.pmtiles`、204.6MB、zoom 8-16)ともにverify OK。**次のアクション**:
+> Hidenoriさんに公開承認を確認し、承認が得られ次第starsへの手動rsync
+> (両ファイル)を実施する。それまでは何も公開しない。
