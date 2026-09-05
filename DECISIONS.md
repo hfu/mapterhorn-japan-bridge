@@ -157,3 +157,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D135](DECISIONS1.md#d135-downsamplinglineage完走両datatypeのdownsampling完了bundleステージへ) | downsampling(lineage)完走。両datatypeのdownsampling完了、bundleステージへ | Recorded |
 | [D136](DECISIONS1.md#d136-bundleelevation完走lineage側着手) | bundle(elevation)完走。lineage側着手 | Recorded |
 | [D137](DECISIONS1.md#d137-bundlelineage完走両datatypeのbundle完了merge_japan_bundlespy着手) | bundle(lineage)完走。両datatypeのbundle完了、merge_japan_bundles.py着手 | Recorded |
+| [D138](DECISIONS1.md#d138-merge_japan_bundlespyelevation完走lineage側着手) | merge_japan_bundles.py(elevation)完走。lineage側着手 | Recorded |

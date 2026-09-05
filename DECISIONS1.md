@@ -1502,3 +1502,39 @@ D119由来の完全性チェック(bundle-storeの22件の地域バンドルの
 > (elevation)完走を待ち、`MERGE_DATATYPE=lineage`で同様に実行。両方
 > 完了後`./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と
 > 進む。公開はHidenoriさんの別途承認が必要(D127)。
+
+
+## D138: merge_japan_bundles.py(elevation)完走。lineage側着手
+
+**Status**: Recorded, 2026-09-06 01:07 JST頃。
+
+### 完了確認
+
+`merge_japan_bundles.py`(elevation)が00:08 JST着手から約1時間で
+完走した。
+
+- D119の完全性チェック: 「completeness check OK: 23 bundle(s),
+  290.0 GiB」——23件の地域バンドル(bundle-store)を検証、欠落なし。
+- 23ファイルを順次マージし、`bundle-store/mapterhorn-japan-bridge.
+  z8plus.pmtiles`(2,568,061タイル)を生成。エラー・警告なし。
+- D49で過去にディスクを100%枯渇させた実績のある要注意ステージ
+  だったが、途中一時的にpmtiles-storeの空き容量が413GBまで減少した
+  ものの、その後横ばい・回復し、最終的にMigrate-2025-04 677GB・
+  pmtiles-store 703GB空きで完走(枯渇の兆候なし)。
+
+### 着手: merge_japan_bundles.py(lineage)
+
+`merge15go_elev`スクリーンを終了し、`MERGE_DATATYPE=lineage uv run
+python3 merge_japan_bundles.py`を新規スクリーン(`merge15go_lineage`)
+で起動。
+
+### Resume prompt
+
+> D138: 1.5号のmerge_japan_bundles.py(elevation)が2026-09-06 01:07
+> JST頃に完走(23件の地域バンドル290GiB分を完全性チェック通過後に
+> マージ、`mapterhorn-japan-bridge.z8plus.pmtiles`2,568,061タイル生成、
+> エラーなし、D49型のディスク枯渇兆候もなし)。続けて
+> `merge_japan_bundles.py`(lineage、screen `merge15go_lineage`)を
+> 起動。**次のアクション**: lineage側merge完走を待ち、
+> `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
+> 公開はHidenoriさんの別途承認が必要(D127)。
