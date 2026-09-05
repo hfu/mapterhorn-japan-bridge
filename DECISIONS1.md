@@ -1730,3 +1730,57 @@ rsyncがmacOS標準の`openrsync`(protocol 29互換、BSD版)で該当
 > **次のアクション**: 定期的に`/tmp/publish_1p5go.log`を確認し、
 > 完走・エラーの有無を監視する。完走すればstarsの公開URLで実地確認
 > (D122と同様、既知の座標での応答確認)を行う。
+
+
+## D143: lineageにも`pmtiles cluster`を適用(D124/D127の想定を拡張)。elevationより大きい重複統合効果を確認
+
+**Status**: Decided, 2026-09-06 07:14 JST頃。
+
+### 経緯
+
+D124/D127のランブックでは、z0-7グローバルオーバービュー接合が必要な
+elevationのみ`pmtiles cluster`の対象とし、lineageは
+`merge_japan_bundles.py`の出力をそのまま最終ファイルとする設計
+だった(D139)。Hidenoriさんから「lineageにもclusterした方が良いのでは」
+との提案を受け、実際に試して数値で判断した。
+
+### 実測結果
+
+`./pmtiles cluster bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`
+を実行(所要時間3.4秒、205MBの小規模ファイルのため実質無視できる
+コスト)。
+
+| | addressed tiles | tile contents(実体) | 重複率 |
+|---|---|---|---|
+| elevation(D140実測) | 2,568,061 | 2,075,843 | 約19% |
+| **lineage** | 2,568,061 | **422,889** | **約83.5%** |
+
+lineageはカテゴリ値(provenance tier、0-6の離散値)の単一バンドデータ
+のため、広大な同一値領域(例: 海=tier 6の連続領域)がバイト完全一致
+のタイルとして大量に存在し、elevationよりはるかに高い重複率を示した。
+`pmtiles verify`もクリーン(50ms)、`pmtiles show`で`clustered: true`
+を確認。
+
+### 判断
+
+**コストがほぼゼロ(3.4秒)でダウンサイドが見当たらない**ため、
+lineageにもclusterを適用する方針とした。ファイルは同一パス
+(`bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`)に上書きで
+生成されたため、進行中の公開転送(D142、screen `publish15go`)は
+コード変更不要でこのクラスタ化済みファイルをそのまま転送する
+(elevation転送完了後、lineageの番が来る時点でまだ転送前だった
+ため間に合った)。
+
+D124/D127のランブック文書は「lineageはcluster不要」という前提で
+書かれているため、今後のセッション向けに本エントリで訂正しておく。
+
+### Resume prompt
+
+> D143: Hidenoriさんの提案でlineageにも`pmtiles cluster`を適用、
+> elevation(重複率約19%)よりはるかに高い重複率(約83.5%)を実測で
+> 確認、コストは3.4秒のみ。verify OK、clustered: true。
+> D124/D127のランブックにあった「lineageはcluster対象外」という
+> 前提を訂正——lineageもcluster対象に含める。進行中の公開転送
+> (D142)はファイル上書きにより自動的にこのクラスタ化済み版を使う。
+> **次のアクション**: 公開転送(elevation→lineage→verify→rename→
+> martin再起動)の完走を待つ。
