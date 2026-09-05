@@ -1585,3 +1585,45 @@ bridge.z8plus.pmtiles`(311GB、2,101,520アイテム)、実行時間見積もり
 > (最終elevation)、および`./pmtiles verify`
 > (`mapterhorn-japan-bridge-lineage.pmtiles`、cluster不要で直接)と
 > 進む。公開はHidenoriさんの別途承認が必要(D127)。
+
+
+## D140: pmtiles cluster(elevation)完走・verify OK。z0-7オーバービュー接合(pmtiles merge)着手
+
+**Status**: Recorded, 2026-09-06 02:08 JST頃。
+
+### 完了確認
+
+`./pmtiles cluster bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles`
+が01:23 JST着手から約26分で完走した。
+
+- 統計出力: addressed tiles 2,568,061、tile entries(RLE後)2,101,520、
+  tile contents 2,075,843。
+- 出力ファイルサイズは311.4GB(クラスタ化前とほぼ同一——想定通り、
+  cluster処理はタイルの物理配置最適化が主目的でサイズ自体は
+  大きく変わらない)。
+- `./pmtiles verify`即座に実行、256ms で完走・クリーン。
+
+### 着手: z0-7オーバービュー接合
+
+`./pmtiles merge bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles
+/Volumes/Migrate-2025-04/global-overview-backup.pmtiles
+bundle-store/mapterhorn-japan-bridge.pmtiles`をscreen
+(`mergesplice15go`)で起動。293GB分のタイルデータをマージ、
+見積もり約30分。TMPDIRラッパーは正しく機能。
+
+これが完走すれば`bundle-store/mapterhorn-japan-bridge.pmtiles`
+(最終公開名)が生成される。lineage側(`mapterhorn-japan-bridge-
+lineage.pmtiles`)は既に最終ファイルのため、別途`./pmtiles verify`
+のみで完結する(D139参照)。
+
+### Resume prompt
+
+> D140: 1.5号のpmtiles cluster(elevation)が2026-09-06 01:49 JST頃に
+> 完走(約26分、311.4GB、verify OKクリーン)。続けて`./pmtiles merge`
+> でglobal-overview-backup.pmtiles(z0-7)を接合中(screen
+> `mergesplice15go`、293GB、見積もり約30分)。**次のアクション**:
+> 接合完走を待ち、`./pmtiles verify`(最終`mapterhorn-japan-
+> bridge.pmtiles`)を実行。並行して(または続けて)
+> `./pmtiles verify bundle-store/mapterhorn-japan-bridge-lineage.
+> pmtiles`も実施。両方verify OKになれば、1.5号の全パイプライン
+> ステージが完了し、公開はHidenoriさんの承認を待つのみとなる(D127)。

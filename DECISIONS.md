@@ -159,3 +159,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D137](DECISIONS1.md#d137-bundlelineage完走両datatypeのbundle完了merge_japan_bundlespy着手) | bundle(lineage)完走。両datatypeのbundle完了、merge_japan_bundles.py着手 | Recorded |
 | [D138](DECISIONS1.md#d138-merge_japan_bundlespyelevation完走lineage側着手) | merge_japan_bundles.py(elevation)完走。lineage側着手 | Recorded |
 | [D139](DECISIONS1.md#d139-merge_japan_bundlespylineage完走両datatypeのmerge完了pmtiles-cluster着手) | merge_japan_bundles.py(lineage)完走。両datatypeのmerge完了、pmtiles cluster着手 | Recorded |
+| [D140](DECISIONS1.md#d140-pmtiles-clusterelevation完走verify-okz0-7オーバービュー接合pmtiles-merge着手) | pmtiles cluster(elevation)完走・verify OK。z0-7オーバービュー接合(pmtiles merge)着手 | Recorded |
