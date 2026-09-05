@@ -1538,3 +1538,50 @@ python3 merge_japan_bundles.py`を新規スクリーン(`merge15go_lineage`)
 > 起動。**次のアクション**: lineage側merge完走を待ち、
 > `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
 > 公開はHidenoriさんの別途承認が必要(D127)。
+
+
+## D139: merge_japan_bundles.py(lineage)完走。両datatypeのmerge完了、pmtiles cluster着手
+
+**Status**: Recorded, 2026-09-06 01:22 JST頃。
+
+### 完了確認
+
+`merge_japan_bundles.py`(lineage、`MERGE_DATATYPE=lineage`)が完走。
+
+- D119完全性チェック: 「completeness check OK: 23 bundle(s), 0.2 GiB」
+  ——lineageはカテゴリ値単一バンドのため入力サイズがelevationの
+  290GiBに対し0.2GiBと極小、完走も高速だった。
+- `bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`
+  (2,568,061タイル、elevation側と完全に同じタイル数——両datatypeが
+  同一のcovering/座標集合から生成されている一貫性の裏付け)を生成。
+- D96/D124のランブック通り、lineageはこの時点で**既に最終ファイル名**
+  (elevationのような`.z8plus`中間名ではない)——lineageには既存の
+  グローバルMapterhornオーバービュー(z0-7)を接合する対象が存在
+  しないため、`pmtiles merge`によるz0-7接合はelevation側のみに適用する。
+
+**これでbundle_japan_bundles.py(elevation・lineage両方)が完了**。
+
+### 着手: pmtiles cluster(elevation z8plusのみ)
+
+D127で追加確定した`./pmtiles cluster`ステップを実行。`./pmtiles`
+ラッパー経由でTMPDIRが`pmtiles-store/tmp-store/go-cli-scratch`
+(起動ディスクではない)に正しく設定されていることを確認
+(D124 Phase-2堅牢化の効果)。対象は`bundle-store/mapterhorn-japan-
+bridge.z8plus.pmtiles`(311GB、2,101,520アイテム)、実行時間見積もり
+約20分。lineage側はcluster対象外(D124ランブック通り、直接verify)。
+
+### Resume prompt
+
+> D139: 1.5号のmerge_japan_bundles.py(lineage)が2026-09-06 01:22
+> JST頃に完走(`mapterhorn-japan-bridge-lineage.pmtiles`
+> 2,568,061タイル、elevation側とタイル数完全一致)。これで両datatype
+> のbundle_japan_bundles.pyが完了。D124ランブック通り、lineageは
+> ここで最終ファイル名——z0-7接合(pmtiles merge)はelevation側のみに
+> 適用する。`./pmtiles cluster`(elevation z8plus、TMPDIRラッパー
+> 経由、約20分見積もり、screen `cluster15go`)を起動。**次のアクション**:
+> cluster完走を待ち、`./pmtiles verify`(elevation z8plus)→
+> `./pmtiles merge`(global-overview-backup.pmtilesとのz0-7接合、
+> 最終`mapterhorn-japan-bridge.pmtiles`生成)→`./pmtiles verify`
+> (最終elevation)、および`./pmtiles verify`
+> (`mapterhorn-japan-bridge-lineage.pmtiles`、cluster不要で直接)と
+> 進む。公開はHidenoriさんの別途承認が必要(D127)。
