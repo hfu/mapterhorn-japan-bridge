@@ -1428,3 +1428,39 @@ elevation完走後、`BUNDLE_DATATYPE=lineage`で同様にlineage側を実行す
 > 両方完了後、`merge_japan_bundles.py`(両datatype)→
 > `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
 > 公開はHidenoriさんの別途承認が必要(D127)。
+
+
+## D136: bundle(elevation)完走。lineage側着手
+
+**Status**: Recorded, 2026-09-05 23:37 JST頃。
+
+### 完了確認
+
+`bundle.py 1`(elevation)が22:38 JST着手から約1時間で完走した。
+
+- ログに「The following 23 file(s) were created:」と出力、
+  `planet.pmtiles`+22件の`{z6}-{x}-{y}.pmtiles`地域バンドルを確認。
+- 1号実績(D99、約30分)よりやや長め(約60分)だったが、異常な
+  遅延ではない——エラー・警告なし、正常終了。
+- ディスク消費は一時的にMigrate-2025-04で最大約320GB相当まで
+  進んだが、bundle完走後にpmtiles-storeの空き容量が回復傾向
+  (609→703GB)を見せており、想定内の一時的な中間ファイル増加
+  だったと判断できる。
+
+### 着手: bundle(lineage)
+
+`bundle15go_elev`スクリーンを終了し、`BUNDLE_DATATYPE=lineage
+uv run python3 bundle.py 1`を新規スクリーン(`bundle15go_lineage`)で
+起動。起動ログでdatatype=lineage・generation=`01M1MKD73P0KDT719H21NJV9VR`
+が正しく認識されていることを確認。
+
+### Resume prompt
+
+> D136: 1.5号のbundle(elevation)が2026-09-05 23:37 JST頃に完走
+> (23ファイル生成、`planet.pmtiles`+22地域バンドル、エラーなし)。
+> 続けて`bundle.py`(lineage、screen `bundle15go_lineage`)を起動、
+> datatype/generationとも正しく認識されていることを確認済み。
+> **次のアクション**: bundle(lineage)完走を待ち、
+> `merge_japan_bundles.py`(elevation・lineage両方)→
+> `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
+> 公開はHidenoriさんの別途承認が必要(D127)。
