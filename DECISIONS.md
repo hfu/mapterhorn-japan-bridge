@@ -163,3 +163,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D141](DECISIONS1.md#d141-15号-全パイプラインステージ完了elevationlineage両方verify-ok公開承認待ち) | 1.5号 全パイプラインステージ完了(elevation・lineage両方verify OK)。公開承認待ち | Recorded |
 | [D142](DECISIONS1.md#d142-hidenoriさん公開承認starsへの転送着手d122方式旧1号ファイル削除新規転送) | Hidenoriさん公開承認、starsへの転送着手(D122方式、旧1号ファイル削除→新規転送) | Decided |
 | [D143](DECISIONS1.md#d143-lineageにもpmtiles-clusterを適用d124d127の想定を拡張elevationより大きい重複統合効果を確認) | lineageにも`pmtiles cluster`を適用(D124/D127の想定を拡張)。elevationより大きい重複統合効果を確認 | Decided |
+| [D144](DECISIONS1.md#d144-merge_japan_bundlespy自体にcluster呼び出しを組み込み2号以降もコードで保証) | `merge_japan_bundles.py`自体にcluster呼び出しを組み込み、2号以降もコードで保証 | Accepted |

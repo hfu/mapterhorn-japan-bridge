@@ -1784,3 +1784,46 @@ D124/D127のランブック文書は「lineageはcluster不要」という前提
 > (D142)はファイル上書きにより自動的にこのクラスタ化済み版を使う。
 > **次のアクション**: 公開転送(elevation→lineage→verify→rename→
 > martin再起動)の完走を待つ。
+
+
+## D144: `merge_japan_bundles.py`自体にcluster呼び出しを組み込み、2号以降もコードで保証
+
+**Status**: Accepted, 2026-09-06 07:xx JST頃。
+
+### 背景
+
+D143でlineageにもclusterを適用したが、あの時点では手動で
+`./pmtiles cluster`をCLIから叩いただけだった。Hidenoriさんから
+「2号以降でも、確実にlineageがclusterされることをコード面で担保して
+ほしい」との指示を受けた——ランブックに手順として書くだけでは、
+将来のセッション(人間・エージェント問わず)が読み飛ばす/省略する
+リスクが残るため。
+
+### 実施内容
+
+`hfu-mapterhorn/pipelines/merge_japan_bundles.py`の`main()`末尾、
+`OUTPUT`書き込み完了直後に、`utils.run_command()`
+(D124 Phase-2導入、失敗時に例外を投げる安全な実行ヘルパー)経由で
+`./pmtiles cluster {OUTPUT}`を無条件に呼び出すよう変更(commit
+`4b0603e`、`hfu-mapterhorn`リポジトリ)。
+
+これにより:
+- **datatypeを問わず**(elevation・lineageとも)、`merge_japan_
+  bundles.py`を実行するだけでclusterまで完了した状態になる。
+- 人間・エージェントが「lineageもclusterする」という手順を覚えて
+  おく必要がなくなり、2号以降のランブックからこのステップが
+  事実上消える(スクリプト自身の一部になったため)。
+- elevationについては、この時点でclusterされるのは`.z8plus`
+  中間ファイル——その後の`pmtiles merge`(z0-7接合)は、D141で
+  観測した通りclustered状態を引き継ぐため、追加のcluster呼び出しは
+  不要。
+
+### Resume prompt
+
+> D144: Hidenoriさんの指示により、`pmtiles cluster`をランブームの
+> 手順としてではなく`merge_japan_bundles.py`自体のコードに組み込んだ
+> (`hfu-mapterhorn`commit `4b0603e`)。datatypeによらず、merge実行
+> 直後に無条件でclusterが走るため、2号以降は人間・エージェントが
+> 覚えておく必要がなくなった。**次のアクション**: 公開転送の完走を
+> 待つ(この変更は稼働中の1.5号公開作業には影響しない——1.5号の
+> ファイルは既にclusterされた状態でstarsへ転送中)。
