@@ -1240,3 +1240,50 @@ D130の実測(3ワーカーはスループット-20〜23%と引き換えに、D1
 ### Resume prompt
 
 > D131: Hidenoriさんの最終決定により、ワーカー数を1.5号・2号とも3で固定することにした(4ワーカーのソークテストは行わない)。D130の実測(3ワーカーはスループット-20〜23%、クラッシュ0件)を踏まえ、速度より安全性を優先。`aggregation_run.py`の`get_worker_count()`デフォルトを5→3に変更しpush済み(`8b19b17`)。以後、2号でも`AGGREGATION_WORKERS`の明示指定なしに3ワーカーで動作する。
+
+
+## D132: 1.5号 全国aggregation本体、完走(15:05 JST頃)。downsampling(elevation)着手
+
+**Status**: Recorded, 2026-09-05 15:12 JST頃。
+
+### 完了確認
+
+07:23 JSTの起動(D128、D129のクラッシュ後20:03に3ワーカーで再起動)から
+約31.5時間で全国aggregationが完走した。
+
+- 名簿(`*-aggregation.csv`)6,373件と`.done`マーカー6,373件が完全一致、
+  `.todo`0件。
+- `tmp-store/01M1MKD73P0KDT719H21NJV9VR/`の未完了スクラッチディレクトリ
+  0件——最後のアイテムまで正常にクリーンアップされた。
+- `agg15go`スクリーンセッションはプロセス終了に伴い自然に消滅
+  (異常終了ではなく、正常なプロセス終了によるscreenの自動クローズ)。
+- 完走直前・直後の期間に新規カーネルパニックなし(`/Library/Logs/
+  DiagnosticReports/`を確認)。
+
+D129のクラッシュ(20分弱の中断)とワーカー減(5→3)による若干のペース
+低下を踏まえても、D124/D125時点の見積もり(50-70時間)の範囲内で
+完走した。
+
+### 着手: downsampling(elevation)
+
+D127のランブック通り、`downsampling_covering.py`を実行(正常完走、
+covering CSVを`aggregation-store/01M1MKD73P0KDT719H21NJV9VR/`配下に
+生成)。続けて`DOWNSAMPLING_STRICT=1 PRIORITY_MODE=quadrans uv run
+python3 downsampling_run.py`をscreenセッション(`ds15go_elev`)で起動。
+起動直後の確認で`.done`マーカーが順調に増加していることを確認。
+
+lineage側(`DOWNSAMPLING_DATATYPE=lineage`)はelevation完走後に着手する
+(D127ランブック通り、逐次実行)。
+
+### Resume prompt
+
+> D132: 1.5号(`01M1MKD73P0KDT719H21NJV9VR`)の全国aggregationが
+> 2026-09-05 15:05 JST頃に完走(6,373/6,373、`.todo`0件、tmp remnant
+> 0件、クリーン)。約31.5時間(D129の中断・3ワーカー減速込み)で
+> 50-70時間の見積もり内。`downsampling_covering.py`実行後、
+> `downsampling_run.py`(elevation、screen: `ds15go_elev`)を起動、
+> 順調に進行中。**次のアクション**: elevation側downsampling完走を待ち、
+> `DOWNSAMPLING_DATATYPE=lineage`で同様に起動。両方完了後、
+> `bundle.py`(両datatype)→`merge_japan_bundles.py`(両datatype)→
+> `./pmtiles cluster`→`verify`→`merge`(z0-7接合)→`verify`と進む。
+> 公開は引き続きHidenoriさんの別途承認が必要(D127)。
