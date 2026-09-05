@@ -30,7 +30,7 @@ updated whenever a new generation starts:
 | Label | generation_id | Status |
 |---|---|---|
 | 1号 | `01M0MWK852631SHCHPA66F21WQ` | Complete, published to stars (D106) |
-| 1.5号 | `01M1MKD73P0KDT719H21NJV9VR` | **Launched 2026-09-04 07:23 JST** (D127/D128, Hidenori approved). Aggregation running in screen `agg15go` on slate, ~50-70h estimated. Covering roster cross-checked clean (6,373 items, exact match with 1号). See DECISIONS.md D124-D128 for the full runbook and status |
+| 1.5号 | `01M1MKD73P0KDT719H21NJV9VR` | **Launched 2026-09-04 07:23 JST** (D127/D128). Aggregation ~96%+ done as of 2026-09-05 13:33 JST (screen `agg15go` on slate). Survived a kernel-panic incident at 19:54 JST (D129, memory-compressor exhaustion under 5 workers) with zero data loss; recovered and running on **3 workers, fixed permanently for both 1.5号 and 2号 (D130/D131)**. See DECISIONS.md D124-D131 for the full runbook and status |
 | 2号 | *(not started)* | Gated on GSI's next quarterly DEM1A update (section 1) |
 
 ## 1. What triggers 2号
