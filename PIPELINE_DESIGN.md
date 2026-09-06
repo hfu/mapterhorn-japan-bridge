@@ -14,11 +14,12 @@ mapterhorn-japan-bridge の生成パイプライン(`hfu/mapterhorn` の `pipeli
 
 ## 1. ディレクトリの役割
 
-**このセクションは2段構成**: 1-1は1号(現行公開世代、`01M0MWK852631SHCHPA66F21WQ`)が
-実際に使っている(そして今後もそのまま凍結される)構造。1-2は1.5号(名前空間分離+
-generation_id階層+lineage機能を検証する次世代、2026-09-04着手)が実装・検証中の
-**目標構造**——各種タスク(実装・レビュー・リハーサル)はこの1-2を正として仕事を揃える。
-実装完了・レビュー完了までは「目標」であって「現状」ではない点に注意。
+**このセクションは2段構成**: 1-1は1号(`01M0MWK852631SHCHPA66F21WQ`)が使っていた、
+今も`pmtiles-store`に残ったまま凍結されている旧構造。1-2は1.5号
+(`01M1MKD73P0KDT719H21NJV9VR`、名前空間分離+generation_id階層+lineage機能、
+2026-09-04着手)が導入した構造で、**2026-09-06のD145でミッションコンプリートし、
+現在`stars`で実際に配信されている現行構造**——もはや「目標」ではなく「現状」。
+新規のタスク(実装・レビュー・2号の準備)はこの1-2を正として仕事を揃える。
 
 ### 1-1. 1号(現行、凍結・変更しない)
 
@@ -56,15 +57,19 @@ pmtiles-store/
 すべてバグの疑いがある**——既知の直接glob箇所(2026-09-04時点の棚卸し、`grep -rn
 "pmtiles-store/\*" --include="*.py"`で再確認すること):
 
-| ファイル | 用途 | 1.5号対応状況 |
+| ファイル | 用途 | 1.5号対応状況(2026-09-06、コードで再確認) |
 |---|---|---|
-| `bundle.py` | 最終アーカイブ組み立て | `get_parent_to_filepaths()`が3階層(layer/datatype/generation_id)対応必須 |
-| `remove_dangling_pmtiles.py` | 孤立ファイル削除 | **最重要**——D76と同じ機構の温床、generation_id・layer・datatype全てでスコープすること |
+| `bundle.py` | 最終アーカイブ組み立て | **対応済み**——`get_parent_to_filepaths()`がlayer/datatype/generation_idを全て要求する引数になっており、`generation_id`未指定は`ValueError` |
+| `remove_dangling_pmtiles.py` | 孤立ファイル削除 | **対応済み**——`generation_id`が必須の位置引数になり、かつ1号(`utils.FLAT_LEGACY_GENERATION_ID`)を渡すと明示的に`REFUSING`して停止するガード付き |
 | `bundle_1go_rebuild.py` | 1号専用の一時復元ツール | 1号のみが対象、1.5号では**使わない**(旧フラット構造前提のため) |
-| `check_stale_duplicates_v2.py` | D74由来の重複チェック | 要確認 |
-| `create_index.py` | インデックス生成 | 要確認 |
-| `validate_pixels.py` | ピクセル検証 | 要確認 |
-| `downsampling_run.py`の`check_and_fix_pmtiles()` | 破損ファイル検出 | `glob('**/*.pmtiles')`が全世代を横断するため要スコープ確認 |
+| `check_stale_duplicates_v2.py` | D74由来の重複チェック | **未対応**——`pmtiles-store/*.pmtiles` + `pmtiles-store/*/*.pmtiles`という旧フラット構造前提のglobのまま。1.5号のファイルは階層の深さが合わず単に素通りする(誤検出ではなく無視される) |
+| `create_index.py` | インデックス生成 | **未対応**——同上、旧フラット構造前提のglobのまま |
+| `validate_pixels.py` | ピクセル検証 | **未対応・要注意**——`pmtiles_dir.glob('**/*.pmtiles')`と再帰globしているため、1号・1.5号(将来の2号も)のファイルを区別せず一緒くたに拾う。D74-D76と同種の取り違えが起きうる |
+| `downsampling_run.py`の`check_and_fix_pmtiles()` | 破損ファイル検出 | **未対応・要注意**——既定`pmtiles_dir='pmtiles-store'`への`glob('**/*.pmtiles')`が全世代・全layer・全datatypeを横断する。`downsampling_run.py`のCLIオプション経由の手動診断コマンドで§2の本番フローには含まれないが、対象世代を絞る改修が必要 |
+
+いずれも本番パイプライン(§2の主要フローには含まれない)の周辺ツールで、1.5号
+本番ラン自体はこれらを経由せず完走した。ただし手動診断・クリーンアップ目的で
+未対応の4本を使う際は、世代を跨いだ誤判定が起きうる点に注意すること。
 
 **1号との共存**: 1.5号の書き込みは`{generation_id}`階層より下でのみ発生するため、
 1号の旧フラット構造(1-1節)とは物理的に別ディレクトリになる——ただし**これは
@@ -321,19 +326,18 @@ aggregation_run.py と同じ `.csv`/`.csv.done` パターン(**`.todo` は使わ
 extracts` エラー、実際に確認済み)。カスタムのPythonスクリプト
 (`pmtiles.reader.all_tiles()` を使う、本ドキュメント7節参照)で代替する必要がある。
 
-**訂正(2026-08-31、D79/D80と同時期のレビューで発見)**: 上記のextract制限を
-「`pmtiles cluster` も同様に使えない」と一般化していたのは誤り。
-`pmtiles cluster --help`を確認したところ、**「Cluster an unclustered local
-archive」——非clustered化アーカイブをclustered化する**ことがこのコマンド自身の
-存在目的であり、事前にclustered化されていることを前提にする道理がない
-(それでは何もできなくなる)。実際に`cluster`コマンドをこのプロジェクトの
-非clustered出力に対して試した記録はDECISIONS.mdに見当たらず、「使えない」は
-`extract`の制限からの類推であって実地検証されていない可能性が高い。
-次に`japan-z8plus.pmtiles`を再生成した際、**最終`pmtiles merge`の前に
-`pmtiles cluster japan-z8plus.pmtiles`を試す価値がある**——もし機能すれば、
-7節で説明している「z0-7ファイル→z8+ファイルの順でmergeすることで副産物的に
-clustered化される」という設計をより単純化できる(z8+側単体を先にclustered化
-しておけば、そもそも結合順序に依存しなくなる)。
+**訂正のさらなる訂正(2026-09-06、D143/D144で決着)**: 上記の「試す価値がある」
+という提案は実行され、想定通り機能した。D143で`./pmtiles cluster`をlineage
+アーカイブに手動実行したところ、elevation(重複率約19%、D140実測)よりはるかに
+高い重複率(約83.5%)を実測した——カテゴリ値1バイトのlineageは同一値の広域
+(例: 海=tier 6)がバイト完全一致のタイルとして大量に存在するため。続くD144で
+この呼び出しを`merge_japan_bundles.py`の`main()`自体に組み込み
+(`utils.run_command()`経由、`hfu-mapterhorn`コミット`4b0603e`)、**datatypeを
+問わず`merge_japan_bundles.py`を実行するだけで無条件にclusterまで完了する**
+よう変更済み(2026-09-06、コードで確認: `merge_japan_bundles.py`210行目の
+`run_command(f'./pmtiles cluster {OUTPUT}', ...)`)。ランブックの手順としてでは
+なくスクリプト自体の一部になったため、2号以降は人間・エージェントがこの手順を
+覚えておく必要がない。
 
 ### 3.10 publish_cycle.py — サイクル全体のオーケストレーション
 
@@ -421,10 +425,11 @@ clustered化される」という設計をより単純化できる(z8+側単体�
 5. **`gdal_translate`/`gdalwarp`の失敗が`FAIL_ON_WARNING=False`により握り
    つぶされ、後続処理が不可解なクラッシュを起こす**(3.3節)。実行環境依存で
    再現性が不安定。
-6. **`merge_japan_bundles.py`の出力はclustered化されない**ため、go-pmtiles
-   CLIの`extract`が使えない(3.9節)。ただし`pmtiles cluster`(非clustered
-   アーカイブをclustered化するコマンド)は実地検証されておらず、「使えない」
-   という記述は誤りだった可能性が高い(3.9節の訂正参照、2026-08-31)。
+6. **(2026-09-06時点で解消)** `merge_japan_bundles.py`の出力はかつて
+   clustered化されず`extract`が使えなかったが、D143/D144で`pmtiles cluster`
+   が有効と実証され、`main()`末尾に無条件で組み込まれた(3.9節)。datatypeを
+   問わず、`merge_japan_bundles.py`を実行するだけでclustered化済みの出力に
+   なる。
 
 ## 7. z0-7 グローバルMapterhorn接合設計(2026-08-30〜)
 

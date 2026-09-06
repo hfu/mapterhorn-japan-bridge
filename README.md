@@ -20,6 +20,13 @@ data-processing pipeline lives here**. It holds:
 - `DECISIONS.md` — architecture decision records (the *why*).
 - `HANDOVER.md` — session-by-session narrative (the *what happened*).
 
+A companion **lineage** archive, `mapterhorn-japan-bridge-lineage.pmtiles`,
+records — per pixel — which GSI source tier (1m/5m/10m/Copernicus fallback)
+won the priority merge, as a single-channel category layer served alongside
+the elevation data. A standalone globe-view showcase of it lives at
+[`hfu/japan-bridge-lineage`](https://github.com/hfu/japan-bridge-lineage)
+(GitHub Pages).
+
 The actual pipeline lives in a separate repo,
 [`hfu/mapterhorn`](https://github.com/hfu/mapterhorn) — a fork of
 [`mapterhorn/mapterhorn`](https://github.com/mapterhorn/mapterhorn),
