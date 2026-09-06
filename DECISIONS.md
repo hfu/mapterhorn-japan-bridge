@@ -165,3 +165,5 @@ This file is an index only (D0) -- entry bodies live in
 | [D143](DECISIONS1.md#d143-lineageにもpmtiles-clusterを適用d124d127の想定を拡張elevationより大きい重複統合効果を確認) | lineageにも`pmtiles cluster`を適用(D124/D127の想定を拡張)。elevationより大きい重複統合効果を確認 | Decided |
 | [D144](DECISIONS1.md#d144-merge_japan_bundlespy自体にcluster呼び出しを組み込み2号以降もコードで保証) | `merge_japan_bundles.py`自体にcluster呼び出しを組み込み、2号以降もコードで保証 | Accepted |
 | [D145](DECISIONS1.md#d145-15号stars公開完了実地確認クリーン15号ミッションコンプリート) | 1.5号、stars公開完了。実地確認クリーン——1.5号ミッションコンプリート | Accepted |
+| [D146](DECISIONS1.md#d146-lineageの低ズーム拡張z8z4elevationには一切触れず専用スクリプトで安全に実施) | lineageの低ズーム拡張(z8→z4)。elevationには一切触れず、専用スクリプトで安全に実施 | Recorded |
+| [D147](DECISIONS1.md#d147-jgd2011jgd2024のcrs変更を調査実データで実際に発生中と確認ただしepsgコード未発行のため今回は修正せず保留) | JGD2011→JGD2024のCRS変更を調査——実データで実際に発生中と確認、ただしEPSGコード未発行のため今回は修正せず保留 | Investigated, deferred |

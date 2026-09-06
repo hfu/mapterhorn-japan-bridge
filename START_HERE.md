@@ -5,7 +5,7 @@ to orient, then it points you at the one other document that actually
 answers your question. Nothing here is authoritative on its own — every
 section names the file that is.
 
-Last reconciled against the code: **2026-09-06**. If today is much later
+Last reconciled against the code: **2026-09-07**. If today is much later
 than that, treat the "current status" section as a lead, not a fact, and
 re-derive it from `DECISIONS.md`'s last few entries.
 
@@ -155,9 +155,12 @@ These are not style preferences. Each one below cost real data or real days.
 - **Next: 2号**, gated on GSI shipping a new DEM1A update (`PLAN.md` §1 —
   still not triggered as of a 2026-09-06 live check). Launch-readiness was
   reviewed the same day (`PLAN.md` §8): code/infra are essentially ready
-  (2号 needs no pipeline code changes, by 1.5号's own design), but a few
-  items are still open — the JGD2011→JGD2024 CRS change (§1) hasn't been
-  verified against `aggregation_reproject.py`, 5m/10m's corruption-bug-class
+  (2号 needs no pipeline code changes, by 1.5号's own design). Of the three
+  open items, one is now closed-by-decision: the JGD2011→JGD2024 CRS
+  question (§1) was investigated 2026-09-07 (D147) — real source data
+  already carries the new CRS label and the external `gmldem2tif.rb` tool
+  mislabels it, but JGD2024 has no EPSG code yet, so Hidenori chose to
+  wait rather than patch now. Still open: 5m/10m's corruption-bug-class
   exposure is untested, and the dirty-tracking design question (D57) is
   undecided. **2号 itself launches in a fresh session, not whichever session
   did this prep** (Hidenori's own call).

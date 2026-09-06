@@ -81,6 +81,31 @@ compaction** -- summary:
   brought current in the same pass -- both had drifted noticeably (the
   Mission section and source-catalog listing in particular still
   described the pre-1.5-go, pre-rename state).
+- **Doc-freshness pass + JGD2011→JGD2024 investigation (2026-09-07)**:
+  worked through the docs the 2026-09-06 refresh had explicitly skipped
+  (`PIPELINE_DESIGN.md`/`README.md` here; `FORK_NOTES.md`/`pipelines/
+  README.md`/`pipelines/DOWNSAMPLING_OPTIMIZATION.md` in
+  `hfu-mapterhorn`) -- all had drifted behind D143-D146 (pmtiles
+  cluster now built into `merge_japan_bundles.py`, not just proposed;
+  1.5-go's layer/datatype/generation_id structure is now the live
+  structure, not a target; `FORK_NOTES.md` was missing ~18 Japan-
+  bridge-specific commits entirely). Then tackled the first of the
+  three open 2号-readiness items: the JGD2011→JGD2024 CRS question.
+  Confirmed with real data (not hypothetically) that 2026-downloaded
+  GSI GML already carries `srsName="fguuid:jgd2024.bl"`, and that the
+  external `gmldem2tif.rb` tool (`unopengis/gmldem2tif`, invoked from
+  `japan-geotiff-dem`'s `convert` step) ignores that attribute and
+  always stamps `EPSG:6668` (JGD2011). Also confirmed, directly against
+  this machine's current GDAL 3.13.3/PROJ database, that **JGD2024 has
+  no EPSG code yet** (only ESRI:104221/104220), and that PROJ registers
+  JGD2011→JGD2024 as an explicit ~1.0m-accuracy transform rather than a
+  null one -- the same wall GDAL itself hit in 2025-08
+  (OSGeo/gdal #12897/#12918), worked around there with a hand-rolled
+  WKT pending an EPSG code. Hidenori's call: **don't patch
+  `gmldem2tif.rb` yet, wait for EPSG to publish a real code** -- not a
+  2号 launch blocker. Full writeup: `DECISIONS.md` D147. Whether/how to
+  loop in Oliver Wipfli on this (upstream `jpdem1a` may face the same
+  gap) is still to be decided.
 
 **What's next**: 2号 itself, once GSI ships a new DEM1A update
 (`PLAN.md` §1, working estimate end of November 2026) -- **in a fresh

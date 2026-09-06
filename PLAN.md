@@ -115,18 +115,26 @@ mesh filenames, e.g. `-DEM1A-20250507.tif`, is the underlying survey/
 feature creation date, not a reprocessing timestamp — seeing an old
 date there is not evidence of pre-revision values.)
 
-**New item surfaced by that same check, not yet resolved**: the 2025-04
-revision was not only an elevation-value change — **the coordinate
-reference system itself moved from JGD2011 to JGD2024** ("座標参照系が
-「JGD2011」から「JGD2024」に変更"). Neither this file, `DECISIONS.md`, nor
-`japan-geotiff-dem`'s own docs mention this CRS change anywhere (checked
-via grep, no hits). Since 2号 means a full fresh re-download from GSI,
-every source file 2号 ingests will be JGD2024, not JGD2011 — worth
-confirming before 2号 starts that `aggregation_reproject.py` and any
-other place in the pipeline that assumes/declares a source CRS handles
-this correctly rather than silently mislabeling JGD2024 data as
-JGD2011. Not investigated further here; flagged for section 3 or 4's
-own pre-2号 checklist.
+**Item surfaced by that same check, investigated and deferred 2026-09-07
+(D147)**: the 2025-04 revision was not only an elevation-value change —
+**the coordinate reference system itself moved from JGD2011 to
+JGD2024** ("座標参照系が「JGD2011」から「JGD2024」に変更"). Confirmed
+this is not hypothetical: real 2026-downloaded GML in
+`japan-geotiff-dem-repo/src/1/` already carries
+`srsName="fguuid:jgd2024.bl"`. The GeoTIFF-writing tool
+(`gmldem2tif.rb`, external, `unopengis/gmldem2tif`) never reads
+`srsName` and always stamps `EPSG:6668` (JGD2011);
+`aggregation_reproject.py` trusts whatever CRS is embedded without a
+`-s_srs` override, so the whole pipeline is internally consistent but
+silently mislabels JGD2024 source data as JGD2011. **However, as of
+2026-09-07 JGD2024 has no EPSG-authority code yet** (verified directly
+against this machine's current GDAL 3.13.3/PROJ database — only
+ESRI:104221/104220 exist, and PROJ registers JGD2011→JGD2024 as an
+explicit ~1.0m-accuracy transform, not a null one; GDAL itself hit the
+same wall in 2025-08, OSGeo/gdal #12897/#12918, and used a hand-rolled
+WKT pending an official code). Hidenori's call: **do not patch
+`gmldem2tif.rb` yet — wait for EPSG to mint a real code**, not a
+launch blocker for 2号. Full writeup: `DECISIONS.md` D147.
 
 ## 2. Scope: what actually needs refreshing
 
@@ -484,11 +492,21 @@ generation_id発行・aggregation開始)は別セッションで行う合意の�
 - ✅ `bundle.py`のpmtiles-storeレース修正(D37/D44) — 恒久修正済み、2号は自動的に恩恵を受ける。
 
 **未解決・2号起動前に確認が必要な項目**:
-- ⚠️ **JGD2011→JGD2024座標系変更(§1で発見、未検証)**: 2025-04のGSI標高改定で
-  座標参照系がJGD2011からJGD2024に変わった。2号が新規ダウンロードする全ファイルは
-  JGD2024になるはずだが、`aggregation_reproject.py`等がこれを正しく扱うか
-  (CRSを決め打ち/誤ラベルしていないか)は**まだコードを読んで確認していない**。
-  2号起動前に必ず確認すること——このセッションでも未着手。
+- ⚠️→🟡 **JGD2011→JGD2024座標系変更(§1で発見、2026-09-07に調査完了・D147)**:
+  実際の2026年ダウンロード分GML(`japan-geotiff-dem-repo/src/1/`)を展開して
+  確認したところ、既に`srsName="fguuid:jgd2024.bl"`——2号が読むデータは
+  今この瞬間から既にこの状態。CRSをGeoTIFFへ焼き付けているのは
+  `aggregation_reproject.py`ではなく外部ツール`gmldem2tif.rb`
+  (`unopengis/gmldem2tif`)で、`srsName`を無視し常時`EPSG:6668`
+  (JGD2011)を焼き付ける決め打ち。`aggregation_reproject.py`はその
+  埋め込みCRSを無条件に信頼する設計(`-s_srs`指定なし)。
+  **ただし2026-09-07時点でJGD2024にEPSGコードが未発行**(このマシンの
+  最新GDAL 3.13.3/PROJで確認、ESRI:104221のみ存在。JGD2011→JGD2024の
+  変換もPROJ上は精度1.0mの明示的変換で恒等変換ではない。GDAL本体も
+  同じ壁にぶつかり2025-08にOSGeo/gdal #12897/#12918で独自WKTの
+  暫定対応をした前例あり)。Hidenoriさんの判断で**今回は`gmldem2tif.rb`
+  を修正せず、EPSG正式コード発行を待つ**——2号launchのブロッカーには
+  しない。詳細・再確認タイミングはDECISIONS.md D147参照。
 - ⚠️ **5m/10mデータの破損チェック未実施(§3)**: `gmldem2tif.rb`のバグは1mでのみ
   109メッシュの全数調査済み(japan-geotiff-dem側)。同じ実行環境依存のバグクラスが
   5m/10mにも存在するかは「まだテストしていない」——2号起動前にテストするか、

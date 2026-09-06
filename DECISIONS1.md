@@ -2010,3 +2010,109 @@ lineageアーカイブが日本全体の低ズーム傾向を含む形でstars�
 > 無傷。**次のアクション**: Hidenoriさんが依頼した独立リポジトリ
 > (`hfu/japan-bridge-lineage`、Vite+MapLibre GL JS v6+globe view+
 > GitHub Pages `docs/`)の新規作成に着手する。
+
+
+## D147: JGD2011→JGD2024のCRS変更を調査——実データで実際に発生中と確認、ただしEPSGコード未発行のため今回は修正せず保留
+
+**Status**: Investigated, decided to defer, 2026-09-07。
+
+### 経緯
+
+`PLAN.md`§1(2026-09-03)で、GSIの2025-04標高改定の副産物として
+「座標参照系がJGD2011からJGD2024に変更された」ことが見つかり、2号
+launch前の未検証項目として残っていた。今回、実コード・実データ・
+最新のGDAL/PROJデータベースを直接確認して決着させた。
+
+### 調査内容
+
+**パイプライン側のコード確認**:
+- GeoTIFFへのCRS書き込み元は`hfu-mapterhorn`ではなく、
+  `japan-geotiff-dem`が`convert`ステージで呼ぶ外部Dockerツール
+  `gmldem2tif`(`github.com/unopengis/gmldem2tif`、ローカルクローン
+  `/Volumes/Migrate-2025-04/github/gmldem2tif`)。その`gmldem2tif.rb`は
+  `EPSG_CODE = 6668`という定数を無条件に採用し(`set_projection()`)、
+  GMLの`srsName`属性を一切読まずに全出力をJGD2011として焼き付ける。
+- `hfu-mapterhorn/pipelines/aggregation_reproject.py`の`create_warp()`は
+  `gdalwarp`に`-s_srs`を渡さず、入力GeoTIFFに埋め込まれたCRS
+  (=常にEPSG:6668)をそのまま信頼して`-t_srs EPSG:3857`へワープする
+  設計——つまり全体が「入力は常にEPSG:6668」という前提で一貫している。
+
+**実データでの確認(仮説ではなく現在進行形の事実)**:
+`japan-geotiff-dem-repo`の`src/1/`にある実ファイルのうち、mtimeが
+2025-08-01以降(=GSIの2025-07-31改定より後にダウンロードされたもの)
+の一つ、`FG-GML-473131-DEM1A-20260603.zip`を実際に展開して確認した
+ところ、含まれる`FG-GML-4731-31-89-DEM1A-20260603.xml`
+(ファイル名の日付自体は`-20250718`のものも含む——`PLAN.md`が既に
+警告している通り、ファイル名日付は測量日であり再処理日ではない)の
+`<gml:boundedBy><gml:Envelope srsName="fguuid:jgd2024.bl">`が
+実際に`fguuid:jgd2024.bl`だった。**2号がこれから取り込む実データは、
+既に現時点でこの状態になっている。**
+
+**EPSGコードの現況(2026-09-07、このマシンの最新GDAL/PROJで直接確認)**:
+- GDAL 3.13.3(2026-08-13リリース、直近)のPROJデータベースを
+  `projinfo`で直接クエリした結果、**JGD2024にはEPSG権威のコードが
+  まだ存在しない**。登録されているのはESRI権威のコードのみ
+  (2次元地理座標系`ESRI:104221`「JGD_2024」、3次元`ESRI:104220`
+  「JGD_2024_3D」、平面直角座標系19系・UTM各ゾーン・標高系も同様に
+  ESRI権威)。ネット記事で見た「EPSG Dataset v12.055(2026-04)で
+  登録済み」という情報は、少なくともこの最新PROJデータベースには
+  反映されていない。
+- `projinfo -s EPSG:6668 -t ESRI:104221`は`ESRI:108386,
+  "JGD_2011_To_JGD_2024_1", 1.0 m`という**明示的な変換**を返した——
+  恒等変換(null transform)としては登録されておらず、PROJ自身の
+  モデルでは「厳密に同一ではない、公称精度1.0mの変換」として扱われて
+  いる。
+- 同じ問題はGDAL本体も先に踏んでいた: `OSGeo/gdal` issue #12897
+  (2025-08-09、`fguuid:jgd2024.bl`をGDALのGMLドライバが認識できず
+  軸順序を誤る)→ PR #12918(2025-08-26マージ)で、GSI公式基盤地図
+  情報ダウンロードデータ仕様書v5.2 p.46で定義された識別子と判明。
+  当時EPSGコードが存在しなかったため、GDALは`DATUM["Japanese
+  Geodetic Datum 2024",...]`を持つ独自WKTを`// FIXME when EPSG
+  attributes a CRS code`というコメント付きで手で組み立てて暫定
+  対応した。GDALの現在のPROJデータベース(3.13.3時点)がその後
+  ESRI権威コードに移行済みなのは確認したが、EPSGコード自体は
+  まだ発行されていない。
+
+### Hidenoriさんとの判断
+
+「基本、日本ローカルの話ではあるが、直すべきものであることは間違い
+ない」という前提のもと検討したが、「fguuid:jgd2024.blのような特殊
+コードを使う必要はなく、EPSGコードで普通に表現できる範囲のはず」
+という見立てを持っていた。上記調査の結果、その見立ては現時点では
+外れている(EPSGコード自体がまだ存在しない)ことが分かったため、
+Hidenoriさんの判断で**今回は`gmldem2tif.rb`を修正せず、EPSGが正式
+コードを発行するのを待つ**こととした。ESRI:104221を暫定採用する
+案、GDALと同様の手組みWKTを埋め込む案は、いずれも今回は見送り。
+
+### 結論・今後
+
+- `gmldem2tif.rb`は当面`EPSG:6668`固定のまま——2号launchの
+  ブロッカーにはしない(Hidenoriさんの評価: 致命的ではない)。
+- **定期的にEPSG登録状況を再確認すること**(次に確認するタイミング:
+  2号launch直前、または`projinfo JGD2024`のID行が`ESRI`から`EPSG`に
+  変わったことに気づいた時)。EPSGコードが発行されたら、
+  `gmldem2tif.rb`の`srsName`読み取り対応(jgd2011.bl→EPSG:6668、
+  jgd2024.bl→新EPSGコード)を実施する。
+- 参考までに、この調査結果(実データでの`fguuid:jgd2024.bl`確認、
+  EPSGコード未発行の現況)はOSGeo/gdal issue #12897や、Mapterhorn
+  メンテナのOliver Wipfliにとっても有用な情報である可能性が高い——
+  upstream`jpdem1a`が独自にGSIのGMLを取り込んでいるなら同じ問題を
+  抱えている可能性がある。共有するかどうかは別途Hidenoriさんと相談。
+
+### Resume prompt
+
+> D147: JGD2011→JGD2024のCRS変更を調査完了。実データ確認の結果、
+> `japan-geotiff-dem`の2026年ダウンロード分は既に`srsName=
+> "fguuid:jgd2024.bl"`で、変換ツール`gmldem2tif.rb`(外部、
+> `unopengis/gmldem2tif`)はこれを無視して常時EPSG:6668を焼き付けて
+> いることを確認(仮説ではなく現在進行形)。ただし最新GDAL/PROJ
+> (3.13.3, 2026-08)で直接確認したところ**JGD2024にEPSGコードはまだ
+> 存在せず**(ESRI:104221のみ)、JGD2011→JGD2024の変換もPROJ上では
+> 精度1.0mの明示的変換として登録されている(恒等変換ではない)。
+> GDAL本体も2025-08に同じ問題を踏み、当時は独自WKTで暫定対応した
+> (OSGeo/gdal #12897/#12918)。Hidenoriさんの判断で**今回はコード
+> 修正せず、EPSG正式コードの発行を待つ**——2号launchのブロッカーには
+> しない。次回セッションでの確認事項: `projinfo JGD2024`で`ID`行が
+> `EPSG`になっていないか。**次のアクション**: 残る未解決2項目
+> (5m/10m破損バグテスト、D57 dirty-tracking判断)へ進む。Oliver
+> Wipfliへの共有要否は別途相談。
