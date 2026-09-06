@@ -525,6 +525,29 @@ lack LERC support). Not decided yet.
   slate側の自律スクリプトに切り出す方向性は既に承認済み(未実装)——
   2号着手前の実装を検討。
 
+**機能面の申し送り**:
+- **lineageの低ズーム拡張(D146)は2号でも標準手順として実行すること**:
+  elevationの`downsampling_covering.py`が持つ`min_output_zoom=8`という
+  下限は、Mapterhorn本家グローバルz0-7成果物を接合する設計上の都合で、
+  lineageには本来当てはまらない(lineageには接合対象となる外部の
+  グローバル成果物が存在しない、D96)。2号でも、lineageの
+  downsampling_run.pyがz8まで完走した後、bundle.py
+  (`BUNDLE_DATATYPE=lineage`)を実行する**前に**、
+  `hfu-mapterhorn/pipelines/lineage_extend_low_zoom.py`を実行すること。
+  既存の共有パイプラインコード(`downsampling_covering.py`/
+  `downsampling_run.py`)は一切変更せず、既に構築済みのz8レイヤーを
+  読み取り専用で使い、z7/z6/z5/z4(デフォルト、`LINEAGE_EXTEND_
+  TARGET_ZOOM`で変更可)を追加構築する独立スクリプト——generation_id
+  は`utils.get_aggregation_ids()[-1]`から自動取得するため、2号でも
+  コード変更なしにそのまま動く設計。実行は数秒〜数十秒程度(1.5号
+  実測、Japan-only低ズームのタイル数は極小)。内蔵のタイル数
+  サニティチェック(`SANE_TILE_COUNT_CEILING`)が、開発中に実際に
+  発生した「地球全体を誤って対象にする」バグの再発を自動検知する。
+  2号のソースデータが1.5号と異なる場合(新GSIデータ取り込み、§3)、
+  z8時点の実タイル数が変わりうる点に留意——閾値(5000)は余裕を
+  持たせてあるが、極端に既存想定と異なる規模になった場合は要見直し。
+  詳細はDECISIONS.md D146参照。
+
 ## Resume note
 
 If picking this file up cold: check `DECISIONS.md`'s most recent
