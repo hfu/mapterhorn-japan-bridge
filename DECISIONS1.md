@@ -1897,3 +1897,116 @@ D96で構想された1.5号の二重目的——(1)D95の名前空間分離を�
 > lineageのダッシュボード組み込み方法をHidenoriさんと相談、
 > stars-cdからのディスク容量相談の返信待ち。2号は新セッションで
 > 着手予定(このセッションの主要ミッションはここで完了)。
+
+
+## D146: lineageの低ズーム拡張(z8→z4)。elevationには一切触れず、専用スクリプトで安全に実施
+
+**Status**: Recorded, 2026-09-06 19:45 JST頃。
+
+### 背景
+
+Hidenoriさんから「lineageタイルを、日本全体の傾向がわかるよう、もう少し
+低いminzoomまでダウンサンプリングを進められるか」との要望。
+
+`downsampling_covering.py`の`write_downsampling_items()`が持つ
+`min_output_zoom=8`という下限は、実はelevation固有の事情——自前の
+z0-7ピラミッドには深海部の構造的な欠損があり、Mapterhorn本家の
+グローバルz0-7成果物を`pmtiles merge`で丸ごと接合する設計のため、
+自前生成をz8で止めている(コード内コメント参照)。lineageには
+接合対象となる外部のグローバル成果物が存在しない(D96で
+「lineageは最初から最後までJapan-only」と設計済み)ため、この下限は
+lineageには本来当てはまらない。
+
+### 実装上の注意——共有コードには触れない
+
+`write_downsampling_items()`のcovering CSV生成はdatatype非依存
+(elevation・lineage共有)で、`downsampling_run.py`はaggregation-store
+配下の`*-downsampling.csv`を機械的に全部処理する。単純に
+`min_output_zoom`を下げて再実行すると、**elevation側もz4-z7の
+不要な再構築に巻き込まれる**(314GBの本番アーカイブには一切触れない
+という方針に反する)。
+
+この危険を避けるため、既存の公開済みz8レイヤー(読み取りのみ)を
+入力とする独立スクリプト`hfu-mapterhorn/pipelines/lineage_extend_low_zoom.py`
+を新規作成した。`downsampling_covering.py`/`downsampling_run.py`は
+一切変更していない。z8→z7→z6→z5→z4の4段を、`lineage_downsample.
+majority_vote_downsample()`(既存・自己テスト済み)を再利用して
+順次構築し、`get_pmtiles_folder()`の既存のz<7フラットバケット命名
+規則(`{extent}-{output_zoom}.pmtiles`)に沿って出力するため、
+`bundle.py`側のコード変更は不要だった。
+
+### 実装中に発見・修正した実バグ
+
+初版のスクリプトは、自分自身が書いた出力ファイル(`0-0-0-{zoom}.
+pmtiles`、Japan全体を単一の仮想z0エクステントとして命名)を次段の
+入力として再度glob+ファイル名解析で読み込んでいたが、
+`get_tile_to_pmtiles_filename()`はファイル名のエクステントタイル
+(z0/x0/y0)から`mercantile.children()`で子タイル集合を機械的に
+導出する仕組みのため、「z0/0/0の全子孫」=**地球全体**(z7で16,384
+タイル)を対象と誤認識してしまった。実際には68個の実タイルしか
+存在しないにもかかわらず、大半がnodataの偽タイルを地球全体に
+量産する形になっていた(z6で4,096個生成、うち実質日本分は17個)。
+
+z6/z5/z4の3ファイルを削除し、各段で実際に構築したタイル集合を
+Python側で明示的に次段へ引き渡す設計に修正して再実行——結果は
+z7:68→z6:17→z5:10→z4:6タイルという妥当な数に。z4/13/6タイルの
+デコード確認でも、カテゴリ0(1m)/1(5mA)/2(5mB)/3(5mC)/5(10mB)/6
+(海)の混在が本土相当の位置に正しく現れていることを確認した。
+
+### 再ビルド・再公開
+
+lineageだけを対象に、既存のパイプラインコードをそのまま再利用:
+
+1. `BUNDLE_DATATYPE=lineage python3 bundle.py 1`(23ファイル生成、
+   EXIT_CODE=0)
+2. `MERGE_DATATYPE=lineage python3 merge_japan_bundles.py`(D144の
+   自動`pmtiles cluster`込み、2,568,162タイル、EXIT_CODE=0)
+3. `./pmtiles verify` — 61ms、クリーン。`./pmtiles show`:
+   `min zoom: 4`(旧8から更新)、`max zoom: 16`、`clustered: true`。
+   ファイルサイズ204.6MB(旧204.57MB、z4-7追加分はごくわずか)。
+   `bounds`の南端がlat 0.0まで広がって見えるのは、z4/13/7タイルの
+   グリッド境界が沖ノ鳥島近辺の少量の有効ピクセルを含むだけでも
+   タイル全体の幾何境界としては赤道まで届くため——データ異常では
+   ない(mercantile.bounds()で確認済み)。
+4. `rsync`でstars側`/home/stars/data/mapterhorn-japan-bridge-lineage.
+   pmtiles`を`.new`サフィックス経由でアトミックに置き換え(headroom
+   149GB、ファイルが小さいためD142のような削除→転送の2段階は不要)、
+   `systemctl --user restart martin`。
+5. 公開URL(`https://stars.optgeo.org/mapterhorn-japan-bridge-lineage`)
+   のTileJSONで`minzoom:4`を確認、`4/13/6`タイルもHTTP 200で取得
+   できることを確認。
+
+elevation側のアーカイブ・パイプラインコードには最後まで一切触れて
+いない。
+
+### 現在の状態
+
+lineageアーカイブが日本全体の低ズーム傾向を含む形でstarsに公開
+済み。ダッシュボード(`mapterhorn-monitor`)のLineage instrumentは
+`minzoom:8`のまま(既存のズームレベル11前後の詳細ビューでは
+影響なし)——低ズーム表示を活かすのは、Hidenoriさんが依頼した
+もう一つの作業(独立GitHub Pagesサイト、globe view)の方が適切。
+
+### 残タスク
+
+- 独立リポジトリ(`hfu/japan-bridge-lineage`案)の新規作成:
+  Vite + MapLibre GL JS v6系 + globe view + GitHub Pages(`docs/`)、
+  今回拡張した低ズームlineageデータを活用
+- stars-cdとのディスク容量問題(Source Cooperative移設案)の
+  相談は継続中、返信待ち
+- 2号は新しいセッションで着手(このセッションでは行わない)
+
+### Resume prompt
+
+> D146: lineageアーカイブの低ズーム拡張(z8→z4)完了・公開済み
+> (2026-09-06 19:45 JST頃)。elevation固有の`min_output_zoom=8`の
+> 理由(Mapterhorn本家グローバルz0-7の接合)はlineageには当てはまら
+> ないため、新規独立スクリプト`lineage_extend_low_zoom.py`(既存の
+> 共有パイプラインコードは無変更)でz7/z6/z5/z4を追加構築。実装中に
+> 「地球全体を誤って対象にする」バグを発見・修正済み(修正後は
+> z7:68→z6:17→z5:10→z4:6タイルという妥当な数)。lineageのみ再
+> bundle→merge→cluster→verify→starsへ再公開、ライブ確認済み
+> (`minzoom:4`、`4/13/6`タイルHTTP 200)。elevation・共有コードには
+> 無傷。**次のアクション**: Hidenoriさんが依頼した独立リポジトリ
+> (`hfu/japan-bridge-lineage`、Vite+MapLibre GL JS v6+globe view+
+> GitHub Pages `docs/`)の新規作成に着手する。
