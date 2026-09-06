@@ -5,7 +5,7 @@ to orient, then it points you at the one other document that actually
 answers your question. Nothing here is authoritative on its own — every
 section names the file that is.
 
-Last reconciled against the code: **2026-09-04**. If today is much later
+Last reconciled against the code: **2026-09-06**. If today is much later
 than that, treat the "current status" section as a lead, not a fact, and
 re-derive it from `DECISIONS.md`'s last few entries.
 
@@ -33,6 +33,7 @@ Deeper: `README.md` (public framing), `CLAUDE.md` § Mission.
 | `hfu/mapterhorn` | `slate`, `/Volumes/Migrate-2025-04/github/hfu-mapterhorn/` | The **actual pipeline**, in `pipelines/`. A real fork of upstream — keep it close to upstream, bug fixes only. |
 | `optgeo/japan-geotiff-dem` | `aalto` | Upstream-of-us: GSI DEM → GeoTIFF → Source Cooperative. Has its own `CLAUDE.md`/`DECISIONS.md`; ask questions there, not here. |
 | `hfu/mapterhorn-monitor` | GitHub Pages | Open MCT dashboard for long runs. Separate repo. |
+| `hfu/japan-bridge-lineage` | GitHub Pages | Standalone globe-view showcase of the lineage layer (Vite + MapLibre GL JS, pinned to 5.24.0 -- 6.x's raster-dem loading is broken, see `DECISIONS.md` D146-adjacent history). Separate repo, built for sharing outside the dashboard (e.g. with Oliver Wipfli). |
 
 **Everything computational happens on `slate` over SSH.** From a session host:
 
@@ -141,21 +142,32 @@ These are not style preferences. Each one below cost real data or real days.
 > This section is the one part of this file that is expected to rot.
 > It is a pointer, not a record.
 
-- **Authoritative right now:** `DECISIONS.md` **D124/D125** and `HANDOVER.md`'s
+- **Authoritative right now:** `DECISIONS.md` **D145/D146** and `HANDOVER.md`'s
   topmost "Current state" section.
-- As of 2026-09-04: 1.5号 is **prepped, rehearsed, and independently graded —
-  still not launched**. Pre-launch hardening is implemented in production
-  `pipelines/`, proven by a chained two-item rehearsal with zero writes into
-  production, then graded by a second, independent reviewer against its own
-  pre-derived checklist (D125: "push it", one blocker found and fixed). The
-  national run (~50–70h) awaits Hidenori's explicit go. The launch runbook is
-  in D124/D125.
-- All of that work is **pushed** to both repos' `origin/main` as of D125.
-  Still always check `git log origin/main..HEAD` before assuming a later
-  session's work is pushed — this has bitten the project before.
+- As of 2026-09-06: **1.5号 is mission complete.** Both of D96's founding
+  goals are done — D95's namespace separation validated at real national
+  scale with zero incidents, and the lineage feature implemented, published,
+  and extended to a lower zoom floor (D146) for a nationwide overview. Both
+  elevation (314.66GB) and lineage (204.6MB) archives are live on `stars`,
+  verified clean. A standalone showcase site (`hfu/japan-bridge-lineage`)
+  was also built and shared externally (Oliver Wipfli). 1号's own data was
+  never touched throughout.
+- **Next: 2号**, gated on GSI shipping a new DEM1A update (`PLAN.md` §1 —
+  still not triggered as of a 2026-09-06 live check). Launch-readiness was
+  reviewed the same day (`PLAN.md` §8): code/infra are essentially ready
+  (2号 needs no pipeline code changes, by 1.5号's own design), but a few
+  items are still open — the JGD2011→JGD2024 CRS change (§1) hasn't been
+  verified against `aggregation_reproject.py`, 5m/10m's corruption-bug-class
+  exposure is untested, and the dirty-tracking design question (D57) is
+  undecided. **2号 itself launches in a fresh session, not whichever session
+  did this prep** (Hidenori's own call).
+- All work through D146 is **pushed** to both repos' `origin/main`. Still
+  always check `git log origin/main..HEAD` before assuming a later session's
+  work is pushed — this has bitten the project before.
 - `publish_cycle.py` is **hard-guarded off** (it `sys.exit(1)`s immediately,
-  D115). Publishing is manual, per D124's runbook. Do not remove the guard
-  without doing the repair it names.
+  D115) and was never used for 1.5号's own publish either — publishing has
+  been fully manual since 1号, per the runbook that's now in `DECISIONS.md`
+  D124/D142/D145. Do not remove the guard without doing the repair it names.
 
 ## 7. Conventions
 

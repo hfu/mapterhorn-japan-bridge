@@ -29,21 +29,28 @@ step, and how this differs from `hfu/fusi` (an earlier, unrelated,
 non-fork DEM→PMTiles toolchain whose role this project has since
 mostly absorbed).
 
-**Scope, updated 2026-09-01 — this paragraph moves fast, verify
+**Scope, updated 2026-09-06 — this paragraph moves fast, verify
 against `HANDOVER.md`/`DECISIONS.md` before trusting it**: all four
 sources (`jpnational1`/`5`/`10`/`sea`) are full national scope as of
-1号 (generation `01M0MWK852631SHCHPA66F21WQ`). 1号's own aggregation
-completed and was fully repaired after a cascading incident (D74-D76,
-D97) that deleted then rebuilt 3,344 aggregation outputs and (found
-mid-verification) 7,079 downsampling outputs (D100/D101) — check
-`DECISIONS.md`'s latest entries and `HANDOVER.md`'s current-state
-section before assuming 1号 has actually finished and published;
-as of this writing it has not yet been re-verified clean or rsynced
-to `stars`. **Do not treat `find aggregation-store/*/ -name '*.done'
-| wc -l` alone as proof of correctness anymore** — this exact class of
-stale-marker bug (D53/D69/D100) has recurred at increasing scale;
-always cross-check against `check_downsampling_done_integrity.py`
-and `check_pmtiles_integrity.py` before trusting a `.done` count.
+1号 (generation `01M0MWK852631SHCHPA66F21WQ`), published and stable on
+`stars`. **1.5号** (generation `01M1MKD73P0KDT719H21NJV9VR`) has since
+reached mission complete (D145/D146): a structurally-rewritten pipeline
+(generation_id/layer/datatype namespace separation, D95/D124) validated
+at real national scale, plus the lineage feature (D93/D94/D96)
+implemented, published, and extended to a lower zoom floor (D146).
+Both elevation and lineage archives are live on `stars`, verified
+clean; 1号's own data was never touched. **2号 is next** — gated on
+GSI shipping a new DEM1A update (not yet, see `PLAN.md` §1's live
+checks), to launch in a fresh session per Hidenori's own call (avoids
+juggling two differently-scoped generations in one session's context).
+See `PLAN.md` §8 for the current 2号 launch-readiness checklist
+(mostly ready; a few open items, e.g. the JGD2011→JGD2024 CRS change
+not yet verified against `aggregation_reproject.py`).
+**Do not treat `find aggregation-store/*/ -name '*.done' | wc -l`
+alone as proof of correctness** — this exact class of stale-marker bug
+(D53/D69/D100) has recurred at increasing scale; always cross-check
+against `check_downsampling_done_integrity.py` and
+`check_pmtiles_integrity.py` before trusting a `.done` count.
 
 **Upstream sync with `mapterhorn/mapterhorn` (D22's original ask) has
 happened twice now** (D63, D82) — most upstream churn since has been
@@ -54,28 +61,31 @@ standing todo anymore; re-check only if upstream's architecture
 direction becomes relevant again (e.g. if 号2's scale ever demands
 distributing across more than one machine).
 
-**Next planned initiative: 「1.5号」** (Hidenori's decision, D96) — a
+**「1.5号」 — mission complete (D145/D146, 2026-09-06)**: a
 staging/regression run using 1号's own already-downloaded source data
 but a structurally-fixed pipeline (D95/D107: separate the aggregation
 and downsampling layers' file namespaces AND add a generation_id
 directory level, the root design flaw behind D74-D76/D100/D123), plus
-the lineage-tile feature (D93/D94). Runs *before* real 2号 (which is
-gated on GSI actually shipping a new DEM1A update — see `PLAN.md`
-§1, working estimate end of November 2026). 1.5号's terrarium output
-replaces 1号 on `stars`; its lineage output is new.
+the lineage-tile feature (D93/D94/D96). Both of D96's founding goals
+are done: the namespace fix validated at real national scale with zero
+incidents, and lineage implemented, published, then extended to a
+lower zoom floor for a nationwide overview (D146) — including a
+standalone showcase site (`hfu/japan-bridge-lineage`, GitHub Pages)
+shared with Oliver Wipfli. 1.5号's terrarium output replaced 1号 on
+`stars`; its lineage output is new (`mapterhorn-japan-bridge-
+lineage.pmtiles`). 1号's own data was never touched throughout.
 
-**Status as of D124/D125 (2026-09-04): implemented, rehearsed, and
-independently graded — not yet launched at national scale.** 1号 was
-fully cleaned, re-verified, and published first (D118-D122), exactly
-as this section used to require before any of the above could start.
-The namespace-separation fix and the generation_id layer are both
-implemented in production `pipelines/` and proven via a real chained
-rehearsal with zero writes into 1号's tree; a second, independent
-reviewer graded the actual diff against its own pre-derived safety
-checklist (verdict: "push it", one blocker found and fixed, D125). The
-national-scale run itself (~50-70h) is deliberately held for
-Hidenori's own explicit go — see `DECISIONS.md` D124/D125 for the
-launch runbook and open items, not this section.
+**Next: 2号** (real production run, gated on GSI shipping a new DEM1A
+update — see `PLAN.md` §1, working estimate end of November 2026, live-
+checked 2026-09-06 as not yet triggered). By design (1.5号's whole
+purpose) 2号 should need **no pipeline code changes**, just a fresh
+generation_id and a fast run — see `PLAN.md` §8 for the current launch-
+readiness checklist and its few still-open items (notably: the
+JGD2011→JGD2024 CRS change found in `PLAN.md` §1 hasn't been verified
+against `aggregation_reproject.py` yet). **2号 launches in a fresh
+session, not whichever session did 1.5号's prep work** — Hidenori's own
+call, to avoid the kind of cross-generation mix-ups a single session
+juggling multiple repos/generations can produce.
 
 ## Source priority order (read before touching aggregation code)
 
@@ -171,46 +181,47 @@ output between machines for a publish step.
 ## Source-catalog entries in `hfu/mapterhorn`
 
 All under `source-catalog/` in the `hfu/mapterhorn` clone on `slate`
-(`/Volumes/Migrate-2025-04/github/hfu-mapterhorn/`):
+(`/Volumes/Migrate-2025-04/github/hfu-mapterhorn/`). **Renamed
+2026-08-19** from the original `jpkyushutest*`/`jphakodatetrial*`/
+`jphokkaidodem1` test-scale names — the sections below describing those
+old names are historical (see
+`project_mapterhorn_japan_bridge_slate.md`-style memory / this repo's
+own git log around `25a3f7e`/`ffcd665` for the rename+cleanup detail).
+**Current, live entries**:
 
-- `jphakodatetrial1`, `jphakodatetrial5m`, `jphakodatetrial10m` —
-  small, real, throwaway-but-currently-live smoke-test sources (Mt.
-  Hakodate / Goryokaku area, ~2 mesh blocks). Used to validate the
-  whole pipeline end to end and to test the 1m→5m→10m priority-merge
-  specifically (D9). Safe to delete once superseded by full coverage.
-- `jphokkaidodem1` — the real target, full Hokkaido 1m, **not yet run
-  through aggregation** (only `file_list.txt` exists, generated from
-  `japan-geotiff-dem`'s local `dst/1` at the time — 12,736 entries,
-  covering only Z001–Z012's worth of Hokkaido; needs regenerating
-  against whatever's actually published before using it for real, see
-  D3/D4 and `japan-geotiff-dem`'s own `HANDOVER.md`). **Frozen as of
-  2026-08-11 (D12) — do not touch without an explicit fresh decision.**
-- `jpkyushutest1`/`jpkyushutest5m`/`jpkyushutest10m` — the real
-  Kyushu/Okinawa entries (this repo's sole focus as of D12), built
-  2026-08-10/11 from whatever's currently published on
-  `smartmaps/japan-geotiff-dem` for the 3900-5199 JIS mesh range, no
-  geographic cropping. Originally `jpkyushutest1` was a throwaway
-  pipeline speed-validation entry (name kept on repurposing to avoid
-  re-downloading). No 5m/10m-fallback dedup issues found for `5m`/
-  `10m`; `1m`'s `file_list.txt` needs periodic regeneration as more of
-  the 2026-06-03 survey refresh lands and gets synced (see
-  `japan-geotiff-dem`'s own `HANDOVER.md` for that pipeline's current
-  state/ETA).
+- `jpnational1` / `jpnational5` / `jpnational10` / `jpnationalsea` —
+  the real, full-national-scope entries (`jpnational5`/`jpnational10`
+  went national 2026-08-19; `jpnational1` followed once
+  `japan-geotiff-dem`'s own JCI 2026-09 finished all 11 zones).
+  `jpnational1` is the only one git-tracked (`git mv`'d, not
+  regenerated fresh); `5`/`10`/`sea` stay untracked, regenerable
+  derived artifacts. `jpnationalsea` sources Copernicus GLO-30 from
+  the AWS S3 mirror specifically (`copernicus-dem-30m.s3.amazonaws.com`),
+  not OpenTopography's MinIO mirror — the latter returns placeholder
+  ETags that break the checksum-skip download optimization.
+- Every other test/trial entry from the pre-national era
+  (`jphakodatetrial*`, `jpsapporo*`, `jpshakotan*`, `jphakodatecity*`)
+  was **deleted** in the same 2026-08-19 cleanup once `jpnational*`
+  superseded them — don't expect to find them in `source-store/`
+  anymore. `jphokkaidodem1` is the one exception, deliberately left in
+  place but **frozen** (stale partial data, "do not touch without an
+  explicit fresh decision").
 - Existing upstream entries `jpdem1a`/`jpdem5a-c`/`jpdem10a-b` (full
   Japan, various resolutions, produced via `hfu/fusi`, not this
-  effort) — **never put these in `source-store/` alongside the
-  `jphakodate*`/`jphokkaido*` entries** in the same run. `jpdem1a` is
-  1m at the *same* maxzoom as our own 1m sources, and the tie-break for
-  equal-maxzoom sources is alphabetical (`jpdem1a` < `jphokkaidodem1`)
-  — `jpdem1a`'s stale pre-update data would win over our fresher data
-  in any overlap (D6). Keep them out of `source-store/` entirely for
-  bridge runs.
+  effort) — **never put these in `source-store/` alongside
+  `jpnational*`** in the same run. `jpdem1a` is 1m at the *same*
+  maxzoom as our own 1m source, and the tie-break for equal-maxzoom
+  sources is alphabetical (`jpdem1a` < `jpnational1`) — `jpdem1a`'s
+  stale pre-update data would win over our fresher data in any overlap
+  (D6). Keep them out of `source-store/` entirely for bridge runs.
 
-All three `jphakodatetrial*`/`jphokkaidodem1` entries' `file_list.txt`
-point at public `https://data.source.coop/smartmaps/japan-geotiff-dem/
-{1,5,10}/...` URLs (D3) — fed via `source_download.py`, not by copying
-files between machines. `source_to_cog.py` is deliberately skipped in
-their `Justfile`s (D5).
+`jpnational*`'s `file_list.csv[.gz]` (format changed from `.txt` to
+CSV with `url,size,md5` columns, D14) point at public
+`https://data.source.coop/smartmaps/japan-geotiff-dem/{1,5,10}/...`
+URLs — fed via `source_download.py`'s `aria2c`-based downloader (D14),
+which uses the manifest's real MD5 (from S3 ETags) to skip
+already-correct local files with zero network requests where the
+source host supports it.
 
 ## Pipeline (run on `slate`, from `hfu-mapterhorn/pipelines/`)
 
@@ -219,15 +230,28 @@ uv run python source_download.py <source>      # fetch from Source Cooperative
 uv run python source_bounds.py <source>        # bounds.csv (cheap, header-only)
 uv run python source_polygonize.py <source> N  # coverage polygon (reads full-res data)
 uv run python aggregation_covering.py          # plans work, ALL source-store/*/bounds.csv at once
-AGGREGATION_WORKERS=N uv run python aggregation_run.py     # does the reprojection+merge+tile work
-uv run python downsampling_covering.py         # plans the z-pyramid overviews
-DOWNSAMPLING_WORKERS=N uv run python downsampling_run.py   # builds them
-uv run python bundle.py 1                      # packages into {z}-{x}-{y}.pmtiles + planet.pmtiles
+AGGREGATION_WORKERS=N uv run python aggregation_run.py     # does the reprojection+merge+tile work (EMIT_LINEAGE=1 also emits the lineage sibling archive, D93/D96)
+uv run python downsampling_covering.py         # plans the z-pyramid overviews (datatype-agnostic, shared by both datatypes)
+DOWNSAMPLING_WORKERS=N DOWNSAMPLING_DATATYPE=elevation|lineage uv run python downsampling_run.py   # builds them -- run once per datatype (D93/D107)
+uv run python lineage_extend_low_zoom.py       # lineage-only, standalone: extends its pyramid below z8 (D146) -- run once, after lineage's own downsampling_run.py pass, before bundle.py
+BUNDLE_DATATYPE=elevation|lineage uv run python bundle.py 1   # packages into {z}-{x}-{y}-lineage?.pmtiles + planet(-lineage)?.pmtiles -- run once per datatype
+MERGE_DATATYPE=elevation|lineage uv run python merge_japan_bundles.py   # merges + auto-clusters (D144) into the final per-datatype archive
 ```
 
 `aggregation_covering.py` has no source-selection flag — it globs
 *every* `source-store/*/bounds.csv` present. Control scope by
 controlling what's physically in `source-store/`, not by config.
+
+**Two datatypes since 1.5号 (D93/D96/D107)**: `elevation` (default,
+1号's only mode, Terrarium-encoded real heights) and `lineage` (which
+source tier filled each pixel, D93/D94, a single-channel category
+byte). `downsampling_run.py`/`bundle.py`/`merge_japan_bundles.py` all
+take a `*_DATATYPE` env var and process exactly one datatype per
+invocation — building both means running each script twice. Every
+`get_pmtiles_folder()` call additionally requires a `generation_id`
+(no default) since D95/D124 — see `PLAN.md` §0 for the label↔ULID
+table and this file's own Mission section for current generation
+status.
 
 **Priority-merge, verified correct by reading the code (D8)**: sources
 are sorted by `-maxzoom` (so higher-resolution = earlier = "most
@@ -253,6 +277,17 @@ merge` step splices in the z0-7 global overview to produce the final
 this final, publishable product). This is a full rebuild each time, not
 an incremental append — accepted cost for a temporary bridge product
 at its current scale (see D7 for the tradeoff).
+
+**Lineage's sibling archive, since 1.5号 (D96/D107)**:
+`mapterhorn-japan-bridge-lineage.pmtiles` — same `merge_japan_bundles.py`,
+`MERGE_DATATYPE=lineage`, own OUTPUT constant, no z0-7 global-overview
+splice (lineage has no external global counterpart to splice in, D96).
+`merge_japan_bundles.py`'s `main()` now runs `./pmtiles cluster` on its
+own output unconditionally for every datatype (D144) — lineage in
+particular dedupes ~83.5% of its tile content this way (D143, far more
+than elevation's ~19%), so this is not optional. Published separately
+to `stars` alongside the elevation archive, at a `-lineage` suffixed
+path matching the filename.
 
 **`publish_cycle.py` is currently hard-disabled** (`sys.exit(1)` at the
 top of `main()`, D115) — it was found to have a catastrophic bug

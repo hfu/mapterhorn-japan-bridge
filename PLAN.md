@@ -30,8 +30,8 @@ updated whenever a new generation starts:
 | Label | generation_id | Status |
 |---|---|---|
 | 1号 | `01M0MWK852631SHCHPA66F21WQ` | Complete, published to stars (D106) |
-| 1.5号 | `01M1MKD73P0KDT719H21NJV9VR` | **Launched 2026-09-04 07:23 JST** (D127/D128). Aggregation ~96%+ done as of 2026-09-05 13:33 JST (screen `agg15go` on slate). Survived a kernel-panic incident at 19:54 JST (D129, memory-compressor exhaustion under 5 workers) with zero data loss; recovered and running on **3 workers, fixed permanently for both 1.5号 and 2号 (D130/D131)**. See DECISIONS.md D124-D131 for the full runbook and status |
-| 2号 | *(not started)* | Gated on GSI's next quarterly DEM1A update (section 1) |
+| 1.5号 | `01M1MKD73P0KDT719H21NJV9VR` | **Mission complete (D145/D146), 2026-09-06.** Both goals achieved: D95 namespace separation validated at national scale, lineage feature implemented/published/extended to z4. elevation (314.66GB) + lineage (204.6MB) both live on stars, verified clean. Worker count fixed at **3, permanently, for both 1.5号 and 2号 (D130/D131)**. 1号 untouched throughout. See DECISIONS.md D124-D146 for the full runbook and PLAN.md §9 for lessons handed to 2号 |
+| 2号 | *(not started)* | Gated on GSI's next quarterly DEM1A update (section 1). **Live-checked 2026-09-06: still 2026-07-31, no new update yet** |
 
 ## 1. What triggers 2号
 
@@ -83,6 +83,11 @@ once 1号 is done — see section 4).
 2026-07-31 as the latest 1mメッシュDEM update — no new update since.
 Consistent with the end-of-October expectation above; nothing to act
 on yet.
+
+**Live check, 2026-09-06 (1.5号 mission-complete checkpoint)**: still
+2026-07-31, no new update. Confirms 2号 has not been triggered yet;
+the November 2026 working estimate below stands. Re-check this page
+again closer to that window rather than assuming it hasn't moved.
 
 **Timing refined, 2026-09-03**: Hidenori's own current expectation is
 **end of November 2026**, not end of October as estimated above —
@@ -315,6 +320,19 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
     symlink `pmtiles-store`/`tmp-store` back onto it, relaunch. Nothing
     new to design; this session's own D58-D61 entries are the
     reference implementation.
+  - **STALE AGAIN, resolved 2026-09-06**: 1.5号 reached mission
+    complete (D145/D146) using disk5/pmtiles-store as its working
+    volume throughout, exactly as this section anticipated. **Decision
+    for 2号: do not detach.** Live-checked headroom this same day —
+    `/Volumes/Migrate-2025-04` 384Gi free, `/Volumes/pmtiles-store`
+    413Gi free, both comfortable. 1.5号's own data (elevation +
+    lineage, both datatypes, ~315GB combined) can coexist on the same
+    disk as 2号's own generation_id-scoped tree by construction (D95/
+    D124's whole point) — no cleanup of 1.5号's footprint is required
+    before 2号 starts, only worth doing later if headroom actually
+    gets tight. Detaching disk5 between 1.5号 and 2号 would cost a
+    detach+reattach cycle for no real benefit now that both
+    generations are known to want it in quick succession.
 - **D37's `downsampling_covering.py` preflight gap**: **fixed
   2026-08-29 (D56)** — now runs automatically as part of `publish_
   cycle.py`'s own preflight, idempotently, every cycle. No longer a
@@ -367,11 +385,18 @@ the `gmldem2tif.rb` bug in the first place. Status as of this writing:
   `pmtiles-store` files at shared positions get silently overwritten in
   place as 2号 processes them anyway — only genuinely orphaned
   positions need an explicit sweep, same as this session's own finding).
-- **Worker configuration**: 1号 settled on `AGGREGATION_WORKERS=4`,
-  `DOWNSAMPLING_WORKERS=3` (D38/D39) after real measurement. Treat this
-  as a starting point for 2号, not a permanent constant — re-measure if
-  the hardware changes (see storage tiering above) or if 2号's own
-  scale differs meaningfully from 1号's.
+- **Worker configuration — SUPERSEDED, 2026-09-05 (D130/D131)**: 1号's
+  original `AGGREGATION_WORKERS=4`/`DOWNSAMPLING_WORKERS=3` (D38/D39)
+  no longer applies. 1.5号 ran 5 aggregation workers for ~12h, then hit
+  a real kernel panic (D129, memory-compressor exhaustion under
+  sustained 5-worker concurrency). A follow-up throughput comparison
+  (D130) found 3 workers cost only 23% less throughput than 5 for zero
+  crash risk. Hidenori's call (D131): **fix `AGGREGATION_WORKERS=3` as
+  the permanent default for both 1.5号 and 2号** — already changed in
+  code (`hfu-mapterhorn` commit `8b19b17`, `get_worker_count()`'s
+  default), so 2号 needs no env var and no re-measurement to get this.
+  Only revisit if 2号's hardware or scale changes meaningfully from
+  1.5号's (which was already full national scale, so unlikely).
 
 ## 5. Open format question: LERC for the published source
 
@@ -441,22 +466,45 @@ lack LERC support). Not decided yet.
   on one Canada tile), revisit only if `source_to_cog.py` work above
   actually starts.
 
-## 8. Readiness checklist: 今すぐ準備してよいこと / 1号完了まで待つべきこと
+## 8. 2号 launch readiness checklist (2026-09-06 rewrite, post-1.5号)
 
-2026-09-01、Hidenoriから「1号を完成させるまでは2号は投入しないが、2号を投入可能にしておくための準備はしておこう。1号に悪影響は及ぼさないように」との方針を受けて整理。
+**この節は2026-09-01時点(「1号完了まで待つ」フェーズ)の古い版を全面刷新したもの。**
+当時の「今すぐ着手してよい/1号完了まで待つべき」という枠組みは、1号・1.5号
+両方が完了した今では意味をなさない。1.5号自身の存在理由(§6/§9)が「2号では
+コードを変更せず高速に流すだけにする」ことだったため、この節は**2号を実際に
+起動する前に確認すべきことのチェックリスト**として書き直す。**このセッションでの
+作業範囲はこのチェックリストの確認・整理のみ——2号自体の起動(新しい
+generation_id発行・aggregation開始)は別セッションで行う合意のまま変更なし。**
 
-**今すぐ着手してよい(1号の本番コード・本番データパスに触れない)**:
-- ✅ D94: 多数決downsamplingアルゴリズムの実装(完了、新規ファイルのみ、production未接続)
-- GSI更新監視の定期チェック(読み取り専用、実施済み・継続可能)
-- 本ファイル(PLAN.md)のような設計ドキュメントの作成・更新
-- 案A/案Bのようなレイヤー分離設計の詳細化(ドキュメント上の検討のみ、コード変更なし)
-- LERC再設計の検証も、`pipelines-rehearsal/`(このセッションで既に確立されている、本番`pipelines/`とは独立したシンボリックリンク環境、bundle.py/merge_japan_bundles.pyのスローアウェイ検証に過去使用)を使えば1号に触れずに試せる——ただし今回は着手していない
+**コード面: 実質的に準備完了**
+- ✅ D95/D124の名前空間分離(`get_pmtiles_folder()`のlayer/datatype/generation_id分離) — 1.5号で全国スケール実装・検証済み。2号は新しいgeneration_idを発行するだけでよい。
+- ✅ lineage機能(D93/D94/D96) — 1.5号で実装・公開済み。D144でclusteringもコードに組み込み済み。
+- ✅ lineageの低ズーム拡張(D146、`lineage_extend_low_zoom.py`) — 2号でも標準手順として実行すること(PLAN.md §9参照、実装済み・再現性確認済み)。
+- ✅ ワーカー数(`AGGREGATION_WORKERS=3`固定、D131) — コードのデフォルト値として組み込み済み、2号は環境変数指定不要。
+- ✅ `bundle.py`のpmtiles-storeレース修正(D37/D44) — 恒久修正済み、2号は自動的に恩恵を受ける。
 
-**1号完了まで待つべき(本番コード・本番データに触れる)——ただし完了後は2号ではなく先に1.5号(§6)のタイミングで着手する**:
-- ❌ D74-D76レイヤー分離の実装(`get_pmtiles_folder()`・ファイル命名規則の変更) — `aggregation_run.py`/`downsampling_run.py`/`bundle.py`という、今`aggregation_repair_3344`が使っている本番コードそのもの。1号完了後、1.5号として実装・検証。
-- ❌ disk5のデタッチ(D90/D96で二重にSTALE警告を追記済み)——1.5号も同じディスクを使うため、2号本番が近づくまでさらに待つ。
-- ❌ lineageタイルの`EMIT_LINEAGE`フラグを本番`aggregation_run.py`に組み込むこと——D96でスコープを1.5号に変更(当初「2号一次リリース後」としていたのを訂正)。
-- ❌ upstream同期での「マージしない」判断済みの変更(分散ワーカー化等、D82)を再検討して取り込むこと——2号の規模次第では検討価値があるかもしれないが、今取り込むと1号の動作が変わってしまう
+**未解決・2号起動前に確認が必要な項目**:
+- ⚠️ **JGD2011→JGD2024座標系変更(§1で発見、未検証)**: 2025-04のGSI標高改定で
+  座標参照系がJGD2011からJGD2024に変わった。2号が新規ダウンロードする全ファイルは
+  JGD2024になるはずだが、`aggregation_reproject.py`等がこれを正しく扱うか
+  (CRSを決め打ち/誤ラベルしていないか)は**まだコードを読んで確認していない**。
+  2号起動前に必ず確認すること——このセッションでも未着手。
+- ⚠️ **5m/10mデータの破損チェック未実施(§3)**: `gmldem2tif.rb`のバグは1mでのみ
+  109メッシュの全数調査済み(japan-geotiff-dem側)。同じ実行環境依存のバグクラスが
+  5m/10mにも存在するかは「まだテストしていない」——2号起動前にテストするか、
+  残存リスクを明示的に受容するかの意思決定が必要。
+- ⚠️ **dirty-tracking(差分再処理)の設計判断が未確定(D57)**: 現状は全件再処理
+  (安全だが2号の規模次第で遅い)。D42の見積もりでは実データの1/3程度が変わる
+  想定——全件再処理を許容するか、`pmtiles-store`の実在確認込みの安全な
+  差分再処理を設計するか、まだ決めていない。
+- ⚠️ **GSIの次回更新確認(§1)**: 2026-09-06時点でまだ2026-07-31が最新
+  (新規更新なし)。想定は2026年11月末——起動直前に必ず再確認すること。
+
+**インフラ面: 準備完了**
+- ✅ disk5(`/Volumes/pmtiles-store`)は1.5号のままアタッチ継続で問題なし
+  (2026-09-06時点で384Gi/413Gi空き、1.5号のデータと2号のデータは
+  generation_id分離により共存可能)。デタッチ不要。
+- ✅ `source-coop`/`aws`資格情報はslate側にセットアップ済み。
 
 ## 9. 1.5号 runからの教訓(2026-09-05時点、2号への申し送り)
 

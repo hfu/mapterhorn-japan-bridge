@@ -6,91 +6,94 @@ for the standing rules (especially the repo×machine split table) and
 `DECISIONS.md` for why things are the way they are; this file is what
 actually happened, session by session.
 
-**Compacted 2026-09-04**: the 2026-09-01 "current state" section (D74-
-D101 era: the D74-D76 incident cascade, its repair, and the immediate
-aftermath) has been moved into `HANDOVER-archive.md`, unedited. This
-file keeps only the current state and a short recent-context summary.
-Compact again the same way once this file itself grows unwieldy --
-archive everything above the current-state section, keep only a fresh
-snapshot.
+**Compacted 2026-09-06**: the 2026-09-05 "current state" section (the
+1.5-go aggregation-in-progress era, D122-D131) has been moved into
+`HANDOVER-archive.md`, unedited. This file keeps only the current
+state and a short recent-context summary. Compact again the same way
+once this file itself grows unwieldy -- archive everything above the
+current-state section, keep only a fresh snapshot.
 
-## Current state (2026-09-05, ~13:33 JST): 1.5-go aggregation ~96% done, D129 incident behind us
+## Current state (2026-09-06, evening JST): 1.5-go mission complete, 2号 launch-readiness reviewed
 
-**Read DECISIONS.md D122 through D131 for the full arc** (all short,
-worth reading in order) -- summary since the D128 launch:
+**Read DECISIONS.md D132 through D146 for the full arc since the last
+compaction** -- summary:
 
-- **D128**: 1.5-go's national aggregation launched 07:23 JST 2026-09-04
-  (generation_id `01M1MKD73P0KDT719H21NJV9VR`, screen `agg15go` on
-  `slate`, originally 5 workers, `EMIT_LINEAGE=1`). Roster
-  cross-check clean (6,373 items, exact match with 1-go).
-- **D129**: at 19:54 JST, slate suffered a kernel panic --
-  `watchdog timeout: no checkins from watchdogd in 91 seconds`, root
-  cause the memory compressor hitting 100% of its segment limit after
-  ~12.5h of 5 concurrent workers (D84's 2026-09-01 default, tuned for
-  CPU idle time only, never accounted for per-worker memory spikes --
-  one worker was observed at ~7.7GB RSS pre-crash). No data loss
-  (roster/`.done` markers verified intact, in-flight items' scratch
-  dirs are safely reusable by `aggregation_run.py`'s own
-  `exist_ok=True` design). Recovered by remounting both volumes,
-  restarting `disk_headroom`, and restarting `agg15go` with
-  `AGGREGATION_WORKERS=3`.
-- **D130**: a full analysis comparing the 5-worker phase (12.2h,
-  avg 4.03 items/min, 1 crash) against the 3-worker phase (crash-free,
-  avg 3.10 items/min) -- 40% fewer workers cost only 23% throughput,
-  and the single largest worker RSS spike seen all run (10.37GB) hit
-  *during* the 3-worker phase with zero incident, confirming the
-  crash was about sustained concurrency over hours, not any one large
-  tile. Verdict: worth staying at 3 for this run, treat 4 as a soak-test
-  candidate before 2-go.
-- **D131**: Hidenori's final call -- skip the 4-worker soak test
-  entirely, fix 3 workers as the standard for **both** the rest of
-  1.5-go and all of 2-go (accepting the throughput cost for zero
-  crash risk). `aggregation_run.py`'s `get_worker_count()` default
-  changed from 5 to 3 (`hfu-mapterhorn` commit `8b19b17`) so 2-go
-  needs no special env var -- matching this project's own stated goal
-  of finishing worker-tuning during 1.5-go rather than touching code
-  during 2-go's speed run.
-- **Dashboard fixes (2026-09-05, un-numbered)**: `mapterhorn-monitor`'s
-  Current Stage instrument had an empty stat grid the whole run --
-  it read 1-go's D74-D76 repair-cycle schema
-  (`current_stage.done/baseline_done/total_to_repair/started_at`),
-  fields 1.5-go's `progress.json` never populated. Fixed to read
-  `aggregation.done/total` plus a new `current_stage.started_at`.
-  Three other instruments (status-map/mission-timeline/progress-trend)
-  are the same repair-cycle vintage and unfed since 2026-09-01 --
-  rather than archive them, each now shows an honest "not live" notice
-  (`MJBMON.renderInactiveNotice()`) instead of stale or broken data.
-  Also added `?v=` cache-busting to every script tag after discovering
-  a long-lived dashboard tab can keep running stale instrument JS
-  indefinitely with no revalidation.
+- **D132-D141**: aggregation finished cleanly (6,373/6,373, zero
+  repeat of D129), downsampling converged for both datatypes, the z0-7
+  Mapterhorn global overview was spliced into the elevation archive,
+  and `pmtiles cluster` was applied to lineage (D140/D143: found
+  lineage dedupes ~83.5% of its tile content vs. elevation's ~19%,
+  since folded into `merge_japan_bundles.py`'s code unconditionally
+  for every future datatype, D144).
+- **D142/D145**: Hidenori approved publishing; the full elevation
+  (314.66GB) + lineage (204.6MB, first publish) archives transferred
+  to `stars` and went live. Live-site spot checks at known coordinates
+  matched 1号's own verified byte counts exactly -- no regression from
+  the pipeline rewrite. **1.5-go's dual mission (D96) is done**:
+  D95's namespace separation validated at national scale, and lineage
+  shipped. 1号's own data was never touched.
+- **Dashboard integration**: `mapterhorn-monitor` gained a working
+  "Lineage" instrument -- a real MapLibre map combining the lineage
+  color-relief layer with the production terrain+hillshade style and a
+  color legend. Non-trivial bug hunt along the way: MapLibre's spec'd
+  `encoding:'custom'` raster-dem decode is validator-accepted but never
+  actually renders (confirmed through at least maplibre-gl 6.7.0) --
+  worked around by repurposing `encoding:'terrarium'`'s real decode
+  formula on the category bytes instead. Palette softened afterward
+  for a public-facing/shareable look.
+- **D146**: lineage's own downsampling pyramid extended below its
+  z8 floor (down to z4 by default) via a new standalone script,
+  `lineage_extend_low_zoom.py` -- deliberately not folded into the
+  shared `downsampling_covering.py`/`downsampling_run.py` (those files
+  are datatype-agnostic and shared with elevation; naively lowering
+  the shared floor would have pulled elevation into building unwanted
+  low-zoom overviews of its own). A real "whole planet" bug was found
+  and fixed during development (a self-produced archive's coverage
+  got mis-derived from its own placeholder extent tile as if it
+  covered the globe) -- now guarded by a tile-count sanity check.
+  lineage-only re-bundle/merge/publish followed; elevation was never
+  touched. **This script is now documented in `PLAN.md` §9 as a
+  standard step for 2号 too**, not a 1.5-go one-off.
+- **New standalone site**: `hfu/japan-bridge-lineage` (GitHub Pages,
+  `https://hfu.github.io/japan-bridge-lineage/`) -- a Vite-built globe-
+  view map showing the lineage layer, built for sharing outside the
+  dashboard (used to notify Oliver Wipfli of Japan-side tile
+  production progress). Hit and resolved a real upstream bug along the
+  way: **maplibre-gl 6.7.0 never finishes loading any raster-dem
+  source** (confirmed with both this project's own tiles and the
+  public AWS `elevation-tiles-prod` terrarium demo tiles -- `isStyleLoaded()`/
+  `'load'` never fire, no error thrown, `new Worker(...)` never even
+  called). Pinned to maplibre-gl **5.24.0** instead (same version
+  `mapterhorn-monitor`'s own dashboard already uses) -- byte-identical
+  application code then works immediately, including globe projection.
+  Worth remembering if any future project reaches for maplibre-gl 6.x
+  and terrain/hillshade/color-relief mysteriously never renders.
+- **2号 launch-readiness reviewed (2026-09-06, this session)**: per
+  Hidenori's request to "prepare 2号" while explicitly keeping the
+  actual launch in a fresh session, `PLAN.md` §0/§4/§8 were refreshed
+  against current reality (worker count, disk5 status, a live re-check
+  of GSI's update-info page -- still 2026-07-31, no new update). See
+  `PLAN.md` §8 for the current checklist: code/infra readiness is
+  essentially done; the open items needing attention before an actual
+  2号 launch are the JGD2011→JGD2024 CRS question (§1), the untested
+  5m/10m corruption-bug-class question (§3), and the dirty-tracking
+  design decision (§4/D57). `CLAUDE.md`/`START_HERE.md` were also
+  brought current in the same pass -- both had drifted noticeably (the
+  Mission section and source-catalog listing in particular still
+  described the pre-1.5-go, pre-rename state).
 
-**As of this snapshot**: 6,153/6,373 aggregation items done (96.5%),
-3 workers, all health metrics clean (disk/load/memory pressure all
-normal, no repeat of D129 since the restart). 1-go's live archive
-remains stable, published, and untouched throughout.
+**What's next**: 2号 itself, once GSI ships a new DEM1A update
+(`PLAN.md` §1, working estimate end of November 2026) -- **in a fresh
+session**, not this one (Hidenori's own call, avoids one session
+juggling multiple generations/repos at once, the exact class of mix-up
+that motivated this rule). Nothing in this project is currently
+running unattended; `check_disk_headroom.py`'s autonomous screen on
+`slate` can likely be stopped once confirmed idle, though this hasn't
+been explicitly done as of this snapshot.
 
-**What happens next, unattended**: aggregation should finish within
-the next ~1-2h at the current pace. After it completes: downsampling
-(elevation then lineage) -> `bundle.py` (both datatypes) ->
-`merge_japan_bundles.py` (both datatypes) -> `./pmtiles cluster`
-(D127) -> `./pmtiles verify` -> `./pmtiles merge` (z0-7 splice) ->
-`./pmtiles verify` -> **stop and get Hidenori's explicit publish
-approval** before any `rsync` to `stars` (`publish_cycle.py` stays
-hard-disabled, D115). Rollback command if ever needed:
-`rm -rf pmtiles-store/{aggregation,downsampling}/*/01M1MKD7*/
-aggregation-store/01M1MKD7*/` -- 1-go is untouched by construction.
-
-**Monitoring**: `check_disk_headroom.py` runs autonomously in a
-detached screen (`disk_headroom`, 15-min loop, covers both volumes)
-independent of any session -- it was restarted along with `agg15go`
-during D129's recovery. The `mapterhorn-monitor` dashboard
-(`progress.json`) is **not** autonomous -- it is updated by whichever
-agent session is watching, each time it checks in (a local 15-min
-Monitor task drives this; note it does NOT survive a Claude.app
-restart, which happened once this run and required manually
-re-arming it -- automating the mechanical part of this update on
-slate itself, independent of any Claude session, is the agreed next
-step but deliberately deferred until after 1.5-go finishes). If you
-are resuming this project mid-run, check `screen -ls` on `slate` for
-`agg15go` and `disk_headroom.log`'s tail before assuming anything
-about progress from a stale dashboard snapshot.
+**Monitoring**: `mapterhorn-monitor` dashboard is fully caught up to
+1.5-go's mission-complete state as of the last update in this arc. It
+remains **not autonomous** -- updated by whichever agent session is
+watching. If resuming this project cold, don't assume `progress.json`
+reflects live state without checking `DECISIONS.md`'s latest entries
+first.
