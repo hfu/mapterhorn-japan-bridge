@@ -169,3 +169,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D147](DECISIONS1.md#d147-jgd2011jgd2024のcrs変更を調査実データで実際に発生中と確認ただしepsgコード未発行のため今回は修正せず保留) | JGD2011→JGD2024のCRS変更を調査——実データで実際に発生中と確認、ただしEPSGコード未発行のため今回は修正せず保留 | Investigated, deferred |
 | [D148](DECISIONS1.md#d148-downsampling丸め忘れバグをupstreamから移植oliver-wipfli提供15号elevationを再生成してstars容量を削減) | downsampling丸め忘れバグをupstreamから移植(Oliver Wipfli提供)。1.5号elevationを再生成してstars容量を削減 | Accepted, in progress |
 | [D149](DECISIONS1.md#d149-16号陸域maxzoom不整合離島の穴lineageの誤tier表示への対応設計に合意実装は小規模リハーサル後) | 「1.6号」——陸域maxzoom不整合(離島の穴・lineageの誤tier表示)への対応設計に合意。実装は小規模リハーサル後 | Design agreed |
+| [D150](DECISIONS1.md#d150-16号の単一アイテムリハーサル完了仕組みは動作確認ただし本番投入前に必須の実装バグを1件発見) | 1.6号の単一アイテムリハーサル完了。仕組みは動作確認、ただし本番投入前に必須の実装バグを1件発見 | Rehearsal complete |
