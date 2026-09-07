@@ -167,3 +167,5 @@ This file is an index only (D0) -- entry bodies live in
 | [D145](DECISIONS1.md#d145-15号stars公開完了実地確認クリーン15号ミッションコンプリート) | 1.5号、stars公開完了。実地確認クリーン——1.5号ミッションコンプリート | Accepted |
 | [D146](DECISIONS1.md#d146-lineageの低ズーム拡張z8z4elevationには一切触れず専用スクリプトで安全に実施) | lineageの低ズーム拡張(z8→z4)。elevationには一切触れず、専用スクリプトで安全に実施 | Recorded |
 | [D147](DECISIONS1.md#d147-jgd2011jgd2024のcrs変更を調査実データで実際に発生中と確認ただしepsgコード未発行のため今回は修正せず保留) | JGD2011→JGD2024のCRS変更を調査——実データで実際に発生中と確認、ただしEPSGコード未発行のため今回は修正せず保留 | Investigated, deferred |
+| [D148](DECISIONS1.md#d148-downsampling丸め忘れバグをupstreamから移植oliver-wipfli提供15号elevationを再生成してstars容量を削減) | downsampling丸め忘れバグをupstreamから移植(Oliver Wipfli提供)。1.5号elevationを再生成してstars容量を削減 | Accepted, in progress |
+| [D149](DECISIONS1.md#d149-16号陸域maxzoom不整合離島の穴lineageの誤tier表示への対応設計に合意実装は小規模リハーサル後) | 「1.6号」——陸域maxzoom不整合(離島の穴・lineageの誤tier表示)への対応設計に合意。実装は小規模リハーサル後 | Design agreed |

@@ -2116,3 +2116,180 @@ Hidenoriさんの判断で**今回は`gmldem2tif.rb`を修正せず、EPSGが正
 > `EPSG`になっていないか。**次のアクション**: 残る未解決2項目
 > (5m/10m破損バグテスト、D57 dirty-tracking判断)へ進む。Oliver
 > Wipfliへの共有要否は別途相談。
+
+
+## D148: downsampling丸め忘れバグをupstreamから移植(Oliver Wipfli提供)。1.5号elevationを再生成してstars容量を削減
+
+**Status**: Accepted, 実装・再生成実施中、2026-09-07。
+
+### 経緯
+
+Hidenoriさんから、Oliver Wipfliが upstream `mapterhorn/mapterhorn` に
+入れた改善のシェアを受けた:「downsamplingで丸め処理をしていなかった
+バグを直した、タイル容量の削減になるかもしれない」。実際に
+upstream一覧を確認したところ、`53e4d3d`「Fix rounding on downsampling
+bug (#308)」(Oliver Wipfli、2026-09-05)が該当。
+
+### upstreamの修正内容
+
+`downsampling_run.py`の`create_tile()`が4x4ピクセル平均を取った後、
+その場のズームに応じたTerrarium垂直分解能へ丸める処理
+(`utils.get_rounded_elevation_data()`、`save_terrarium_tile()`が
+aggregation側では元々やっていたのと同じ処理)を一切していなかった。
+平均後の浮動小数点ノイズは実質的な情報を持たない(元データは既に
+子ズームの分解能で量子化済み)にもかかわらず、WebPロスレス圧縮の
+予測符号化を阻害していた。
+
+### 自リポジトリへの移植
+
+`hfu-mapterhorn`の`downsampling_run.py`はD56以降upstreamから分岐して
+おり(`FORK_NOTES.md`)、elevation平均化部分もアルファ重み付け・
+単一スカラーからRGB再導出という独自実装(D114(B)関連の書き直し)の
+ため、単純マージ不可。`utils.get_rounded_elevation_data()`を新設
+(upstreamと同じ32m上限キャップ込み)し、`save_terrarium_tile()`と
+`downsampling_run.py`の両方から呼ぶよう移植した
+(`hfu-mapterhorn`コミット`e634881`)。lineageの多数決downsampling
+(D93/D94)は別コードパスのため無関係。
+
+### 実測(1.5号の実データ400タイルで検証)
+
+再ダウンロード済みの1.5号downsampling出力(elevation、
+`01M1MKD73P0KDT719H21NJV9VR`)からランダムに400タイルを抽出し、
+丸め処理あり/なしで再エンコードしたサイズを比較:
+**43.0MB → 9.2MB(78.7%削減)**。ただしこれはdownsampling層タイルの
+みの数値——aggregation層(元々丸め済み)を含む最終アーカイブ全体の
+削減率はこれより小さくなる。
+
+### 1.5号への適用判断
+
+Hidenoriさんの判断で、既に公開済みの1.5号elevationアーカイブ
+(314.66GB、stars)も再生成することにした。starsのディスク空き容量が
+149GB(92%使用)と逼迫している事情(stars-cdとの相談継続中)も
+後押しした。
+
+**手順**: `01M1MKD73P0KDT719H21NJV9VR`のelevation用
+`*-downsampling.done`マーカー8,223件のみ削除(lineageの
+`*-downsampling.lineage.done`は無傷)→ downsampling再実行 →
+bundle → merge(D144のcluster込み)→ z0-7 global-overview再接合 →
+verify → stars側旧ファイル削除→新ファイル転送(D142/D145と同じ
+delete-then-transferパターン、この間elevationタイル配信は一時停止、
+lineageは無影響)。推定新アーカイブサイズ約225〜235GB
+(現314.66GBから約25〜30%減)。
+
+このセッション時点でdownsampling再実行が進行中(screen
+`downsample_round_fix`)。bundle以降・stars公開は別途完了を待って
+実施。
+
+### Resume prompt
+
+> D148: Oliver Wipfliが見つけたupstream `mapterhorn/mapterhorn`の
+> downsampling丸め忘れバグ(`53e4d3d`)を`hfu-mapterhorn`に移植
+> (`utils.get_rounded_elevation_data()`新設、コミット`e634881`)。
+> 実データ400タイルで実測78.7%削減(downsampling層のみ)。starsの
+> ディスク逼迫(149GB空き)もあり、Hidenoriさんの判断で1.5号
+> elevationアーカイブ(314.66GB)を再生成することに決定、downsampling
+> 再実行を screen `downsample_round_fix` で開始済み(lineageの
+> `.done`は無傷)。**次のアクション**: downsampling完走を待ち、
+> `BUNDLE_DATATYPE=elevation bundle.py` → `MERGE_DATATYPE=elevation
+> merge_japan_bundles.py` → `pmtiles merge`でz0-7再接合 → verify →
+> stars側旧ファイル削除→新ファイル転送(要事前確認)。
+
+
+## D149: 「1.6号」——陸域maxzoom不整合(離島の穴・lineageの誤tier表示)への対応設計に合意。実装は小規模リハーサル後
+
+**Status**: Design agreed, 実装前, 2026-09-07。
+
+### 発端
+
+Hidenoriさんから2点の指摘:
+1. lineageで、タイルが存在しない/未読み込みの箇所が**tier 0(1m)の色で
+   表示される**——データなしなのにあたかも1mデータがあるかのように
+   見える。
+2. elevationで、離島(特に1mデータがまだ整備されていない島)の近くや
+   内部でタイルが欠けておかしな挙動になる箇所がある。maxzoomが
+   足りていないのではないか。「一番細かいmaxzoomまで、5m/10mしか
+   ないエリアもアップサンプルできないか」という提案。
+
+### 調査で判明した事実
+
+**両者は同一の根本原因**: `aggregation_covering.py`/`aggregation_
+reproject.py`は各アイテムの実際のソース解像度(1m/5m/10m)に応じて
+maxzoomを決める設計のため、1mが無いエリアは深いズームで単純に
+タイルが存在しない。
+
+- **規模の実測**: 1.5号の陸域aggregationアイテム4,133件中2,128件
+  (約51%)がz16(1m相当)に届かず、z13/z14止まり——「一部の離島だけ」
+  という当初の想定より広い。
+- **サーバー挙動の実測**: martinは欠落タイルに404ではなく**HTTP 204**
+  を返す(与那国島周辺の実座標で確認、z13=200/52bytes、
+  z14〜z16=204/0bytes)。
+- **MapLibre本体のソースコードを直接確認**: `draw_color_relief.ts`は
+  `if (!dem?.data) continue;`でDEM無しタイルの描画を正しくスキップ
+  する実装を持つが、この修正(PR #8207/upstream issue #1551)は
+  **2026-09-03——4日前**にmainへ入ったばかりで、どのリリースにも
+  未収録。現在ピン留め中の`maplibre-gl 5.24.0`(2026-04-23リリース)
+  はこの5ヶ月前で、旧い(祖先タイルへのフォールバックが無く、
+  不完全なDEMをそのまま描画しようとする)コードパスのまま。6.x系は
+  別のraster-dem読み込みバグを抱えており今は乗り換えられない。
+  **結論: クライアント側の設定だけでは今は解決できない**——タイルの
+  実在ギャップ自体をパイプライン側で埋める必要がある。
+
+### 設計方針(Hidenoriさんの提案どおり、通称「1.6号」)
+
+- **対象は陸域のみ**——`jpnationalsea`単独のアイテム(海)は対象外。
+  海底に1m級の詳細を持たせても無価値でコストだけ増える。
+- **目標maxzoom: z16**(現行1m/DEM1Aティアの到達点)。
+- **変更箇所3段階**:
+  - `aggregation_covering.py`: アイテム粒度をmaxzoom-extent差(上限6)
+    で決めている箇所を、陸域は実maxzoomでなく目標z16基準に変更
+    (さもないと5m/10mエリアのアイテムがz16分の面積を保持できずメモリ
+    上限超過)。
+  - `aggregation_reproject.py`の`reproject()`: `zoom =
+    grouped_source_items[0][0]['maxzoom']`を陸域は`zoom = 16`固定に
+    変更。`gdalwarp -r cubicspline`は元々アップサンプルに対応済みで
+    warp自体の追加実装は不要。
+  - `downsampling_covering.py`: 変更不要と想定(aggregation出力の
+    ファイル名から実際のchild_zoomを機械的に拾う設計のため、
+    aggregation側が深く出力すれば自動的に反映されるはず——要検証)。
+- **lineageの正しさ**: アップサンプルしたピクセルも
+  `lineage_provenance.py`のグループ優先順位ロジックがそのまま動く
+  ため、元のtier(5m/10mなど)を正しく報告し続ける設計にできる——
+  「1mのふりをする」ことにはならない。
+
+### コスト見積もり(未実測、要リハーサル)
+
+陸域6,373アイテム中2,128件(51%)が対象。z14→z16は1辺4倍(面積16倍)、
+z13→z16は1辺8倍(面積64倍)のピクセル増。D148の実測(丸め処理による
+78.7%圧縮改善)から類推すると、滑らかな補間データはWebP圧縮が
+非常に効くため**ファイルサイズの増加は面積ほど劇的ではない可能性が
+高い**。一方`aggregation_run.py`/`downsampling_run.py`の**処理時間**は
+素直にピクセル数に比例して増える見込みで、こちらは楽観できない——
+2号の「コード変更不要」という設計方針とは別スコープの変更であり、
+2号に直接組み込むのではなく独立した取り組みとして扱う。
+
+### 合意事項
+
+Hidenoriさん: 「そうね。いわゆる1.6号を実行する必要は認める。
+DECISIONSに記録してからリハーサルなどを進めて良い」——1.6号として
+進める方針に合意。ただし**実装はまだ**——次のアクションは小規模
+リハーサル(1アイテムのみ、例えば今回調査に使った与那国島周辺の
+z13止まりアイテム)で実際の処理時間・出力サイズを実測してから、
+2,128件全体への展開規模を判断する。
+
+### Resume prompt
+
+> D149: Hidenoriさんの2指摘(lineageのNODATA→1m誤表示、離島elevation
+> の欠落)を調査、**同一の根本原因**と判明——陸域aggregationアイテム
+> 4,133件中2,128件(51%)がz16(1m)に届かずz13/z14止まり。MapLibre
+> 本体のソースを直接確認し、欠落タイルへの祖先タイルフォールバックは
+> 現行ピン留め版(5.24.0、2026-04)には無く、該当修正(PR #8207)は
+> 2026-09-03にmainへ入ったばかりでまだリリース未収録——クライアント
+> 側だけでは今は直せないと結論。Hidenoriさんの提案「5m/10mのみの
+> 陸域もz16までアップサンプル」に、通称**「1.6号」**として合意
+> (2号とは別スコープ、2号のコード不変更方針を守る)。設計は
+> `aggregation_covering.py`(粒度)/`aggregation_reproject.py`
+> (warp解像度)の2箇所が主、`downsampling_covering.py`は変更不要と
+> 想定(未検証)。**次のアクション**: 実装前に、与那国島周辺など
+> z13止まりの1アイテムで小規模リハーサルを行い、実際の処理時間・
+> 出力サイズを実測してから展開規模を判断する。D148(downsampling
+> 丸め処理修正・1.5号再生成)は並行進行中、完了を妨げない。
