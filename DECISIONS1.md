@@ -2486,3 +2486,93 @@ filenames`等)に使われ続ける必要がある一方、downsampling covering
 > "import script; script.main()"`なら正常)——今後のデバッグで注意。
 > **次のアクション**: Hidenoriさんの指示通り、1.6号はここで一旦
 > 区切り、1.5号以降(D93〜D151)の包括的コードレビューへ移る。
+
+
+## D152: 包括的コードレビューで発覚した「公開中lineage低ズームデータが実データの13%しか読んでいない」バグを修正・再生成完了
+
+**Status**: 修正・再生成・merge完了。stars公開は未実施(要確認)、2026-09-08。
+
+### 発覚の経緯
+
+D148(Oliverの丸め処理修正)の1.5号elevation再生成が完了したのを機に、
+Hidenoriさんの指示で1.5号以降(D93〜D151、実質的にはD146〜D151の
+5コミット)のコードレビューを実施(`/code-review` skill、high effort、
+9並列エージェント)。最重要所見として、`lineage_extend_low_zoom.py`
+(D146)のz8アーカイブ検出globが**非再帰的**であることが判明した。
+
+### バグの実態
+
+`utils.get_pmtiles_folder()`はz≥7のextentタイルを`{FOLDER}/{z7bucket}/`
+サブフォルダに格納する規則を持つが、`lineage_extend_low_zoom.py`の
+`pattern = f'{FOLDER}/*-{source_output_zoom}.pmtiles'`は非再帰的だった。
+実データで確認したところ、**z8アーカイブ全107件中、フラットに
+存在するのはわずか14件(13%)**——残り93件(87%)はz7バケット配下に
+あり、スクリプトからは不可視だった。「whole-globe」異常検知
+(`SANE_TILE_COUNT_CEILING=5000`)は桁違いの膨張(16,384件)しか
+検知できない設計だったため、この13%規模の欠落は素通りしていた。
+
+**影響**: D146で公開・現在stars上でライブの
+`mapterhorn-japan-bridge-lineage.pmtiles`のz4-z7部分は、日本全体の
+うちごく一部(実データの13%相当の範囲)からしか構築されていない
+可能性が高い——「日本全体の低ズーム傾向を示す」というD146の目的を
+実質的に達成できていなかった。
+
+### 修正内容
+
+`hfu-mapterhorn/pipelines/lineage_extend_low_zoom.py`の`build_level()`:
+- globを`f'{FOLDER}/**/*-{source_output_zoom}.pmtiles'`
+  (`recursive=True`)に変更。
+- `get_tile_to_pmtiles_filename()`は`{z}-{x}-{y}-{child_zoom}.pmtiles`
+  という裸のbasenameしかパースできない(パス区切りを含むと
+  `int()`変換で壊れる)ため、basenameのみを渡しつつ、
+  `basename→相対パス`のマッピングを別途保持し、実ファイルアクセス時に
+  そのマッピングで正しいネストパスへ解決する方式にした
+  (`bundle.py`の`get_parent_to_filepaths()`が`*.pmtiles`と
+  `*/*.pmtiles`の両方をglobしているのと同種の対応)。
+
+修正後、実データで発見フェーズを検証: **107件全アーカイブを正しく
+検出、実z8タイル数は440件**(旧版は14件のアーカイブからしか
+導出できていなかった)。フラット・ネスト両方のパス解決が実ファイルの
+存在確認で正しく機能することも確認済み。
+
+### 再生成・merge結果
+
+`lineage_extend_low_zoom.py`を実行(所要5.2秒):
+
+| ズーム | 旧(バグ版、D146) | 新(修正後) |
+|---|---|---|
+| z7 | 68 | **117** |
+| z6 | 17 | **37** |
+| z5 | 10 | **13** |
+| z4 | 6 | 6(同数) |
+
+z7/z6/z5で大幅増——実データがより広く反映されるようになったことの
+裏付け。続けて`BUNDLE_DATATYPE=lineage bundle.py 1`(26.5秒)→
+`MERGE_DATATYPE=lineage merge_japan_bundles.py`(D144の自動cluster込み、
+86秒)を実行。結果: `bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`
+204.7MB(旧204.6MBとほぼ同一——低ズーム分の実データ増加はバイト数
+としては小さい)、`./pmtiles verify`クリーン(56ms)、
+`min zoom:4`/`max zoom:16`/`clustered:true`。tile contents 423,000
+(旧422,889から微増、一貫性あり)。
+
+### 現在の状態
+
+修正・再生成・merge完了、**stars公開はまだ未実施**——別途確認の上で
+実施する(旧ファイルは204.6MBと小さいため、D142/D145のような
+delete-then-transferパターンは不要、上書き転送で問題ない見込み)。
+
+### Resume prompt
+
+> D152: コードレビューで見つかった重大バグ——`lineage_extend_low_zoom.py`
+> (D146)のz8検出globが非再帰的で、実際のz8アーカイブ107件中14件
+> (13%)しか読めていなかった(残り93件はutils.get_pmtiles_folder()の
+> z7バケット配下で不可視)。公開中のz4-z7 lineageデータは日本の
+> ごく一部からしか構築されていなかったことになる。修正
+> (`glob(..., recursive=True)`+basename→相対パスのマッピング)を
+> 実データで検証(107件全検出、実z8タイル440件)、再生成
+> (z7:68→117、z6:17→37、z5:10→13)、bundle→merge(D144の
+> 自動cluster込み)まで完了——`bundle-store/mapterhorn-japan-
+> bridge-lineage.pmtiles`204.7MB、verify OK、min/max zoom 4/16、
+> clustered:true。**次のアクション**: starsへの公開(旧ファイルが
+> 小さいため上書き転送で良さそうだが、実施前に要確認)。並行して
+> D148(elevation bundle→merge→z0-7再接合)も進行予定。
