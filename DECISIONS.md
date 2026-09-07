@@ -170,3 +170,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D148](DECISIONS1.md#d148-downsampling丸め忘れバグをupstreamから移植oliver-wipfli提供15号elevationを再生成してstars容量を削減) | downsampling丸め忘れバグをupstreamから移植(Oliver Wipfli提供)。1.5号elevationを再生成してstars容量を削減 | Accepted, in progress |
 | [D149](DECISIONS1.md#d149-16号陸域maxzoom不整合離島の穴lineageの誤tier表示への対応設計に合意実装は小規模リハーサル後) | 「1.6号」——陸域maxzoom不整合(離島の穴・lineageの誤tier表示)への対応設計に合意。実装は小規模リハーサル後 | Design agreed |
 | [D150](DECISIONS1.md#d150-16号の単一アイテムリハーサル完了仕組みは動作確認ただし本番投入前に必須の実装バグを1件発見) | 1.6号の単一アイテムリハーサル完了。仕組みは動作確認、ただし本番投入前に必須の実装バグを1件発見 | Rehearsal complete |
+| [D151](DECISIONS1.md#d151-aggregation_tilepylineage_tilepyのファイル名バグを本番修正検証済みチェーン化リハーサルでdownsampling_coveringpyにも必須の追加修正が判明サイレントなタイル欠落リスク) | `aggregation_tile.py`/`lineage_tile.py`のファイル名バグを本番修正・検証済み。チェーン化リハーサルで`downsampling_covering.py`にも必須の追加修正が判明(サイレントなタイル欠落リスク) | Partially fixed |

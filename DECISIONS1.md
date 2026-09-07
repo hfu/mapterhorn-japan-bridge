@@ -2381,3 +2381,108 @@ lineage provenance→merge→tileの実コードチェーンを実行(本番の
 > チェーン化リハーサル(D124と同じ隣接2件パターン)で
 > downsampling_covering.pyとの整合性を検証してから、Hidenoriさんに
 > 本実装・展開の可否を確認する。まだ本番コードは無変更。
+
+
+## D151: `aggregation_tile.py`/`lineage_tile.py`のファイル名バグを本番修正・検証済み。チェーン化リハーサルで`downsampling_covering.py`にも必須の追加修正が判明(サイレントなタイル欠落リスク)
+
+**Status**: `aggregation_tile.py`/`lineage_tile.py`は修正・本番commit可能な状態。`downsampling_covering.py`は未修正・設計要。2026-09-07。
+
+### `aggregation_tile.py`/`lineage_tile.py`の修正
+
+D150で見つかった「出力pmtilesファイル名がstale(native)child_zのまま」
+というバグを本番コード(`hfu-mapterhorn/pipelines/aggregation_tile.py`・
+`lineage_tile.py`)に直接修正した。`create_tiles()`/`create_lineage_
+tiles()`が実ラスタ寸法から計算する child_z を`return`するよう変更し、
+`main()`側はファイル名パース値ではなくその戻り値でアーカイブ名を
+組み立てるよう変更。**通常運用(アップサンプルなし)ではこの2値は
+常に一致するため、既存の1号・1.5号の挙動に対して完全に無害な変更**
+——1.6号のための準備として先行commitして問題ない。
+
+### チェーン化リハーサルで判明した追加の必須修正
+
+D124と同じ隣接2アイテムパターン(`11-1727-881-13`+隣接`11-1728-881-13`、
+共にDEM10Bのみ、native maxzoom=13)で、修正後のコードを使い
+aggregation(elevation+lineage)→`downsampling_covering.py`のチェーンを
+実行。aggregation側は正しくz16(`...-16.pmtiles`、1,024タイル×2)を
+生成したが、**`downsampling_covering.py`がこの深いズームを一切
+検出しなかった**:
+
+```
+child_zoom=16
+get extents...
+（何も見つからない、以下15/14でも同様）
+...
+child_zoom=13
+get extents...
+get tile to extent map...
+```
+child_zoom=13で初めて処理が始まった——native(旧)の値のまま。
+
+**原因**: `write_downsampling_items()`内の`get_extents_from_coverings()`
+が`aggregation-store/{aggregation_id}/*-*-*-{zoom}-*.csv`という
+グロブパターンで「そのズームに存在するアイテム」を判定している。
+このパターンがマッチするのは**aggregation covering CSVのファイル名**
+(`{z}-{x}-{y}-{child_z}-aggregation.csv`、child_zは計画上のnative
+maxzoom=13のまま)であり、pmtiles-storeの実際の出力ファイル
+(D151の修正で正しくchild_z=16に直った側)は一切参照していない。
+つまり**アップサンプルされたz14〜z16のリーフタイルは、
+downsampling_covering.pyの視点からは「存在しない」ことになり、
+z8までのピラミッド構築から永久に除外される**——クラッシュではなく
+サイレントなデータ欠落になるという点で、D150の命名バグより
+質の悪い問題。
+
+### 設計上の含意
+
+covering CSVのファイル名(計画上のchild_z)は、ソースのレシピを
+特定する識別子として`.done`追跡・dirty検出(`get_dirty_aggregation_
+filenames`等)に使われ続ける必要がある一方、downsampling covering は
+**実際にpmtiles-storeへ書かれた深さ**を別途知る必要がある——この
+2つの情報を1つのファイル名に押し込めてきた既存設計が、アップサンプル
+導入によって初めて破綻する。修正の方向性(未設計、要検討):
+`get_extents_from_coverings()`を`aggregation-store`のCSVではなく
+`pmtiles-store/aggregation/elevation/{generation_id}/**/*.pmtiles`の
+実ファイル名を直接スキャンする方式に置き換える、が最有力候補
+——D150修正後はそのファイル名が常に正しいchild_zを持つため。
+
+### 現在の状態
+
+- `aggregation_tile.py`/`lineage_tile.py`の修正: commit可能、
+  無害であることを確認済み。
+- `downsampling_covering.py`の修正: **未着手・未設計**。1.6号は
+  この設計が固まるまで本番投入不可。
+- `pipelines-rehearsal-16go/`はHidenoriさんの確認用に残置(デバッグ
+  用print文が`aggregation_reproject.py`の実験用コピーに残ったまま
+  ——本番コードには影響しないため急ぎのクリーンアップ不要)。
+- **副産物の発見**: `uv run --no-sync --project ../pipelines python3
+  script.py`という素朴なスクリプト直接起動だと、`multiprocessing.
+  Pool`(spawn方式)のワーカー内`print()`が呼び出し元に一切届かない
+  という、この環境固有と見られる癖を発見した。`python3 -c "import
+  script; script.main()"`という起動方法に変えると正しく届く
+  ——原因はspawnのブートストラップ再実行の挙動差と推測されるが
+  深追いはしていない。**今後このマシンでPoolベースのスクリプトを
+  デバッグする際、workerのprintが見えない場合はこの起動方法の違いを
+  疑うこと**(D148の`downsample_round_fix`screenセッションはこの
+  問題を踏んでいない——`downsampling_run.py`は素朴なスクリプト起動
+  だが、そちらは正常に進捗ログが出ている。原因は完全には特定できて
+  いない)。
+
+### Resume prompt
+
+> D151: `aggregation_tile.py`/`lineage_tile.py`のファイル名バグ
+> (D150で発見)を本番修正——通常運用には無害、commit可能。ただし
+> D124方式のチェーン化リハーサル(隣接2アイテム、`11-1727-881-13`+
+> `11-1728-881-13`)で**さらに重大な追加バグを発見**:
+> `downsampling_covering.py`の`get_extents_from_coverings()`が
+> `aggregation-store`のcovering CSVファイル名(計画上のnative
+> child_z、アップサンプル後も13のまま)からズームを判定しており、
+> pmtiles-storeの実出力(D151修正後は正しくz16)を一切見ない——
+> アップサンプルしたz14〜z16のリーフが**サイレントに**downsampling
+> ピラミッドから漏れる。クラッシュしない分、D150の命名バグより
+> 気づきにくい。修正方針(未設計): `get_extents_from_coverings()`を
+> pmtiles-store実ファイルの直接スキャンに置き換える案が有力。
+> **1.6号はこの設計が固まるまで本番投入不可**。副産物として、この
+> マシンで`uv run python3 script.py`(直接起動)だとmultiprocessing
+> Poolワーカーのprintが消える環境固有の癖も発見(`python3 -c
+> "import script; script.main()"`なら正常)——今後のデバッグで注意。
+> **次のアクション**: Hidenoriさんの指示通り、1.6号はここで一旦
+> 区切り、1.5号以降(D93〜D151)の包括的コードレビューへ移る。
