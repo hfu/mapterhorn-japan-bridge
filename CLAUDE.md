@@ -44,12 +44,12 @@ GSI shipping a new DEM1A update (not yet, see `PLAN.md` §1's live
 checks), to launch in a fresh session per Hidenori's own call (avoids
 juggling two differently-scoped generations in one session's context).
 See `PLAN.md` §8 for the current 2号 launch-readiness checklist
-(mostly ready; the JGD2011→JGD2024 CRS question is now investigated
-and deliberately deferred rather than open — D147: real 2026 source
-data already carries `srsName="fguuid:jgd2024.bl"` and the external
-`gmldem2tif.rb` tool silently mislabels it as JGD2011, but JGD2024 has
-no EPSG code yet as of 2026-09-07, so Hidenori chose not to patch it
-until one exists — not a 2号 launch blocker).
+(mostly ready; the JGD2011→JGD2024 CRS question is now fully resolved,
+not just deferred — D147: real 2026 source data already carries
+`srsName="fguuid:jgd2024.bl"`, but EPSG resolved JGD2024 by renaming
+`EPSG:6668` in place rather than minting a new code (`OSGeo/PROJ`
+v12.055, 2026-04), so the external `gmldem2tif.rb` tool's hardcoded
+`EPSG:6668` was correct all along — no fix needed, ever).
 **Do not treat `find aggregation-store/*/ -name '*.done' | wc -l`
 alone as proof of correctness** — this exact class of stale-marker bug
 (D53/D69/D100) has recurred at increasing scale; always cross-check
@@ -85,8 +85,9 @@ checked 2026-09-06 as not yet triggered). By design (1.5号's whole
 purpose) 2号 should need **no pipeline code changes**, just a fresh
 generation_id and a fast run — see `PLAN.md` §8 for the current launch-
 readiness checklist and its few still-open items (the JGD2011→JGD2024
-CRS question from `PLAN.md` §1 is investigated and deferred, not open
-— D147). **2号 launches in a fresh
+CRS question from `PLAN.md` §1 is fully resolved, not just deferred —
+D147: EPSG renamed `EPSG:6668` in place rather than minting a new
+code, so no fix was ever needed). **2号 launches in a fresh
 session, not whichever session did 1.5号's prep work** — Hidenori's own
 call, to avoid the kind of cross-generation mix-ups a single session
 juggling multiple repos/generations can produce.

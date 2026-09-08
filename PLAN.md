@@ -115,26 +115,28 @@ mesh filenames, e.g. `-DEM1A-20250507.tif`, is the underlying survey/
 feature creation date, not a reprocessing timestamp — seeing an old
 date there is not evidence of pre-revision values.)
 
-**Item surfaced by that same check, investigated and deferred 2026-09-07
-(D147)**: the 2025-04 revision was not only an elevation-value change —
-**the coordinate reference system itself moved from JGD2011 to
-JGD2024** ("座標参照系が「JGD2011」から「JGD2024」に変更"). Confirmed
-this is not hypothetical: real 2026-downloaded GML in
-`japan-geotiff-dem-repo/src/1/` already carries
+**Item surfaced by that same check, investigated 2026-09-07, resolved
+2026-09-09 (D147)**: the 2025-04 revision was not only an
+elevation-value change — **the coordinate reference system itself
+moved from JGD2011 to JGD2024** ("座標参照系が「JGD2011」から
+「JGD2024」に変更"). Confirmed this is not hypothetical: real
+2026-downloaded GML in `japan-geotiff-dem-repo/src/1/` already carries
 `srsName="fguuid:jgd2024.bl"`. The GeoTIFF-writing tool
 (`gmldem2tif.rb`, external, `unopengis/gmldem2tif`) never reads
 `srsName` and always stamps `EPSG:6668` (JGD2011);
 `aggregation_reproject.py` trusts whatever CRS is embedded without a
-`-s_srs` override, so the whole pipeline is internally consistent but
-silently mislabels JGD2024 source data as JGD2011. **However, as of
-2026-09-07 JGD2024 has no EPSG-authority code yet** (verified directly
-against this machine's current GDAL 3.13.3/PROJ database — only
-ESRI:104221/104220 exist, and PROJ registers JGD2011→JGD2024 as an
-explicit ~1.0m-accuracy transform, not a null one; GDAL itself hit the
-same wall in 2025-08, OSGeo/gdal #12897/#12918, and used a hand-rolled
-WKT pending an official code). Hidenori's call: **do not patch
-`gmldem2tif.rb` yet — wait for EPSG to mint a real code**, not a
-launch blocker for 2号. Full writeup: `DECISIONS.md` D147.
+`-s_srs` override. **This turns out to be fine, permanently**: EPSG
+Dataset v12.055 (2026-04, confirmed via `OSGeo/PROJ` commit `7f1fdb39`,
+"rename JGD2011 to JGD2024... sigh") resolved JGD2024 by **renaming
+EPSG:6668 in place**, not minting a new code — GSI's own page confirms
+the horizontal values are numerically unchanged from JGD2011, so there
+was never going to be a different number to switch to. (This machine's
+own GDAL 3.13.3/PROJ install was still on EPSG v12.029/2025-10 as of
+the 2026-09-07 check, which is why that check saw no EPSG code yet —
+pure local staleness, not a gap in the registry.) **No code change
+needed in `gmldem2tif.rb` or `aggregation_reproject.py`**, now or
+later — `EPSG:6668` is and remains the correct code. Full writeup:
+`DECISIONS.md` D147 (see its 2026-09-09 addendum).
 
 ## 2. Scope: what actually needs refreshing
 
@@ -490,23 +492,14 @@ generation_id発行・aggregation開始)は別セッションで行う合意の�
 - ✅ lineageの低ズーム拡張(D146、`lineage_extend_low_zoom.py`) — 2号でも標準手順として実行すること(PLAN.md §9参照、実装済み・再現性確認済み)。
 - ✅ ワーカー数(`AGGREGATION_WORKERS=3`固定、D131) — コードのデフォルト値として組み込み済み、2号は環境変数指定不要。
 - ✅ `bundle.py`のpmtiles-storeレース修正(D37/D44) — 恒久修正済み、2号は自動的に恩恵を受ける。
+- ✅ **JGD2011→JGD2024座標系変更(§1で発見、2026-09-07調査・2026-09-09解決・D147)**:
+  実データは既に`srsName="fguuid:jgd2024.bl"`だが、EPSGは新コードではなく
+  `EPSG:6668`自体を「JGD2011」から「JGD2024」へリネームする形で決着させた
+  (`OSGeo/PROJ`コミット`7f1fdb39`、v12.055、2026-04)。番号が変わらないため
+  `gmldem2tif.rb`/`aggregation_reproject.py`とも**対応不要**。詳細は
+  DECISIONS.md D147の2026-09-09追記参照。
 
 **未解決・2号起動前に確認が必要な項目**:
-- ⚠️→🟡 **JGD2011→JGD2024座標系変更(§1で発見、2026-09-07に調査完了・D147)**:
-  実際の2026年ダウンロード分GML(`japan-geotiff-dem-repo/src/1/`)を展開して
-  確認したところ、既に`srsName="fguuid:jgd2024.bl"`——2号が読むデータは
-  今この瞬間から既にこの状態。CRSをGeoTIFFへ焼き付けているのは
-  `aggregation_reproject.py`ではなく外部ツール`gmldem2tif.rb`
-  (`unopengis/gmldem2tif`)で、`srsName`を無視し常時`EPSG:6668`
-  (JGD2011)を焼き付ける決め打ち。`aggregation_reproject.py`はその
-  埋め込みCRSを無条件に信頼する設計(`-s_srs`指定なし)。
-  **ただし2026-09-07時点でJGD2024にEPSGコードが未発行**(このマシンの
-  最新GDAL 3.13.3/PROJで確認、ESRI:104221のみ存在。JGD2011→JGD2024の
-  変換もPROJ上は精度1.0mの明示的変換で恒等変換ではない。GDAL本体も
-  同じ壁にぶつかり2025-08にOSGeo/gdal #12897/#12918で独自WKTの
-  暫定対応をした前例あり)。Hidenoriさんの判断で**今回は`gmldem2tif.rb`
-  を修正せず、EPSG正式コード発行を待つ**——2号launchのブロッカーには
-  しない。詳細・再確認タイミングはDECISIONS.md D147参照。
 - ⚠️ **5m/10mデータの破損チェック未実施(§3)**: `gmldem2tif.rb`のバグは1mでのみ
   109メッシュの全数調査済み(japan-geotiff-dem側)。同じ実行環境依存のバグクラスが
   5m/10mにも存在するかは「まだテストしていない」——2号起動前にテストするか、

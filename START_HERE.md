@@ -156,15 +156,17 @@ These are not style preferences. Each one below cost real data or real days.
   still not triggered as of a 2026-09-06 live check). Launch-readiness was
   reviewed the same day (`PLAN.md` §8): code/infra are essentially ready
   (2号 needs no pipeline code changes, by 1.5号's own design). Of the three
-  open items, one is now closed-by-decision: the JGD2011→JGD2024 CRS
-  question (§1) was investigated 2026-09-07 (D147) — real source data
-  already carries the new CRS label and the external `gmldem2tif.rb` tool
-  mislabels it, but JGD2024 has no EPSG code yet, so Hidenori chose to
-  wait rather than patch now. Still open: 5m/10m's corruption-bug-class
-  exposure is untested, and the dirty-tracking design question (D57) is
-  undecided. **2号 itself launches in a fresh session, not whichever session
-  did this prep** (Hidenori's own call).
-- All work through D146 is **pushed** to both repos' `origin/main`. Still
+  open items, one is now fully resolved: the JGD2011→JGD2024 CRS question
+  (§1) was investigated 2026-09-07 and resolved 2026-09-09 (D147) — real
+  source data already carries the new CRS label, but EPSG turned out to
+  resolve JGD2024 by renaming `EPSG:6668` in place rather than minting a
+  new code (`OSGeo/PROJ` v12.055), so the external `gmldem2tif.rb` tool's
+  hardcoded `EPSG:6668` was correct all along and needs no fix. Still
+  open: 5m/10m's corruption-bug-class exposure is untested, and the
+  dirty-tracking design question (D57) is undecided. **2号 itself launches
+  in a fresh session, not whichever session did this prep** (Hidenori's
+  own call).
+- All work through D153 is **pushed** to both repos' `origin/main`. Still
   always check `git log origin/main..HEAD` before assuming a later session's
   work is pushed — this has bitten the project before.
 - `publish_cycle.py` is **hard-guarded off** (it `sys.exit(1)`s immediately,
