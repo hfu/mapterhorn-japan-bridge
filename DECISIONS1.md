@@ -2576,3 +2576,73 @@ delete-then-transferパターンは不要、上書き転送で問題ない見込
 > clustered:true。**次のアクション**: starsへの公開(旧ファイルが
 > 小さいため上書き転送で良さそうだが、実施前に要確認)。並行して
 > D148(elevation bundle→merge→z0-7再接合)も進行予定。
+
+
+## D153: D148(elevation再生成)・D152(lineage低ズーム修正)、stars公開完了・実地確認クリーン
+
+**Status**: Recorded, 2026-09-09 03:03 JST頃。
+
+### 公開作業
+
+Hidenoriさんの明示的な承認(「両方とも進める」)を得て、D142/D145と
+同方式(delete-then-transferパターン)でstarsへ公開した。
+
+1. stars側旧elevationファイル(314.66GB、D145)を削除。
+2. `bundle-store/mapterhorn-japan-bridge.pmtiles`(258.08GB、D148の
+   丸め処理修正込み)を`.new`へrsync転送(`-avW --progress -e 'ssh
+   -A'`、slateの`openrsync`が`--info=progress2`未対応のため
+   `-avW`を使用、D142と同じ)。
+3. `bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`(204.7MB、
+   D152の低ズームglob修正込み)を`.new`へrsync転送。
+4. stars側`pmtiles verify`(elevation・lineage両方)。
+5. アトミックリネーム(`.new`→本番名)。
+6. `systemctl --user restart martin`。
+
+スクリプト(`/tmp/publish_d148_d152.sh`、`publish_1p5go.sh`のD142版を
+踏襲)を`screen`(`publish_d148_d152`)で実行、20:50:32 JST着手、
+03:02:57 JST完了(所要約6時間12分)。
+
+### 実測転送速度とETA予測の検証
+
+転送中、stars側の一時ファイル(`.mapterhorn-japan-bridge.pmtiles.new.*`)
+の実サイズを複数時点でsshから直接確認し、実測速度(~11.0-11.6MB/s、
+D142の実績とほぼ一致)から完了時刻を都度再計算——23:13時点で
+「約03:00-03:20 JST」と予測し、実際の完了(03:02:57)はこの予測
+レンジ内に収まった。
+
+### 実地確認(既知座標のバイト数比較)
+
+| 確認項目 | 結果 |
+|---|---|
+| elevation TileJSON | `minzoom:0`/`maxzoom:16`/bounds全球/center(140.9,41.85,12)——正常 |
+| elevation z13/6894/3521(与那国) | HTTP 200、**64,276 bytes——D145の検証値と完全一致** |
+| elevation z8/219/101(対馬・五島) | HTTP 200、**61,812 bytes**(D145時点は225,036 bytes) |
+| lineage TileJSON | `minzoom:4`/`maxzoom:16`/bounds日本域——正常(D146拡張が反映済み) |
+| lineage z8/219/101 | HTTP 200、**490 bytes——D145の検証値と完全一致** |
+
+elevation z8/219/101のバイト数減少(225,036→61,812、約72.5%減)は
+**想定通り、regressionではない**——この座標はdownsampling層のタイル
+であり、D148の丸め処理修正(downsampling層のみ対象、実測78.7%削減)の
+直接的な効果。一方、elevation z13(aggregation層、丸め修正の対象外)は
+D145時点と完全に同一バイト数——意図しない変更が紛れ込んでいないことの
+裏付けになっている。lineageのz8タイルも完全一致——D148はelevationのみ
+対象で、lineage側はD152の修正のみが効いていることと整合する。
+
+### 現在の状態
+
+**D148・D152とも公開完了、実地確認クリーン。** 1.5号のelevation・
+lineage両アーカイブが最新の修正を反映した状態でstars上に live。
+
+### Resume prompt
+
+> D153: D148(elevation丸め処理修正の再生成)とD152(lineage低ズーム
+> glob修正)を、Hidenoriさんの承認を得てstarsへ公開完了(2026-09-09
+> 03:02:57 JST、所要約6時間12分、D142と同じdelete-then-transfer
+> パターン)。実地確認クリーン——既知座標のバイト数が、丸め修正の
+> 対象外のelevation z13・lineage全体はD145検証値と完全一致、丸め
+> 修正の対象であるelevation z8(downsampling層)は約72.5%減と、
+> それぞれ想定通りの結果。**次のアクション**: 特になし、1.5号は
+> これで最新状態。9件残っている他のコードレビュー所見(D152参照)の
+> 取捨選択、1.6号(D149-151、`downsampling_covering.py`の再設計待ちで
+> ブロック中)の再開、2号(GSI新DEM1A更新待ち)は、いずれも
+> このセッションでは着手しない想定。

@@ -172,3 +172,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D150](DECISIONS1.md#d150-16号の単一アイテムリハーサル完了仕組みは動作確認ただし本番投入前に必須の実装バグを1件発見) | 1.6号の単一アイテムリハーサル完了。仕組みは動作確認、ただし本番投入前に必須の実装バグを1件発見 | Rehearsal complete |
 | [D151](DECISIONS1.md#d151-aggregation_tilepylineage_tilepyのファイル名バグを本番修正検証済みチェーン化リハーサルでdownsampling_coveringpyにも必須の追加修正が判明サイレントなタイル欠落リスク) | `aggregation_tile.py`/`lineage_tile.py`のファイル名バグを本番修正・検証済み。チェーン化リハーサルで`downsampling_covering.py`にも必須の追加修正が判明(サイレントなタイル欠落リスク) | Partially fixed |
 | [D152](DECISIONS1.md#d152-包括的コードレビューで発覚した公開中lineage低ズームデータが実データの13しか読んでいないバグを修正再生成完了) | 包括的コードレビューで発覚した「公開中lineage低ズームデータが実データの13%しか読んでいない」バグを修正・再生成完了 | Fixed, publish pending |
+| [D153](DECISIONS1.md#d153-d148elevation再生成d152lineage低ズーム修正stars公開完了実地確認クリーン) | D148(elevation再生成)・D152(lineage低ズーム修正)、stars公開完了・実地確認クリーン | Recorded |
