@@ -2879,3 +2879,90 @@ in-memoryの単体テストで実施)。**次に`downsampling_run.py`/
 > (`downsampling_covering.py`再設計待ちでブロック中)や2号の
 > readiness項目(5m/10m破損チェック、D57 dirty-tracking)へ進む余地
 > があるが、いずれもこのセッションでの着手は未定。
+
+
+## D155: Oliverの丸め処理フォローアップ(上限32m→1m)を移植・実測。再生成の要否はHidenoriさんの判断待ち
+
+**Status**: Code ported, measured, publish decision pending, 2026-09-09。
+
+### 経緯
+
+D148で移植したOliver Wipfliの丸め処理修正(commit `53e4d3d`)には
+`factor > 32`という無説明の上限値があった(D154の項目4で「upstream側も
+無説明」とコメントに明記したばかり)。Hidenoriさんから、Oliverより
+続報があったと共有を受けた:
+
+> Thanks for the update. Note that 32 m might be too much as a max
+> rounding value. Switched now to a max of 1 m.
+
+upstream本体を確認したところ、実際に該当コミットが存在した:
+[`e964a04`](https://github.com/mapterhorn/mapterhorn/commit/e964a048)
+「Clamp vertical rounding to 1 meter」(#310、2026-09-08)——`53e4d3d`の
+まさに数日後の、Oliver自身によるフォローアップ修正。diffは
+`if factor > 32: factor = 32`を`if factor > 1: factor = 1`に変える
+だけの1行変更。
+
+### 移植内容
+
+`hfu-mapterhorn/pipelines/utils.py`の`get_rounded_elevation_data()`を
+upstreamと同じ`factor > 1`/`factor = 1`に変更。あわせて、D154で
+「32という値の根拠は不明」と書いたコメントを、今回判明した経緯
+(Oliver自身が32mを「too aggressive」と判断し1mへ引き締めた)を
+反映する形に更新した。
+
+### 影響範囲の再確認
+
+`factor(z) = 2^(19-z)/256 = 2^(11-z)`——上限が実際に効くのは
+`factor`が上限を超えるズームのみ:
+- **旧上限32**: z≤5でのみ発動(z=5で64→32に切り詰め)。
+- **新上限1**: z≤10で発動——z=6〜10(自然係数32,16,8,4,2)も
+  一律1mに切り詰められるようになる。**影響範囲がz0-5からz0-10へ
+  大幅に拡大した。**
+
+### 実測(実データ、`create_tile()`を直接実行)
+
+1.5号(`01M1MKD73P0KDT719H21NJV9VR`)の実`downsampling.csv`から、
+影響範囲(parent_z≤10)に該当する層別サンプル103件
+(z5:3, z6:20, z7:20, z8:20, z9:20, z10:20——各層最大20件を無作為抽出)
+を選び、`downsampling_run.create_tile()`を新コード(上限1m)・旧コード
+(上限32m、その場でmonkeypatch)の両方で直接実行、実際のWebPエンコード
+後バイト数を比較(本番`pmtiles-store`は読み取り専用アクセスのみ、
+出力は`/tmp`の使い捨てフォルダ)。
+
+| | 上限32m(旧) | 上限1m(新) |
+|---|---|---|
+| 103件合計 | 59,872 bytes | 98,850 bytes |
+
+**新上限は影響範囲(z5-10)のサンプルで旧上限より約65.1%大きい**——
+D148の78.7%削減効果のうち、この帯域に相当する部分がかなり
+巻き戻ることになる(ゼロには戻らない——丸め処理自体、すなわち
+「丸めなし」というD148以前の状態よりは依然として小さいはずだが、
+今回のサンプルではその基準との比較は行っていない)。この数値は
+downsampling層のz5-10帯のみのサンプルであり、D148の実測時と同様、
+アーカイブ全体でのパーセンテージはこれより緩和される見込み
+(D148では downsampling層単体78.7%減 → アーカイブ全体では18%減)。
+
+### 現在の状態
+
+コードは移植・push済み。**starsへの公開は未実施**——今朝(D153、
+03:02:57 JST)まさにD148の32m上限版を6時間超かけて再生成・公開した
+ばかりであり、この1m上限版でさらに再生成・再公開するかはHidenoriさんの
+判断待ち。選択肢:
+1. 今すぐ再生成・再公開する(elevation配信が再び長時間停止する)。
+2. 見送り、次の機会(2号launch、または他の変更とまとめて)に反映する。
+3. 実データでの本格的な全国規模の影響測定(400タイル規模など、
+   D148と同等の厳密さ)を先に行ってから判断する。
+
+### Resume prompt
+
+> D155: Oliver Wipfliのフォローアップ(丸め処理の上限を32m→1mへ
+> 引き締め、upstream commit `e964a04`)を`hfu-mapterhorn/pipelines/
+> utils.py`に移植・push済み。影響範囲はz0-5からz0-10へ拡大(旧上限が
+> 実際に発動していたのはz≤5のみ、新上限はz≤10)。実データ103件
+> (z5-10層別サンプル)で`create_tile()`を直接実行して実測: 新上限は
+> 旧上限より約65.1%大きい(98,850 vs 59,872 bytes、このサンプル
+> 帯域のみ、アーカイブ全体の割合はこれより緩和される見込み)。
+> **starsへの再公開は未実施**——今朝D153でまさに32m上限版を公開した
+> ばかりのため、再生成・再公開するかはHidenoriさんの判断待ち。
+> **次のアクション**: Hidenoriさんに影響の大きさを説明し、
+> 今すぐ再生成するか・見送るか・より厳密な実測を先に行うかを確認する。

@@ -174,3 +174,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D152](DECISIONS1.md#d152-包括的コードレビューで発覚した公開中lineage低ズームデータが実データの13しか読んでいないバグを修正再生成完了) | 包括的コードレビューで発覚した「公開中lineage低ズームデータが実データの13%しか読んでいない」バグを修正・再生成完了 | Fixed, publish pending |
 | [D153](DECISIONS1.md#d153-d148elevation再生成d152lineage低ズーム修正stars公開完了実地確認クリーン) | D148(elevation再生成)・D152(lineage低ズーム修正)、stars公開完了・実地確認クリーン | Recorded |
 | [D154](DECISIONS1.md#d154-d152コードレビューの残り所見を実コードで再検証triage6件修正2件は再検証の結果対応不要と判明) | D152コードレビューの残り所見を実コードで再検証・triage——6件修正、2件は再検証の結果「対応不要」と判明 | Fixed/triaged |
+| [D155](DECISIONS1.md#d155-oliverの丸め処理フォローアップ上限32m1mを移植実測再生成の要否はhidenoriさんの判断待ち) | Oliverの丸め処理フォローアップ(上限32m→1m)を移植・実測。再生成の要否はHidenoriさんの判断待ち | Code ported, publish decision pending |
