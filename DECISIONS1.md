@@ -2942,27 +2942,58 @@ downsampling層のz5-10帯のみのサンプルであり、D148の実測時と�
 アーカイブ全体でのパーセンテージはこれより緩和される見込み
 (D148では downsampling層単体78.7%減 → アーカイブ全体では18%減)。
 
+### aggregation層への影響確認(再生成前のチェック)
+
+`get_rounded_elevation_data()`は`downsampling_run.py`だけでなく
+`save_terrarium_tile()`(aggregation層、ネイティブ解像度タイル)からも
+呼ばれる共有関数——上限を変えるならaggregation層のネイティブ
+maxzoomが低い(z≤10)アイテムにも影響しうる、という懸念を再生成前に
+実データで確認した。1.5号の全6,373 aggregationアイテムの実際の
+child_z分布を集計したところ、**最小がz12**(z12:2,240件、z13:1,564件、
+z14:564件、z16:2,005件)で、z≤10のアイテムは**ゼロ件**。
+`factor(12)=2^(11-12)=0.5`は旧上限32・新上限1のいずれよりも
+既に小さいため、aggregation層はどちらの上限でも実質未発動——
+**downsampling層のみの再生成で整合性は保たれることを確認した**
+(D148の時と同じ前提が今回も成立)。
+
+### Hidenoriさんの判断・実施
+
+「合わせて行えるバグ修正などとまとめた上で、再生成・再公開する」との
+指示を受けた。D154で実装済みだが本番未反映だった
+`lineage_extend_low_zoom.py`のall-nodata親タイルskip修正
+(D154項目2)も、今回のelevation再生成と合わせて一度に反映することにした。
+
+**実施内容**:
+1. `lineage_extend_low_zoom.py`を本番で再実行(所要数秒)——
+   z7:117→**88件**(29件のall-nodata親タイルを正しくskip、D154の
+   修正が実データでも効くことを確認)、z6:37/z5:13/z4:6(不変)。
+   完了マーカー`lineage-extend-low-zoom.done`も初めて生成された。
+2. elevation側の`*-downsampling.done`マーカー8,223件を削除、
+   `downsampling_run.py`を`screen downsample_1m_cap`で再実行開始
+   (2026-09-09 21:08 JST、D148と同じ手順・ワーカー数)。
+
 ### 現在の状態
 
-コードは移植・push済み。**starsへの公開は未実施**——今朝(D153、
-03:02:57 JST)まさにD148の32m上限版を6時間超かけて再生成・公開した
-ばかりであり、この1m上限版でさらに再生成・再公開するかはHidenoriさんの
-判断待ち。選択肢:
-1. 今すぐ再生成・再公開する(elevation配信が再び長時間停止する)。
-2. 見送り、次の機会(2号launch、または他の変更とまとめて)に反映する。
-3. 実データでの本格的な全国規模の影響測定(400タイル規模など、
-   D148と同等の厳密さ)を先に行ってから判断する。
+lineage側の再生成は完了。elevation側のdownsampling再生成が進行中
+——完了後、D148と同じ手順(bundle→merge→z0-7再接合→verify)を
+elevation・lineage両方で実施し、まとめてstarsへ再公開する予定
+(delete-then-transferパターン、D142/D145/D153と同じ)。
 
 ### Resume prompt
 
 > D155: Oliver Wipfliのフォローアップ(丸め処理の上限を32m→1mへ
 > 引き締め、upstream commit `e964a04`)を`hfu-mapterhorn/pipelines/
-> utils.py`に移植・push済み。影響範囲はz0-5からz0-10へ拡大(旧上限が
-> 実際に発動していたのはz≤5のみ、新上限はz≤10)。実データ103件
-> (z5-10層別サンプル)で`create_tile()`を直接実行して実測: 新上限は
-> 旧上限より約65.1%大きい(98,850 vs 59,872 bytes、このサンプル
-> 帯域のみ、アーカイブ全体の割合はこれより緩和される見込み)。
-> **starsへの再公開は未実施**——今朝D153でまさに32m上限版を公開した
-> ばかりのため、再生成・再公開するかはHidenoriさんの判断待ち。
-> **次のアクション**: Hidenoriさんに影響の大きさを説明し、
-> 今すぐ再生成するか・見送るか・より厳密な実測を先に行うかを確認する。
+> utils.py`に移植・push済み。実データ103件で実測: 新上限は影響帯域
+> (z5-10)のサンプルで旧上限より約65.1%大きい。**再生成前にaggregation
+> 層への影響を確認**——1.5号の全aggregationアイテムのネイティブ
+> maxzoomは最小z12で、上限の影響範囲(z≤10)に該当するものはゼロ件、
+> downsampling層のみの再生成で整合性が保たれることを確認した。
+> Hidenoriさんの判断で「合わせて行えるバグ修正とまとめて再生成・
+> 再公開する」ことになり、D154で実装済み未反映だった`lineage_
+> extend_low_zoom.py`のall-nodata親タイルskip修正も一緒に本番反映
+> (z7:117→88件、29件skip)。elevation側の`downsampling_run.py`再実行
+> (`screen downsample_1m_cap`、2026-09-09 21:08 JST着手、D148と同じ
+> 8,223件・約4〜5時間見込み)が進行中。**次のアクション**:
+> downsampling完走を待ち、bundle→merge→z0-7再接合→verify
+> (elevation・lineage両方)→stars公開(delete-then-transfer、
+> D142/D145/D153と同じ手順)。
