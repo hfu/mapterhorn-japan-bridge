@@ -183,6 +183,17 @@ an SSH-tunneled OAuth loopback — see `japan-geotiff-dem`'s own
 `HANDOVER.md`) — no more routing through `aalto`, no more `scp`-ing
 output between machines for a publish step.
 
+**Before reaching for `ssh hfu@slate.local`, check `hostname`/`uname
+-a` first** (D156) — "whatever machine hosts this conversation" is not
+always `aalto` or another remote box; a session can be hosted directly
+on `slate` itself, in which case `ssh hfu@slate.local` is a pointless
+self-connection that fails on key auth and risks tripping slate's sshd
+rate-limiting. The reliable tell if `hostname` alone feels ambiguous:
+`diskutil info /Volumes/Migrate-2025-04 | grep Protocol` — `USB` (or
+any physically-local protocol) means you're already on `slate`, since
+that mount can only ever be `local` on the machine it's physically
+attached to; a network mount would show `smbfs`/`nfs` instead.
+
 ## Source-catalog entries in `hfu/mapterhorn`
 
 All under `source-catalog/` in the `hfu/mapterhorn` clone on `slate`

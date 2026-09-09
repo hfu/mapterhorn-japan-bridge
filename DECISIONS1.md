@@ -2997,3 +2997,37 @@ elevation・lineage両方で実施し、まとめてstarsへ再公開する予�
 > downsampling完走を待ち、bundle→merge→z0-7再接合→verify
 > (elevation・lineage両方)→stars公開(delete-then-transfer、
 > D142/D145/D153と同じ手順)。
+
+
+## D156: このセッションのエージェントは(aaltoではなく)slate自身の上で動いていた——不要なSSH自己接続の試行で時間を浪費
+
+**Status**: Recorded, 2026-09-10 早朝JST。
+
+### 発生した事象
+
+D155のelevation downsampling再生成(`screen downsample_1m_cap`)の完了確認をしようとした際、Monitorタスクから「メインプロセス(PID 20860)が完了マーカーなしで終了した」というアラートを受けた。状況確認のため`ssh hfu@slate.local '...'`を実行したところ、**`Too many authentication failures`で繰り返し拒否された**——CLAUDE.mdの「一台構成(D12)、everything now runs on slate over SSH from whatever machine hosts this conversation」という記述を鵜呑みにし、このセッションのエージェント自身がslateとは別のマシン上で動いていると無条件に仮定していたため、SSH接続を試みた。
+
+`~/.ssh/config`のデフォルト鍵(`id_rsa`・`id_ed25519`)を明示指定しても全て拒否され、`ssh-agent`のソケットも死んでいて他の鍵を提示できない状態だった。ユーザーに確認を依頼したところ、ユーザー自身の端末(`aalto`)からは`ssh hfu@slate.local`が問題なく通ることが判明し、SSH自体は生きている(＝slateのsshd設定やネットワークの問題ではない)ことが分かった。
+
+### 根本原因
+
+**このセッションのエージェント自身が、最初からslate.local上で直接実行されていた**。`uname -a`が`Darwin slate.local ...`を返し、決定的な証拠として`/Volumes/Migrate-2025-04`のマウント種別が`diskutil info`で**Protocol: USB、`mount`コマンドでも`local`**(SMB/NFS等のネットワークマウントではない)と確認された——USB接続のローカルディスクは、物理的に接続されたマシン上でしか`local`としてマウントされ得ない。つまり`ssh hfu@slate.local`は**自分自身への接続**を試みていたことになり、鍵が拒否されて当然だった(そもそも自己ループへの公開鍵認証を成立させる鍵ペアの用意などしていない)。
+
+CLAUDE.mdの「everything now runs on slate over SSH from whatever machine hosts this conversation」という記述は、このプロジェクトの典型的な運用形態(aaltoやユーザーの手元端末からslateへSSHする)を説明したものであり、**「Claude Codeのセッション自体がどのマシン上でホストされるか」は会話ごとに変わりうる**——今回はセッションのホストそのものがslateだった。この記述を「エージェントは常にslate以外の場所から動く」という不変条件のように読み違えたのが直接の誤り。
+
+### 実害
+
+- 数回のSSH試行で`Too many authentication failures`によりslateのsshdから切断され、これ以上続けるとレート制限(fail2ban的な仕組み)を誘発しかねないリスクがあった(実際には発生しなかったが、ユーザーへの確認待ちで手が止まった)。
+- ユーザーに「ファイルシステムだけ見えていて実行はできないのでは」という誤った印象を与えかけた(実際にはBashツールでの直接実行が最初から可能だった)。
+- 実質的な遅延は数分〜十数分程度で、データやパイプラインへの実害はゼロ(ダウンサンプリング自体は`.done`マーカー8,223件・`check_downsampling_done_integrity.py`で健全性確認済み、正常完了していた——Monitorアラートの「完了マーカーなし」自体も誤検知で、`downsampling_run.py`はそもそもループ後に完了メッセージを一切出力しない仕様だった)。
+
+### 教訓・今後への申し送り
+
+- **SSHを使う前に、まず`hostname`/`uname -a`で「自分が今どのマシン上で動いているか」を確認する**。CLAUDE.mdの「一台構成・SSH運用」の記述はあくまで典型パターンの説明であり、セッションごとに再検証すべき前提であって、無条件に信じてSSHを打ち始めるべきではない。
+- ローカル実行かリモート実行かを見分ける最も確実な方法は、`hostname`だけでなく**マウント種別の確認**(`diskutil info <path>`のProtocol欄、または`mount`コマンドの出力)——ネットワーク越しなら`smbfs`/`nfs`等、物理ローカルなら`local`(USB/内蔵等)と出る。`hostname`だけだと(理論上は)偽装や巧妙な設定で誤認しうるが、USBローカルマウントは原理的に同一マシンでしか成立しない。
+- SSH認証が立て続けに失敗する状況に陥ったら、鍵を総当たりし続けるのではなく、**「そもそも接続先が正しいか」を先に疑う**——特に「自分自身への接続」というパターンは、意外と見落としやすい。
+- Monitorタスクの完了条件(「完了マーカーの有無」等)を設定する際は、監視対象スクリプトの実際の出力仕様(この場合`downsampling_run.py`はループ後に何も印字せず、プロセスが正常終了するだけ)を事前にコードで確認してから条件文を書く。存在しない出力を待つアラート条件は、正常終了時にも必ず誤検知する。
+
+### Resume prompt
+
+> D156: このセッションのエージェント自身が(想定していたaaltoではなく)slate.local上で直接動いていたことが判明(`hostname`=`slate.local`、`/Volumes/Migrate-2025-04`はUSBローカルマウント)。それに気づかずSSH自己接続を試みて`Too many authentication failures`で時間を浪費した。D155のelevation downsampling再生成自体は正常完了していたことを`check_downsampling_done_integrity.py`で確認済み(8,223件健全、stale 0件)——Monitorの「完了マーカーなし」警告は`downsampling_run.py`が元々完了メッセージを出力しない仕様による誤検知だった。**次のアクション**: SSHを介さず直接Bashで、D155のbundle→merge→z0-7再接合→verify(elevation・lineage両方)→stars公開の残り工程を進める。
