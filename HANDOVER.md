@@ -6,171 +6,159 @@ for the standing rules (especially the repo×machine split table) and
 `DECISIONS.md` for why things are the way they are; this file is what
 actually happened, session by session.
 
-**Compacted 2026-09-08**: the 2026-09-06 "current state" section
-(1.5-go mission complete, 2号 launch-readiness reviewed, D132-D147) has
-been moved into `HANDOVER-archive.md`, unedited. This file keeps only
-the current state and a short recent-context summary. Compact again
-the same way once this file itself grows unwieldy -- archive
-everything above the current-state section, keep only a fresh
+**Compacted 2026-09-09 (night JST)**: the 2026-09-09 (early morning)
+"current state" section (D148-D153, elevation+lineage published and
+verified) has been moved into `HANDOVER-archive.md`, unedited. This
+file keeps only the current state and a short recent-context summary.
+Compact again the same way once this file itself grows unwieldy --
+archive everything above the current-state section, keep only a fresh
 snapshot.
 
-## Current state (2026-09-09, early morning JST): D148 + D152 both published to stars, verified clean. 1.6-go still blocked pending redesign
+## Current state (2026-09-09, night JST): elevation downsampling regen in flight (rounding cap 32m->1m + bundled lineage fix), not yet published
 
-**Read DECISIONS.md D147 through D153 for the full arc since the last
-compaction.** This was one long, dense session -- summary:
+**Read DECISIONS.md D147 (2026-09-09 addendum) through D155 for the
+full arc since the last compaction.** Summary:
 
-- **D147**: investigated the JGD2011→JGD2024 CRS question (one of
-  2号's three open readiness items). Confirmed with real 2026 data that
-  GSI's GML now carries `srsName="fguuid:jgd2024.bl"` and that
-  `gmldem2tif.rb` (external tool) ignores it, always stamping
-  `EPSG:6668`. JGD2024 has no EPSG code yet (only ESRI:104221/104220,
-  confirmed against this machine's GDAL 3.13.3/PROJ database) --
-  Hidenori's call: **wait for EPSG, don't patch now**. Not a 2号
-  blocker. Whether to loop in Oliver Wipfli on this is still open.
-- **D148: Oliver Wipfli found and fixed a real upstream bug** in
-  `mapterhorn/mapterhorn` (`53e4d3d`, "Fix rounding on downsampling
-  bug") -- downsampling's parent tiles were never quantized to their
-  own zoom's vertical resolution after averaging, unlike aggregation's
-  leaf tiles. Ported the fix into `hfu-mapterhorn` (new
-  `utils.get_rounded_elevation_data()`, called from both
-  `save_terrarium_tile()` and `downsampling_run.py`'s `create_tile()`).
-  Measured **78.7% smaller** on a 400-tile real sample of the
-  downsampling layer alone. Given stars' tight disk headroom (149GB
-  free), Hidenori chose to **regenerate 1.5-go's published elevation
-  archive** rather than wait for 2号:
-  - Deleted the 8,223 elevation `*-downsampling.done` markers (lineage's
-    untouched) and re-ran `downsampling_run.py` -- **completed cleanly,
-    8,223/8,223, zero errors/warnings** (screen `downsample_round_fix`,
-    ~4h45m wall time).
-  - `bundle.py`(elevation) → `merge_japan_bundles.py`(elevation,
-    includes D144's auto-cluster) → `pmtiles merge` (z0-7 splice) →
-    `pmtiles verify` completed cleanly in screen `d148_bundle_merge`
-    (started 2026-09-08 ~06:28 JST, ~2h35m wall time). Final archive:
-    258.08GB (down from 314.66GB, ~18% smaller -- less than the
-    downsampling-only 78.7% figure since that only measures the
-    downsampling layer, not the full archive including aggregation).
-  - **Published to stars, D153 (2026-09-09 03:02:57 JST)** -- see below.
-- **D149/D150/D151: "1.6-go"** -- investigated two more of Hidenori's
-  observations (lineage rendering nodata as if it were the 1m tier;
-  elevation holes near islands lacking 1m coverage) and found they
-  share one root cause: 51% of land aggregation items (2,128/4,133)
-  cap out below the national z16 ceiling. Verified against MapLibre
-  GL JS's own source that no available release (including the pinned
-  5.24.0) falls back to an ancestor tile for a missing raster-dem tile
-  -- the fix for that landed upstream only 4 days ago, not in any
-  release yet. **Design agreed** (upsample land-only items to z16 via
-  `aggregation_covering.py`/`aggregation_reproject.py`, scoped
-  separately from 2号). A single-item rehearsal
-  (`pipelines-rehearsal-16go/`, D124-style) proved the core mechanism
-  works (86s/item, smooth/plausible elevation) but found a real bug:
-  `aggregation_tile.py`/`lineage_tile.py` named their output archive
-  by the stale *planned* child_z instead of the actually-produced one
-  -- **fixed and verified in production code** (harmless for existing
-  native-zoom runs). A follow-up **chained** 2-item rehearsal then
-  found a second, worse bug: `downsampling_covering.py` determines
-  each item's finest zoom from the aggregation covering CSV's
-  filename (still the stale planned value), not from the real
-  pmtiles-store output -- **upsampled leaves would silently never
-  enter the downsampling pyramid, no crash, just permanent gaps**.
-  **1.6-go is blocked on this until it's redesigned** (likely: scan
-  `pmtiles-store` directly instead of the covering CSVs). Not
-  resumed this session per Hidenori's own call to pivot to a code
-  review instead.
-- **D152: comprehensive code review (`/code-review high`, 9 parallel
-  agents) of every code change since 1.5-go mission complete** (D146's
-  `lineage_extend_low_zoom.py`, D148's rounding fix, D150/151's
-  filename fix -- 5 files, ~340 diff lines). Found 10 findings; **the
-  most severe was live and public-facing**: `lineage_extend_low_zoom.py`'s
-  z8-archive discovery glob was non-recursive, and
-  `utils.get_pmtiles_folder()` buckets z>=7 extents into nested
-  subfolders -- verified directly against real data that only 14 of
-  107 real z8 lineage archives (13%) were ever read. **The z4-z7
-  lineage overview D146 published and is currently live on stars was
-  built from ~13% of the country, not the full national picture it
-  was supposed to show.** Fixed (recursive glob + a basename→relpath
-  map, since the shared `get_tile_to_pmtiles_filename()` helper can
-  only parse bare basenames), verified against real data (107/107
-  archives now found, 440 real z8 tiles), regenerated (z7 68→117, z6
-  17→37, z5 10→13), and re-bundled/merged
-  (`bundle-store/mapterhorn-japan-bridge-lineage.pmtiles`, 204.7MB,
-  verify clean, min/max zoom 4/16, clustered).
-  **Published to stars, D153 (2026-09-09 03:02:57 JST)** -- see below.
-  The other 9 review findings (a latent
-  `majority_vote_downsample()` argmax-on-all-zero bug in
-  `lineage_downsample.py`; all-nodata parent tiles written and
-  propagated instead of skipped; a widened stale-file race window in
-  `aggregation_tile.py`/`lineage_tile.py`; an undocumented rounding
-  cap; code-duplication between `lineage_extend_low_zoom.py` and
-  `downsampling_run.py`; missing `.done`-marker coverage for the new
-  low-zoom archives; a missing cache-freshness check; an inefficient
-  per-level encode/decode round trip) are recorded but **still not
-  triaged or fixed** -- see the code-review tool's own findings output
-  from this session, or re-run `/code-review` on this same diff range
-  to regenerate them.
-- **D153: D148 + D152 both published to stars, verified clean**
-  (2026-09-09 03:02:57 JST). Same delete-then-transfer pattern as
-  D142/D145 (old 314.66GB elevation file deleted first, given stars'
-  149GB headroom), run via `screen publish_d148_d152` +
-  `/tmp/publish_d148_d152.sh` (a copy of the proven `publish_1p5go.sh`
-  pattern), started 20:50:32 JST, took ~6h12m. Progress was tracked by
-  periodically `ssh`-ing to stars and `stat`-ing the in-flight
-  `.mapterhorn-japan-bridge.pmtiles.new.*` temp file directly (rsync's
-  `--progress` output isn't reliably parseable through a detached
-  `screen` + `tee`), which let ETA estimates get consistently within
-  ~15 minutes of the real completion time. Spot-checked against
-  D145's own known-good byte counts after publish: elevation z13
-  (aggregation layer, untouched by D148's rounding fix) and lineage
-  z8 both came back byte-identical to their D145 values; elevation z8
-  (downsampling layer, the actual target of D148's fix) dropped from
-  225,036 to 61,812 bytes (~72.5% smaller) -- consistent with, not a
-  regression from, the fix. 1.5-go's elevation and lineage archives on
-  stars are now both fully current.
+- **D147 addendum: the JGD2011->JGD2024 CRS question is now fully
+  resolved, not just deferred.** Hidenori asked whether GSI itself
+  says it's fine to keep using EPSG:6668 -- re-investigation via
+  `OSGeo/PROJ`'s own commit history (`7f1fdb39`, EPSG Dataset v12.055,
+  2026-04) found EPSG resolved JGD2024 by **renaming EPSG:6668 in
+  place** ("rename JGD2011 to JGD2024... sigh"), not minting a new
+  code -- matching GSI's own statement that horizontal coordinate
+  values are numerically unchanged from JGD2011. This machine's GDAL
+  3.13.3/PROJ install was on EPSG v12.029 (2025-10) as of the original
+  2026-09-07 check, which is why that check saw no code yet -- pure
+  local staleness, not a registry gap. **`gmldem2tif.rb`'s hardcoded
+  EPSG:6668 was correct all along; no fix needed, ever.** Updated
+  CLAUDE.md/START_HERE.md/PLAN.md to stop describing this as an open
+  2号-readiness item.
+- **D154: triaged D152's other 9 code-review findings** by re-reading
+  the actual code rather than trusting a compacted summary. 2 didn't
+  hold up on re-verification (`majority_vote_downsample()`'s
+  all-zero-argmax concern -- the `np.where(any_valid, ...)` mask
+  already discards it; `aggregation_tile.py`'s "widened race window"
+  from D150/D151 -- re-reading the actual diff showed it narrowed the
+  window, since `create_archive()` already writes via atomic
+  temp-file+`os.replace()`). 6 were real and fixed: all-nodata parent
+  tiles in `lineage_extend_low_zoom.py` now skipped instead of
+  written+propagated (confirmed 29 of 117 real z7 parent tiles were
+  fully empty); the unexplained `factor > 32` rounding cap got a
+  comment (confirmed present-but-unexplained in upstream too, not a
+  local addition); `lineage_extend_low_zoom.py` and
+  `downsampling_run.py`'s duplicated lineage-tile-encoding logic
+  extracted into `lineage_downsample.build_parent_tile_bytes()`; a
+  `lineage-extend-low-zoom.done` completion marker added (this
+  standalone script previously left no on-disk trace it had run);
+  `get_cached_reader()`'s misleading "no staleness check needed"
+  comment corrected (real latent risk for future long-lived callers
+  reading `lineage_extend_low_zoom.py`'s fixed filenames, doesn't bite
+  today since that script is single-shot). All verified against real
+  production data via a `/tmp` symlink mirror -- production
+  `pmtiles-store` untouched at the time. Not yet applied to production
+  output at that point (see D155 below).
+- **D155: Oliver Wipfli followed up** ("32m might be too much... now
+  1m") -- ported upstream's actual commit (`e964a04`, "Clamp vertical
+  rounding to 1 meter", #310, one line: `factor > 32` -> `factor > 1`).
+  This widens which zooms the cap affects (old: z<=5 only; new: z<=10),
+  measured **~65.1% larger** on a 103-item real stratified z5-10
+  sample vs. the old cap (giving back a chunk of D148's compression
+  win in exchange for finer precision in that band). **Verified before
+  regenerating**: all 6,373 real aggregation items have native maxzoom
+  >=12 (well above the cap's z<=10 effective range), so a
+  downsampling-only regen keeps the archive internally consistent --
+  same precondition D148 relied on, re-confirmed for this change too.
+  Hidenori's call: **bundle D154's lineage fix into this same
+  regen/publish cycle** rather than doing separate cycles.
+  - `lineage_extend_low_zoom.py` already re-run in production:
+    z7 117->**88** tiles (29 empty ones now correctly skipped),
+    z6/z5/z4 unchanged (37/13/6), `.done` marker written for the first
+    time. Not yet bundled/merged/published.
+  - Elevation: deleted the 8,223 `*-downsampling.done` markers, started
+    `downsampling_run.py` in `screen downsample_1m_cap`. **First
+    attempt used `DOWNSAMPLING_WORKERS=3`** (mistakenly copied from
+    `AGGREGATION_WORKERS=3`'s D131 convention) **and ran far slower
+    than D148's own precedent** (~6-10 items/min vs. D148's effective
+    ~29/min at 8223 items in 4h45m). Diagnosed: `get_worker_count()`'s
+    own coded default for downsampling is actually **5**, "optimized
+    for current hardware" -- a different, already-tuned value from
+    aggregation's separate, crash-driven 3-worker constraint (D129/D131
+    was specifically about aggregation's heavier per-worker GeoTIFF
+    memory footprint, not downsampling's lighter tile-decode work).
+    Killed the 3-worker run at 383/8223 done and restarted with no
+    override (defaults to 5) -- confirmed it correctly skipped the
+    383 already-done items via the `.done`-marker freshness check, no
+    wasted work. **Still running as of this snapshot** (~1095/8223,
+    ~23:13 JST) at a fluctuating ~5-10 items/min -- noticeably slower
+    than D148's own 4h45m run despite the same nominal worker count;
+    cause not diagnosed (thermal throttling after the fan audibly spun
+    up is one live hypothesis, not confirmed), but stable/healthy
+    (no crashes, load average ~4-4.5 on a machine with headroom, no
+    thermal warnings via `pmset -g therm`). Hidenori's instruction:
+    leave it running, don't intervene further.
 
-**Also this session, in a sibling repo**: at Hidenori's request,
+**What's left once the downsampling regen finishes** (elevation +
+lineage, matching D148/D153's own proven sequence):
+1. `BUNDLE_DATATYPE=elevation bundle.py` -> `MERGE_DATATYPE=elevation
+   merge_japan_bundles.py` (D144 auto-cluster) -> `./pmtiles merge`
+   (z0-7 splice) -> `./pmtiles verify`.
+2. `BUNDLE_DATATYPE=lineage bundle.py` -> `MERGE_DATATYPE=lineage
+   merge_japan_bundles.py` -> `./pmtiles verify` (lineage's
+   `lineage_extend_low_zoom.py` re-run is already done, just needs
+   bundling).
+3. Publish both together to stars -- same delete-then-transfer pattern
+   as D142/D145/D153 (`/tmp/publish_d148_d152.sh`-style script; old
+   elevation archive on stars will again need deleting first given
+   stars' tight headroom).
+4. Spot-check known coordinates post-publish, same discipline as D153.
+
+**Also this session, in a sibling repo, fully wrapped up**: at
+Hidenori's request,
 [`hfu/japan-bridge-lineage`](https://github.com/hfu/japan-bridge-lineage)
-(the standalone lineage showcase, previously undocumented -- no
-README at all) got a README.md + LICENSE (CC0, matching this repo's),
-and a fix for
-[hfu/japan-bridge-lineage#1](https://github.com/hfu/japan-bridge-lineage/issues/1)
-(a "がっくん" jolt on every scroll-zoom once terrain is on). Traced
-through maplibre-gl's own source to a per-render-frame terrain
-elevation feedback loop (`centerClampedToGround`'s default `true`
-continuously re-samples live DEM data under the map center and feeds
-it back into zoom/distance math -- a known, still-open upstream issue,
-maplibre/maplibre-gl-js#2937, independent of globe projection though
-globe's own zoom-around-cursor heuristics likely compound it). Fixed
-with `centerClampedToGround: false` (a real, documented option, not a
-hack), pushed (`7535666`), and written up as a comment on the issue --
-**not yet visually verified** (no working browser tooling this
-session, and the fix landed while D148's stars transfer had elevation
-tile serving down anyway) -- ask Hidenori to confirm live now that
-stars is back. This work is entirely independent of `mapterhorn-japan-
-bridge`'s own pipeline; noted here only for continuity, not tracked in
-this repo's own `DECISIONS.md`.
+(the standalone lineage showcase, previously undocumented) got a
+README.md + LICENSE (CC0), and
+[issue #1](https://github.com/hfu/japan-bridge-lineage/issues/1) (a
+"がっくん" jolt on every scroll-zoom once terrain is on) was
+investigated, fixed (`centerClampedToGround: false`, traced to a
+per-render-frame terrain elevation feedback loop -- a known, still-open
+upstream issue, maplibre/maplibre-gl-js#2937, independent of globe
+projection), and **confirmed working by Hidenori on real hardware** --
+commented and **closed**. This work is entirely independent of
+`mapterhorn-japan-bridge`'s own pipeline; noted here only for
+continuity, not tracked in this repo's own `DECISIONS.md`.
+
+A draft reply to Oliver Wipfli (thanking him for both the original
+rounding tip and the 1m follow-up) was written collaboratively with
+Hidenori in-chat but its send status/channel is unclear from this
+session alone -- check with Hidenori before assuming it was sent.
 
 **What's next / open decisions, in likely order**:
-1. Ask Hidenori (or wait for him) to confirm the `japan-bridge-lineage`
-   #1 fix actually stops the jolt, now that stars' elevation tiles are
-   back.
-2. Decide whether/how to triage the other 9 code-review findings from
-   D152 (none are known to be live-data-affecting the way the lineage
-   glob bug was, but several are real latent bugs).
-3. Resume 1.6-go once `downsampling_covering.py`'s redesign is worked
-   out -- not started this session.
-4. The two original 2号-readiness items untouched all session: the
+1. Let the elevation downsampling regen finish, then bundle/merge/
+   splice/verify/publish both datatypes together (see checklist
+   above).
+2. The two original 2号-readiness items untouched all session: the
    untested 5m/10m corruption-bug-class question (`PLAN.md` §3), and
    the dirty-tracking design decision (`PLAN.md` §4/D57).
-5. Whether to loop in Oliver Wipfli on the D147 JGD2024 finding is
-   still undecided.
+3. Resume 1.6-go once `downsampling_covering.py`'s redesign is worked
+   out -- not started this session, still blocked (D151).
+4. Diagnose why this regen ran slower than D148's own precedent at the
+   same nominal worker count, if it recurs -- not urgent, didn't block
+   completion.
 
-**Monitoring**: a `Monitor` task tracked the D148/D152 stars publish
-by `ssh`-checking the in-flight temp file size on stars every 15
-minutes (see D153) until it completed; that task has ended on its own
-(the underlying script finished). No periodic monitor is currently
-armed.
+**Monitoring**: a `Monitor` task (`bt3sw5mpt` as of this snapshot) is
+tracking the elevation downsampling regen's progress every 15 minutes
+by grepping `/tmp/downsample_1m_cap.log` for the latest `N / 8223`
+line and checking the main process (PID printed in the task's own
+command) is still alive -- re-arm a similar one (or check
+`screen -r downsample_1m_cap`) if resuming after this task has ended.
+Once downsampling finishes, the next stages (bundle/merge/verify/
+publish) will need their own monitors, same pattern as D148/D153.
 
-**Git state**: both repos (`mapterhorn-japan-bridge`, `hfu-mapterhorn`)
-should be fully committed and pushed once this snapshot itself is
-committed -- verify with `git status --short` (expect clean) and
-`git log origin/main..HEAD` (expect empty) in both before trusting
-this note blindly.
+**Git state**: all three repos (`mapterhorn-japan-bridge`,
+`hfu-mapterhorn`, `japan-bridge-lineage`) were fully committed and
+pushed as of this snapshot -- confirmed via `git status --short`
+(clean, aside from pre-existing untracked scratch files in
+`hfu-mapterhorn` unrelated to this session's edits) and
+`git log origin/main..HEAD` (empty) in all three immediately before
+writing this. If you're resuming and see otherwise, something changed
+after this snapshot was written.
