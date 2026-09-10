@@ -3076,3 +3076,40 @@ OSError: [Errno 28] No space left on device
 ### Resume prompt
 
 > D157: D155のelevation merge(`merge_japan_bundles.py`)が230万タイル地点でENOSPCクラッシュ。真因は`pmtiles-store/tmp-store/writer-scratch/`に残っていた9/3付け孤立スクラッチ2件・計578GB(D115の残骸とみられる、lsofでどのプロセスも未使用と確認の上ユーザー許可を得て削除、228GiB→806GiB)。`merge_japan_bundles.py`は消費済み入力を削除する設計のため、bundle.pyを再実行して23地域ファイルを再生成中。副次的に、`disk_headroom`監視ループが2026-09-04T19:48以来6日間ログ更新なしで沈黙していたことも発覚(`uv run`に`--no-sync`が無かったための無音失敗と推測)——`--no-sync`付きの新ループ(PID 34838)で復旧済み。**次のアクション**: bundle.py再完走を待ち、merge_japan_bundles.py(elevation)を再実行→D144自動cluster→`pmtiles merge`(z0-7再接合)→verify、続けてlineage側も同様にbundle→merge→verify、最後にstars公開。
+
+
+## D158: `/Volumes/Migrate-2025-04`がstars公開直前に瞬断・自動復旧。データ無傷を確認
+
+**Status**: Recorded, 2026-09-11 未明JST。
+
+### 発生した事象
+
+D155/D157のelevation・lineage両アーカイブが完成・verify済みとなり、stars公開スクリプト(`publish_d155_d157.sh`、D148/D153の`publish_d148_d152.sh`を踏襲)を起動しようとした直後、シェルから
+
+```
+Working directory "/Volumes/Migrate-2025-04/github/mapterhorn-japan-bridge" was deleted; shell cwd recovered to "/Users/hfu".
+```
+
+というエラーが出た。確認すると`/Volumes/Migrate-2025-04`ボリューム自体がアンマウントされていた。
+
+### 調査
+
+- `uptime`は「6日間継続稼働」を示しており、D129のようなカーネルパニック・再起動ではないことを確認。
+- `diskutil list`のディスク識別子が`disk6s2`→`disk4s2`に変化していた——USBストレージがOS的に一度切断・再列挙されたことを示す典型的な兆候。
+- `diskutil mount disk4s2`が2分以上応答せず(バックグラウンドへ自動退避)、その間`diskutil list`ですら他のdiskutil呼び出しに巻き込まれてブロックされた(`diskarbitrationd`を介した直列化とみられる)。
+- 約1分半後、バックグラウンドの`diskutil mount`が正常終了(exit 0)し、ボリュームは自動的に復旧・再マウントされた。作業ディレクトリも自動的に復帰した。
+- `/Volumes/pmtiles-store`(別ボリューム、別USB経路)はこの間ずっと正常にマウントされたまま、影響を受けなかった。
+
+### データ整合性の確認
+
+このタイミングでは書き込み中のファイルは存在しなかった(問題の`bundle-store/mapterhorn-japan-bridge.pmtiles`・`-lineage.pmtiles`はいずれも数時間前に`pmtiles cluster`/`pmtiles merge`が完了しファイルクローズ済みだった)。念のため再マウント後に両ファイルのサイズ・mtimeが切断前と完全一致することを確認し、さらに`./pmtiles verify`を再実行して両方とも異常なしを確認した。データ損失・破損なし。
+
+### 教訓・今後への申し送り
+
+- **`/Volumes/Migrate-2025-04`はUSB接続のため、瞬断のリスクが原理的に常にある**(D156で確認済みの通りUSBプロトコル)——長時間の書き込み処理の最中でなくても、単なるディレクトリ一覧取得のタイミングで起きうる。今回は幸い書き込み完了直後のタイミングで実害はなかったが、大規模mergeの書き込み最中に同様の切断が起きた場合は`OSError`等でクラッシュし、D157と同様の復旧(該当ステージの再実行)が必要になる可能性がある。
+- **`diskutil`コマンドが応答しない場合は、慌てて追加のdiskutilコマンドを重ねて実行しない**——`diskarbitrationd`経由で直列化されるため、後続コマンドも巻き込まれてブロックされるだけで状況の理解を進めない。最初の一つ(この場合`diskutil mount`)の完了を待つのが正しい対処。
+- 今回は自然に自己復旧したため実害ゼロで済んだが、もし`diskutil mount`が本当にハングしたまま戻らなかった場合の次の一手(物理的な再接続をユーザーに依頼する、など)は今回検討していない——次回同様の事象が長時間解消しない場合は、ユーザーに物理接続の確認を依頼する。
+
+### Resume prompt
+
+> D158: stars公開直前に`/Volumes/Migrate-2025-04`が瞬断(USB再列挙、disk6→disk4)、約1分半で自動復旧。書き込み完了済みファイルのため実害なし(サイズ・mtime一致、`pmtiles verify`再パス確認済み)。`/Volumes/pmtiles-store`は無関係で影響なし。**次のアクション**: D155/D157の成果物(elevation 258.14GB・lineage 204.7MB)のstars公開(`publish_d155_d157.sh`)を続行、完了後にverify・spot-check・HANDOVER更新へ進む。
