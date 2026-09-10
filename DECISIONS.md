@@ -180,3 +180,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D158](DECISIONS1.md#d158-volumesmigrate-2025-04がstars公開直前に瞬断自動復旧データ無傷を確認) | `/Volumes/Migrate-2025-04`がstars公開直前に瞬断・自動復旧。データ無傷を確認 | Recorded |
 | [D159](DECISIONS1.md#d159-hidenoriさんがstarsの空き容量を拡張以後の公開は先に削除不要になる見込み) | Hidenoriさんがstarsの空き容量を201GB→1.6TBに拡張。以後の公開は「先に削除」不要になる見込み | Recorded |
 | [D160](DECISIONS1.md#d160-重要な方針決定上流が同じ源泉に繋がっても2号は継続する供給責任を果たすには自分で作り続ける必要がある) | **【方針決定】**上流の`jpdem1a`がこちらの公開物と同一源泉に繋がったことが実測判明。それでも2号は継続——供給責任を果たすには自分で作り続ける必要がある | **Decided** |
+| [D161](DECISIONS1.md#d161-d155丸め上限1md154lineage修正のstars公開完了実地確認クリーン小口整理3件も同時に完了) | D155(丸め上限1m)・D154(lineage修正)のstars公開完了・実地確認クリーン。2号前の小口整理3件も完了、副産物で孤立scratch 765GiBを回収 | Published |
