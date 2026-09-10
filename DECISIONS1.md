@@ -3031,3 +3031,48 @@ CLAUDE.mdの「everything now runs on slate over SSH from whatever machine hosts
 ### Resume prompt
 
 > D156: このセッションのエージェント自身が(想定していたaaltoではなく)slate.local上で直接動いていたことが判明(`hostname`=`slate.local`、`/Volumes/Migrate-2025-04`はUSBローカルマウント)。それに気づかずSSH自己接続を試みて`Too many authentication failures`で時間を浪費した。D155のelevation downsampling再生成自体は正常完了していたことを`check_downsampling_done_integrity.py`で確認済み(8,223件健全、stale 0件)——Monitorの「完了マーカーなし」警告は`downsampling_run.py`が元々完了メッセージを出力しない仕様による誤検知だった。**次のアクション**: SSHを介さず直接Bashで、D155のbundle→merge→z0-7再接合→verify(elevation・lineage両方)→stars公開の残り工程を進める。
+
+
+## D157: D155のmergeステージがENOSPCでクラッシュ。9/3付けの孤立スクラッチ578GBが真因、6日間死んでいたdisk_headroom監視も復旧
+
+**Status**: Recorded, 2026-09-10 昼過ぎJST。
+
+### 発生した事象
+
+D155のelevation bundle→merge工程で、`meta-store/bundle/*.json`をクリアし(D125のランブック通り)、bundle.py(23ファイル、237.4GiB)を完走させた後、`merge_japan_bundles.py`(`MERGE_DATATYPE=elevation`)を実行したところ、230万タイル書き込み時点で
+
+```
+OSError: [Errno 28] No space left on device
+```
+
+でクラッシュした(`writer.write_tile()`内、`pmtiles/writer.py`)。
+
+### 調査と根本原因
+
+1. **`bundle-store/mapterhorn-japan-bridge.pmtiles`(旧D153公開物、258GB)がbundle-storeに残存**していたため、`merge_japan_bundles.py`の完全性チェック(D117/D119)に一度引っかかった。これは削除ではなく同一ボリューム内リネーム退避(`*.d153-backup`、即時・追加容量不要)で解消——この時点では実害なし(`/Volumes/Migrate-2025-04`側は702GiB空きがあり、真因ではなかった)。
+2. **真因は別ボリューム**: `merge_japan_bundles.py`のTMPDIR(`pmtiles-store/tmp-store/writer-scratch/`、`/Volumes/pmtiles-store`が実体)に、**9/3付けの孤立スクラッチファイルが2つ、各310GB・計578GB**残存していた(`pmtiles1854011298`・`pmtiles4100108522`)。`lsof`で確認したところどのプロセスも開いておらず、日付・サイズ(310GB)ともD125の記述にある「D115の310GB破損事故と同じ機構」の残骸と符合する——D115当時の後片付けが不完全だったまま6日以上放置されていたとみられる。このため`/Volumes/pmtiles-store`の実質空き容量は228GiBしかなく、今回のmergeが要求する規模(入力合計237.4GiB)にわずかに届かなかった。
+3. ユーザーに削除の許可を得た上で両ファイルを削除、578GB解放(228GiB→806GiB)。
+4. **`merge_japan_bundles.py`は消費した入力ファイルを都度削除する設計**(D117/D119、途中終了時の部分再開を防ぐための意図的な挙動)のため、クラッシュまでに処理済みだった15件の地域別bundleファイルは既に削除済みだった。復旧には**bundle.pyの再実行**(常にフルパスのため冪等に23ファイルを再生成)が必要だった——これ自体は設計通りの自己修復パスであり、バグではない。
+
+### 副次的な発見: `disk_headroom`監視が6日間沈黙していた
+
+上記調査の過程で、`check_disk_headroom.py`の定期監視(`screen disk_headroom`、D127で`/Volumes/pmtiles-store`もカバー済みのはず)のログ(`disk_headroom.log`)が**2026-09-04T19:48:32を最後に6日間一切更新されていない**ことが判明した。プロセス自体(PID 598/600/601)はFriday 08PMから5日22時間動き続けており(`sleep 900`のループ自体は生きていた)、クラッシュはしていない——にもかかわらずログが増えていなかった。
+
+同じコマンド(`uv run python3 check_disk_headroom.py`、`--no-sync`なし)を手元で直接実行すると即座に正常終了・ログ出力されたため、スクリプト自体の不具合ではない。このループが起動時(Friday)から`--no-sync`なしの`uv run`を使い続けていたことが疑わしい——このプロジェクトの他の長時間バックグラウンドジョブ(`downsampling_run.py`・`bundle.py`・`merge_japan_bundles.py`)は軒並み`uv run --no-sync`を使う運用に既に統一されている一方、この監視ループだけ取り残されていた。6日間、`uv run`の暗黙sync処理がそのプロセスの環境下でのみ毎回無音で失敗し続けていた(`while true`ループ構造上、`uv run`の非ゼロ終了はループ自体を止めない)と推測されるが、厳密な原因特定はできていない。
+
+**結果として、D129のカーネルパニック復旧から今回のENOSPCクラッシュに至るまでの6日間、ディスク headroom 監視は実質機能していなかった。** D127で「pmtiles-storeもカバーするよう拡張してから進める」という条件付き承認を得た監視体制が、まさにそれが必要だった今回の場面で沈黙していたことになる。
+
+**対応**: 古いループ(PID 598とその子プロセス600/601、`screen -X -S disk_headroom quit`後も生き残った子は個別`kill`)を停止し、`uv run --no-sync python3 check_disk_headroom.py`を使う新しいループ(`screen disk_headroom`、PID 34838)で再起動。即座に正常なログ出力を確認。
+
+また、`check_disk_headroom.py`の既定閾値(`--warn-gb 200`)も、今回の実例(228GiB空き=「ok」判定だったが、237.4GiBの入力を扱うmergeには不足)に照らすと**単発の大規模mergeステージに対しては閾値が実態に対して低すぎる**——閾値自体の見直しは今回未実施、次回セッションへの申し送りとする。
+
+### 教訓・今後への申し送り
+
+- **`bundle-store`/`pmtiles-store`配下のスクラッチ・TMPDIR領域は、クラッシュ後に手動で確認・掃除する習慣がないと際限なく蓄積する**——D115からD157まで、実に6日間気づかれなかった。次回大規模ステージ(bundle/merge/pmtiles系コマンド)着手前には`du -sh pmtiles-store/tmp-store/*`相当の一括確認をランブックに追加することを検討。
+- **`while true; do <cmd>; sleep N; done`型の監視ループは、`<cmd>`が毎回無音で失敗しても気づけない**——ループ自体の生存(`ps`で見える)と、ループが実際に仕事をしているか(ログが伸びているか)は別物。長時間動かす監視ループも、`downsampling_run.py`等の本番ジョブと同じく`uv run --no-sync`で統一し、かつ稼働状況そのものを(ログの最終更新時刻など)別途チェックする仕組みがあるとなお良い。
+- **`check_disk_headroom.py`の警告閾値は、個々のパイプラインステージが実際に要求する最大スクラッチ容量を踏まえて再検討すべき**——現行の200GB/80GBは、数百GB規模の単発mergeが日常的に走るこのプロジェクトの実態に対してやや楽観的。
+- **`merge_japan_bundles.py`は入力を消費しながら進む(D117/D119)ため、途中でクラッシュしたら`bundle.py`の再実行が必要**——今回はこの設計を正しく認識していたため復旧は数分で完了したが、知らずに「なぜファイルが消えた」と混乱するとロスタイムになる。ランブックの「merge失敗時の復旧手順」として明記する価値がある。
+
+### Resume prompt
+
+> D157: D155のelevation merge(`merge_japan_bundles.py`)が230万タイル地点でENOSPCクラッシュ。真因は`pmtiles-store/tmp-store/writer-scratch/`に残っていた9/3付け孤立スクラッチ2件・計578GB(D115の残骸とみられる、lsofでどのプロセスも未使用と確認の上ユーザー許可を得て削除、228GiB→806GiB)。`merge_japan_bundles.py`は消費済み入力を削除する設計のため、bundle.pyを再実行して23地域ファイルを再生成中。副次的に、`disk_headroom`監視ループが2026-09-04T19:48以来6日間ログ更新なしで沈黙していたことも発覚(`uv run`に`--no-sync`が無かったための無音失敗と推測)——`--no-sync`付きの新ループ(PID 34838)で復旧済み。**次のアクション**: bundle.py再完走を待ち、merge_japan_bundles.py(elevation)を再実行→D144自動cluster→`pmtiles merge`(z0-7再接合)→verify、続けてlineage側も同様にbundle→merge→verify、最後にstars公開。

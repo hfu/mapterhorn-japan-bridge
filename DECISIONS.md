@@ -176,3 +176,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D154](DECISIONS1.md#d154-d152コードレビューの残り所見を実コードで再検証triage6件修正2件は再検証の結果対応不要と判明) | D152コードレビューの残り所見を実コードで再検証・triage——6件修正、2件は再検証の結果「対応不要」と判明 | Fixed/triaged |
 | [D155](DECISIONS1.md#d155-oliverの丸め処理フォローアップ上限32m1mを移植実測再生成の要否はhidenoriさんの判断待ち) | Oliverの丸め処理フォローアップ(上限32m→1m)を移植・実測。D154のlineage修正も合わせて再生成中 | Regenerating, publish pending |
 | [D156](DECISIONS1.md#d156-このセッションのエージェントはaaltoではなくslate自身の上で動いていた不要なssh試行で時間を浪費) | このセッションのエージェントは(想定していたaaltoではなく)slate自身の上で動いていた——不要なSSH自己接続の試行で時間を浪費、教訓を記録 | Recorded |
+| [D157](DECISIONS1.md#d157-d155のmergeステージがenospcでクラッシュ93付けの孤立スクラッチ578gbが真因6日間死んでいたdisk_headroom監視も復旧) | D155のmergeステージがENOSPCでクラッシュ。9/3付けの孤立スクラッチ578GBが真因、6日間死んでいたdisk_headroom監視も復旧 | Fixed, retrying |
