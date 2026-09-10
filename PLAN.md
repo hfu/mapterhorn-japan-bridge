@@ -516,13 +516,14 @@ generation_id発行・aggregation開始)は別セッションで行う合意の�
 いずれも2号の成否を左右するものではないが、放置すると次のセッションを
 誤誘導する/事故を誘発する類のもの。**2号ローンチ以前に対応を済ませる**、
 というのがHidenoriさんの指示。
-- 🔶 **古い上流クローン`github/mapterhorn`の整理**: 123MB、最終コミット
-  2026-06-10の素のupstreamクローンが`github/hfu-mapterhorn`(実際の
-  作業用fork)の隣に残っている。D156と同種の「隣に紛らわしいものがある」
-  事故の温床。**2026-09-11に`DO-NOT-WORK-HERE.md`を置いて誤誘導は
-  止めた**(未コミット・未push work・stashいずれも無いことを検証済み、
-  `hfu-mapterhorn`側に`upstream` remoteがあるので情報源としても冗長)。
-  **削除するかどうかはHidenoriさんの判断待ち**。
+- ✅ **古い上流クローン`github/mapterhorn`の整理**(2026-09-11完了、
+  Hidenoriさんの承認を得て削除): 123MB、最終コミット2026-06-10の素の
+  upstreamクローンが`github/hfu-mapterhorn`(実際の作業用fork)の隣に
+  残っており、D156と同種の「隣に紛らわしいものがある」事故の温床だった。
+  削除前に未コミット変更・未pushコミット・stashのいずれも無いこと、
+  remoteが到達可能で再クローン可能なことを検証済み。上流の内容が必要な
+  場合は`hfu-mapterhorn`側の`upstream` remote(`git fetch upstream`)を
+  使うこと——そちらが唯一の正しい参照経路になった。
 - ✅ **`START_HERE.md`の機材表の更新**(2026-09-11完了): `optgeo/japan-geotiff-dem`
   の所在をslate(`github/japan-geotiff-dem-repo`)に修正。あわせて
   「Everything computational happens on slate **over SSH**」という
