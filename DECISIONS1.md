@@ -3113,3 +3113,23 @@ Working directory "/Volumes/Migrate-2025-04/github/mapterhorn-japan-bridge" was 
 ### Resume prompt
 
 > D158: stars公開直前に`/Volumes/Migrate-2025-04`が瞬断(USB再列挙、disk6→disk4)、約1分半で自動復旧。書き込み完了済みファイルのため実害なし(サイズ・mtime一致、`pmtiles verify`再パス確認済み)。`/Volumes/pmtiles-store`は無関係で影響なし。**次のアクション**: D155/D157の成果物(elevation 258.14GB・lineage 204.7MB)のstars公開(`publish_d155_d157.sh`)を続行、完了後にverify・spot-check・HANDOVER更新へ進む。
+
+
+## D159: Hidenoriさんがstarsの空き容量を拡張。以後の公開は「先に削除」不要になる見込み
+
+**Status**: Recorded, 2026-09-11 未明JST(D155/D157の公開転送中に判明)。
+
+D155/D157の公開転送が進行中、Hidenoriさんから「starsさんと作業をして空き容量を増やした」との報告があった。確認したところ:
+
+```
+before (D148/D153時点): /dev/sda2  1.8T  1.6T  201G  89%
+after  (今回確認):       /dev/sda2  1.8T  223G  1.6T  13%
+```
+
+**stars側の空き容量が201GBから1.6TBへ大幅に拡張された。** これにより、D142以来続けてきた「delete-then-transfer」パターン(新アーカイブを置く容量を確保するため、転送前に旧アーカイブを削除する)は、今後のサイズ(elevation単体で250-260GB程度)であれば**不要になる見込み**——新ファイルを`.new`サフィックスで転送→verify→旧ファイル削除→リネーム、という順序に変更でき、公開中に「一時的にelevationアーカイブが存在しない」窓を作らずに済む。
+
+今回の公開(D155/D157)自体は既に旧delete-then-transferスクリプトで開始済みのため変更せず続行するが、**次回(2号本番公開など)以降のrunbookはtransfer-then-delete順に更新すべき**。
+
+### Resume prompt
+
+> D159: Hidenoriさんの作業によりstarsの空き容量が201GB→1.6TBに拡張された。次回以降の公開スクリプトは「delete-then-transfer」から「transfer(.new)→verify→delete旧→rename」の順に変更でき、公開中にライブアーカイブが消える窓を避けられる。**次のアクション**: 今回の公開は現行スクリプトのまま続行、次回公開スクリプト作成時にこの新しい順序を採用する。
