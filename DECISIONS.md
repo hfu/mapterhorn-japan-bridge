@@ -179,3 +179,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D157](DECISIONS1.md#d157-d155のmergeステージがenospcでクラッシュ93付けの孤立スクラッチ578gbが真因6日間死んでいたdisk_headroom監視も復旧) | D155のmergeステージがENOSPCでクラッシュ。9/3付けの孤立スクラッチ578GBが真因、6日間死んでいたdisk_headroom監視も復旧 | Fixed |
 | [D158](DECISIONS1.md#d158-volumesmigrate-2025-04がstars公開直前に瞬断自動復旧データ無傷を確認) | `/Volumes/Migrate-2025-04`がstars公開直前に瞬断・自動復旧。データ無傷を確認 | Recorded |
 | [D159](DECISIONS1.md#d159-hidenoriさんがstarsの空き容量を拡張以後の公開は先に削除不要になる見込み) | Hidenoriさんがstarsの空き容量を201GB→1.6TBに拡張。以後の公開は「先に削除」不要になる見込み | Recorded |
+| [D160](DECISIONS1.md#d160-重要な方針決定上流が同じ源泉に繋がっても2号は継続する供給責任を果たすには自分で作り続ける必要がある) | **【方針決定】**上流の`jpdem1a`がこちらの公開物と同一源泉に繋がったことが実測判明。それでも2号は継続——供給責任を果たすには自分で作り続ける必要がある | **Decided** |

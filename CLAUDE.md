@@ -18,10 +18,30 @@ family of sibling repos. Don't mix.
 Produce Mapterhorn-format terrain tiles (PMTiles, Terrarium encoding)
 for Japan, as an **interim bridge** until upstream
 `mapterhorn/mapterhorn`'s own Japan 1m source (`jpdem1a`) picks up a
-2026-07-31 GSI DEM1A survey update for Hokkaido. Once upstream catches
-up, this whole effort — this repo, the `hfu/mapterhorn` source-catalog
-entries it depends on, the `smartmaps/mapterhorn-japan-bridge` Source
-Cooperative product — should be considered retirable. Being a real
+2026-07-31 GSI DEM1A survey update for Hokkaido.
+
+**Do not read "interim" as "wind down at the first sign upstream has
+caught up" (D160, 2026-09-11).** Upstream's `jpdem1a` is now fed by
+Oliver Wipfli's own `wipfli/japan-download`, which reads
+`smartmaps/japan-geotiff-dem`'s `latest_file_list.csv.gz` — *this
+project's own sibling product*. Measured 2026-09-11: our
+`jpnational1` file list and that public list are the same 291,779
+files, same MD5. So the source-level gap this bridge exists to fill
+has largely closed on its own — and **Hidenori's explicit decision is
+that 2号 and beyond continue anyway.** Being upstream's Japan data
+supplier is a standing obligation, and the only way to keep
+`latest_file_list.csv.gz` trustworthy is to keep consuming it in a
+real national build and catching what breaks. Stop building and
+nobody is checking what we publish. A future session that discovers
+the "upstream has caught up" fact and proposes retirement is
+re-deriving a question already settled — read D160 before raising it
+again.
+
+Once upstream genuinely and durably catches up *and* that obligation
+is addressed some other way, this whole effort — this repo, the
+`hfu/mapterhorn` source-catalog entries it depends on, the
+`smartmaps/mapterhorn-japan-bridge` Source Cooperative product —
+becomes retirable. Being a real
 `git` fork (not an independent reimplementation) is deliberate and
 load-bearing for this mission — see DECISIONS.md D17 for why upstream
 fidelity is treated as a standing practice here, not a one-time setup
