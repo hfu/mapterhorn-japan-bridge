@@ -516,23 +516,32 @@ generation_id発行・aggregation開始)は別セッションで行う合意の�
 いずれも2号の成否を左右するものではないが、放置すると次のセッションを
 誤誘導する/事故を誘発する類のもの。**2号ローンチ以前に対応を済ませる**、
 というのがHidenoriさんの指示。
-- ⬜ **古い上流クローン`github/mapterhorn`の整理**: 123MB、最終コミット
+- 🔶 **古い上流クローン`github/mapterhorn`の整理**: 123MB、最終コミット
   2026-06-10の素のupstreamクローンが`github/hfu-mapterhorn`(実際の
-  作業用fork)の隣に残っている。作業には使っていない。削除するか、
-  用途をREADME等で明記する。D156と同種の「隣に紛らわしいものがある」
-  事故の温床。
-- ⬜ **`START_HERE.md`の機材表の更新**: `optgeo/japan-geotiff-dem`を
-  「aalto」と記載しているが、D12以降slate上(`github/japan-geotiff-dem-repo`)
-  にある。D156でエージェント自身が引っかかったのと同じクラスの
-  staleness。
-- ⬜ **`check_disk_headroom.py`の閾値見直し**: 既定の警告200GB/critical 80GBは、
-  237GiBを要求するmergeステージに対して「ok」を返してしまう(D157で
-  実際にそうなり、ENOSPCクラッシュを事前に警告できなかった)。個々の
-  ステージが要求する最大スクラッチ量から逆算して決め直す。
+  作業用fork)の隣に残っている。D156と同種の「隣に紛らわしいものがある」
+  事故の温床。**2026-09-11に`DO-NOT-WORK-HERE.md`を置いて誤誘導は
+  止めた**(未コミット・未push work・stashいずれも無いことを検証済み、
+  `hfu-mapterhorn`側に`upstream` remoteがあるので情報源としても冗長)。
+  **削除するかどうかはHidenoriさんの判断待ち**。
+- ✅ **`START_HERE.md`の機材表の更新**(2026-09-11完了): `optgeo/japan-geotiff-dem`
+  の所在をslate(`github/japan-geotiff-dem-repo`)に修正。あわせて
+  「Everything computational happens on slate **over SSH**」という
+  D156の原因になった断定を、「まず`hostname`で確認せよ」という形に
+  書き換え、ディスクを`diskN`ではなくマウントポイントで呼ぶよう明記
+  (D158でdisk6→disk4に変わった実例つき)。
+- ✅ **`check_disk_headroom.py`の閾値見直し**(2026-09-11完了、
+  `hfu-mapterhorn` commit `216fb22`): 既定を警告300GB/critical 120GBへ。
+  1.5号の実成果物から逆算した根拠(merge 237.4GiB in→out、splice後
+  240.4GiB)をコード内コメントに明記。あわせて**圧迫時にscratch木の
+  サイズを併記**する機能を追加——D157の真因(1週間前のクラッシュ由来の
+  孤立scratch 578GB)は、ボリューム単位の空き容量だけ見ていては実データと
+  区別できなかったため。
 - ⬜ **公開スクリプトをtransfer-then-delete順に変更**: starsの空きが
   1.6TBに拡張された(D159)ため、従来の「先に旧アーカイブを削除してから
   転送」をやめ、「`.new`で転送→verify→旧削除→rename」にできる。
   公開中にライブアーカイブが一時的に消える窓がなくなる。
+  **2号の公開スクリプトを書く時点で適用する**(今回のD155公開は
+  現行スクリプトで進行中のため触らない)。
 
 **インフラ面: 準備完了**
 - ✅ disk5(`/Volumes/pmtiles-store`)は1.5号のままアタッチ継続で問題なし

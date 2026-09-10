@@ -31,19 +31,32 @@ Deeper: `README.md` (public framing), `CLAUDE.md` § Mission.
 |---|---|---|
 | `hfu/mapterhorn-japan-bridge` | GitHub Pages only; docs live in git | **Docs + preview viewer. No pipeline code.** You are reading its docs now. |
 | `hfu/mapterhorn` | `slate`, `/Volumes/Migrate-2025-04/github/hfu-mapterhorn/` | The **actual pipeline**, in `pipelines/`. A real fork of upstream — keep it close to upstream, bug fixes only. |
-| `optgeo/japan-geotiff-dem` | `aalto` | Upstream-of-us: GSI DEM → GeoTIFF → Source Cooperative. Has its own `CLAUDE.md`/`DECISIONS.md`; ask questions there, not here. |
+| `optgeo/japan-geotiff-dem` | `slate`, `/Volumes/Migrate-2025-04/github/japan-geotiff-dem-repo/` | Upstream-of-us: GSI DEM → GeoTIFF → Source Cooperative. **Also upstream Mapterhorn's own Japan data source** since 2026-08 (D160). Has its own `CLAUDE.md`/`DECISIONS.md`; ask questions there, not here. |
 | `hfu/mapterhorn-monitor` | GitHub Pages | Open MCT dashboard for long runs. Separate repo. |
 | `hfu/japan-bridge-lineage` | GitHub Pages | Standalone globe-view showcase of the lineage layer (Vite + MapLibre GL JS, pinned to 5.24.0 -- 6.x's raster-dem loading is broken, see `DECISIONS.md` D146-adjacent history). Separate repo, built for sharing outside the dashboard (e.g. with Oliver Wipfli). |
 
-**Everything computational happens on `slate` over SSH.** From a session host:
+**Everything computational happens on `slate`.** Whether you need SSH to get
+there depends on where *this session* is running — **check first, don't assume**
+(D156: a session burned time SSHing to `slate.local` from `slate` itself, where
+it fails on key auth and risks tripping sshd's rate limiting):
 
 ```
-ssh slate-via-spacex 'cd /Volumes/Migrate-2025-04/github/hfu-mapterhorn/pipelines && ...'
+hostname          # slate.local means you are already there — just cd and run
 ```
+
+If `hostname` looks ambiguous, `diskutil info /Volumes/Migrate-2025-04 | grep Protocol`
+settles it: `USB` (any physically-local protocol) means this machine *is* `slate`,
+since that disk can only mount as `local` where it is physically attached. From a
+genuinely remote session host, it is `ssh hfu@slate.local '...'`.
 
 Two physical disks matter and are easy to confuse:
-- `/Volumes/Migrate-2025-04` (disk6) — code, `source-store`, `aggregation-store`, `bundle-store`
-- `/Volumes/pmtiles-store` (disk8) — `pmtiles-store` and `tmp-store`, symlinked in from `pipelines/`
+- `/Volumes/Migrate-2025-04` — code, `source-store`, `aggregation-store`, `bundle-store`
+- `/Volumes/pmtiles-store` — `pmtiles-store` and `tmp-store`, symlinked in from `pipelines/`
+
+Refer to them by **mount point, never by `diskN` identifier** — Migrate-2025-04
+is USB-attached and re-enumerates: it was `disk6` for weeks, briefly vanished
+mid-session on 2026-09-11, and came back as `disk4` (D158). The mount point is
+stable; the device node is not.
 
 `stars` (`stars@stars.local`) is the public serving host: martin + Caddy at
 `stars.optgeo.org`. Publishing is an `rsync` there, **not** Source Cooperative
