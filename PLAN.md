@@ -159,34 +159,48 @@ later — `EPSG:6668` is and remains the correct code. Full writeup:
 
 ## 3. Data-quality baseline for 2号
 
-D18's corruption investigation (in `japan-geotiff-dem`) is what found
-the `gmldem2tif.rb` bug in the first place. Status as of this writing:
+**RESOLVED, 2026-08-25 (D35, this repo's own `DECISIONS0.md`) — this
+section was stale until a 2026-09-12 re-check found the closure had
+never been folded back in here.** D18's corruption investigation (in
+`japan-geotiff-dem`) is what found the `gmldem2tif.rb` bug in the first
+place; D35 is where it was fully closed out:
 
 - The tool itself is fixed (`tif_valid?` now forces a real decode).
-- All 45 originally-confirmed-corrupted files in the 10
-  originally-suspect `4929`/`4930` meshes are fixed and re-verified.
-- A full ground-truth sweep of the entire 109-mesh `4929`/`4930` zone
-  is in progress at time of writing (`scripts/ground_truth_check.py`
-  against all 109 downloaded raw GML zips) — **check its outcome
-  before starting 2号's own source refresh**. If it finds anything new,
-  that gets fixed the same way (re-convert, re-upload, re-verify,
-  regenerate both manifests, propagate to `slate`) before 2号 trusts
-  `jpnational1` as clean.
-- **Deliberately still deferred**: whether the same corruption-bug
-  class exists in 5m/10m (same tool, same `-n $(nproc)` parallelism
-  setting, never tested — D18's own "まずは1mに集中しよう" call). Worth
-  a real decision before or during 2号: test it, or explicitly accept
-  the residual risk again the way 1号 did for the 1m case.
-- **Worth considering as a standing practice, not a one-off**: since
-  the corruption bug was execution-environment-dependent (a fresh
-  re-run of identical code on identical input didn't reproduce it),
-  there's no guarantee 2号's own fresh GSI download-and-convert pass is
-  immune. A lighter-weight version of `ground_truth_check.py` (or a
-  cheap decode-forcing screen like `screen_source.py`, already built)
-  run against a *sample* of newly-converted meshes each cycle, not just
-  once retroactively, would catch a repeat before it reaches
-  publication. Not committed to yet — a real design question for 2号,
-  not assumed.
+- **Full 109-mesh `4929`/`4930` sweep: done, 109/109**, not just the
+  original 10 suspect meshes. Final tally 48 corrupted files (38+7+3),
+  all fixed, re-verified twice, propagated into this repo's own
+  `source-store`/manifest. Zero further corruption found.
+- Broader-region calibration (Hokkaido `Z007`, 8 scattered mesh4 codes,
+  Kyushu/Okinawa `Z007`, ~3,544 files total): zero mismatches outside
+  `4929`/`4930`.
+- **5m/10m corruption-bug-class question: answered, not deferred
+  anymore.** `screen_source.py` (`hfu-mapterhorn/pipelines/`, built
+  2026-08-22) ran against the full corpus of all three: `jpnational10`
+  (4,981 files) and `jpnationalsea` (275 files) came back zero decode
+  errors and zero 0%-valid files — fully clean. `jpnational5` (422,119
+  files) also had zero decode errors, but 2,062 files at exactly 0%
+  valid; investigated (not assumed) and found to be a categorically
+  different signature from D18's bug — all exactly 506 bytes (ZSTD's
+  minimal encoding of a genuinely all-nodata raster) vs. 18-23KB+ for
+  real data, scattered nationwide rather than clustered in `4929`/
+  `4930` — i.e. legitimately-empty small DEM5A/5B boundary sub-meshes,
+  not corruption. **Re-verified live, 2026-09-12**: the raw
+  `screen_results_jpnational{5,10,sea}.csv` outputs are still on disk
+  (`hfu-mapterhorn/pipelines/`, untracked scratch, dated 2026-08-22 —
+  don't delete, they're the evidence trail for this finding) and their
+  row counts / zero-valid-pct counts match D35's own numbers exactly
+  (2,062 / 0 / 0). **5m/10m/sea are confirmed not affected by D18's bug
+  — no further test or risk-acceptance decision needed before 2号.**
+- **Still worth considering as a standing practice, not a one-off**
+  (unchanged from before): since the corruption bug was execution-
+  environment-dependent (a fresh re-run of identical code on identical
+  input didn't reproduce it), there's no guarantee 2号's own fresh GSI
+  download-and-convert pass is immune. A lighter-weight repeat of
+  `screen_source.py` run against a *sample* of newly-converted meshes
+  each cycle, not just once retroactively, would catch a repeat before
+  it reaches publication. Not committed to yet — a real design
+  question for 2号, not assumed. This is the one genuinely open piece
+  of this section; everything else above is closed.
 
 ## 4. Infrastructure prerequisites
 
@@ -499,11 +513,18 @@ generation_id発行・aggregation開始)は別セッションで行う合意の�
   `gmldem2tif.rb`/`aggregation_reproject.py`とも**対応不要**。詳細は
   DECISIONS.md D147の2026-09-09追記参照。
 
+**2026-09-12の再チェックで判明**: 以下2項目のうち1つ(5m/10m破損チェック)は
+実際には2026-08-25に既にクローズ済み(D35)だったが、その後の`PLAN.md`更新
+セッションで一度も反映されず「未解決」のまま3週間近く放置されていた。§3を
+参照して修正済み——このチェックリスト自体、次に触る前に本当に未解決かどうか
+D番号まで遡って確認すること(タイトルだけで信用しない)。
+
 **未解決・2号起動前に確認が必要な項目**:
-- ⚠️ **5m/10mデータの破損チェック未実施(§3)**: `gmldem2tif.rb`のバグは1mでのみ
-  109メッシュの全数調査済み(japan-geotiff-dem側)。同じ実行環境依存のバグクラスが
-  5m/10mにも存在するかは「まだテストしていない」——2号起動前にテストするか、
-  残存リスクを明示的に受容するかの意思決定が必要。
+- ✅ **5m/10mデータの破損チェック — 実は2026-08-25(D35)に完了済み(§3参照)**:
+  `screen_source.py`で`jpnational10`/`jpnationalsea`は全数ゼロエラー、
+  `jpnational5`の2,062件0%validは別現象(正当な空メッシュ)と判明・除外済み。
+  2026-09-12にscreen_results_*.csvの生データで再検証し数字が一致することを
+  確認済み。**2号起動前の追加作業は不要。**
 - ⚠️ **dirty-tracking(差分再処理)の設計判断が未確定(D57)**: 現状は全件再処理
   (安全だが2号の規模次第で遅い)。D42の見積もりでは実データの1/3程度が変わる
   想定——全件再処理を許容するか、`pmtiles-store`の実在確認込みの安全な
