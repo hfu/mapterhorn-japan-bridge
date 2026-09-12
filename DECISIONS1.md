@@ -3518,3 +3518,227 @@ runs, and treating a reuse count near zero as a signal to investigate
 manifest changing since 1.5号 -- no longer holds by the time 2号
 starts, which is expected and fine, just means less reuse than hoped,
 not a bug) rather than assuming the feature itself is silently broken.
+
+## D165: Opus review of the full production pipeline -- 10 confirmed findings, 4 fixed (including a live data-quality bug), 6 tracked for follow-up
+
+**Status**: 4/10 fixed and tested against real data, 2026-09-13. The
+remaining 6 are real, verified findings, deliberately NOT rushed --
+see each one's own reasoning below for why.
+
+**Context**: Hidenori's own explicit sequencing for this session --
+"Claude review clears first, then an independent Opus review, then a
+2号 dress rehearsal only once bug-squashing feels thorough" (verbatim
+framing, 2026-09-13). D163/D164 closed the Claude-review stage (safe
+cross-generation reuse + a self-review pass, 10 issues found and
+fixed). This entry is the Opus stage: a fresh, from-scratch review
+(not limited to D163/D164's own diff) of the entire production chain
+that will run during 2号 -- `source_download.py` through
+`bundle.py`/`merge_japan_bundles.py`, all of `utils.py` -- specifically
+briefed to hunt for NEW instances of this project's own three
+dominant historical bug classes (silent data loss from unsafe "already
+done" checks -- D51/D57/D69/D74-D76; non-atomic writes mistaken for
+complete -- D120#4/D164; namespace collisions -- D74-D76) rather than
+generic bugs. `ReportFindings` wasn't available inside the delegated
+agent, so its 10-finding list was re-entered into this session's own
+`ReportFindings` call by hand after the fact (all still logged as
+CONFIRMED/PLAUSIBLE there).
+
+### Fixed and tested this session
+
+**#1, MOST IMPORTANT -- already live in the published 1.5号 archive**:
+`aggregation_merge.py`'s `merge()` zero-filled every nodata pixel
+unconditionally, on both its single-group and multi-group code paths,
+before `aggregation_tile.py` ever saw the data -- so the `valid_mask`/
+alpha mechanism (`utils.save_terrarium_tile()`'s own docstring: built
+specifically so "gaps ... survive as nodata through downsampling's
+tile pyramid, instead of silently becoming a fake elevation of 0m")
+was always fully opaque. Verified live by the Opus review: 315/315
+sampled 1.5号 elevation tiles decode with no alpha plane at all; a
+519-tile sample found 5.59% of leaf pixels affected; a specific tile
+(`12-3674-1521-12.pmtiles`) confirmed against its own lineage sibling
+-- 262,144/262,144 no-source-coverage pixels in lineage, the
+byte-identical position in elevation a fully-opaque tile of exactly
+0.0m.
+
+**Root cause, traced back through git history**: the unconditional
+`-9999→0` fill was added by `1b6e4e1` ("Fix D114(B): boundary_tile
+erosion-gate deleted coastal transitions") specifically to stop a much
+more visible "hard cliff" bug (raw -9999 surviving into Terrarium
+encoding decodes as a wildly wrong elevation). That fix was correct
+for its own problem -- verified at the time with a synthetic test
+suite that no longer exists in the repo (not committed, per this
+project's own established "one-off, not committed" pattern for
+verification scripts) -- but never restored nodata semantics
+afterward, since doing so safely requires knowing exactly which pixels
+the fix's own gaussian blur touched, and the original fix didn't need
+that distinction for its own purpose.
+
+**Fix**: snapshot `never_covered_mask` (pixels no group ever filled)
+immediately before the zero-fill (which is still needed, numerically,
+for the gaussian blur math -- a filter can't operate on a -9999
+sentinel sensibly). After the blur runs, restore -9999 only where
+`boundary_tile_blurred == 0` -- i.e. pixels the blur's gaussian kernel
+made literally zero numerical contribution to, meaning genuinely
+outside its reach. Pixels the blur DID touch (D114(B)'s own coastal
+transition zone) keep their blended value exactly as before, untouched
+by this change. When no blur ran at all (a window with zero coverage
+from any group), everything `never_covered_mask` marks is restored
+directly. The single-group branch (no blur math there at all --
+"nothing else to blend against") simply had its zero-fill removed
+outright, since there was never a numerical reason for it.
+
+**Verification, since D114(B)'s own original synthetic suite no longer
+exists**: built a fresh synthetic scenario replicating it exactly (a
+coastline where a higher-priority source stops partway and a
+lower-priority source extends slightly further, both leaving deep
+"open ocean" pixels uncovered) -- confirmed the coastal-blend values
+(x=32 through x=51 in the test, decaying smoothly toward numerical
+zero) are byte-identical before and after this fix, while pixels
+beyond the blur's numerical reach (x≥52) now correctly read -9999
+instead of a flat 0. Also tested the all-uncovered-window edge case
+(both groups entirely -9999 → output entirely -9999, previously
+entirely 0). Re-ran real 1.5号 source-only items through the fixed
+`merge()`: found several `jpnationalsea`-only items where the fix
+activates at real national scale, one going from 0% to 97.4% nodata
+(a mostly-open-ocean macrotile off Hokkaido's Pacific coast, the
+remaining 2.6% correctly real Copernicus 0m values, not corrupted).
+`aggregation_tile.py` itself needed zero changes -- its own
+`valid_mask = subdata != -9999` logic was already correct, just
+starved of real -9999 input by `merge()`.
+
+**#4**: `utils.read_done_manifest()` treated ANY corrupt/truncated
+`.done` JSON identically to a genuine pre-D119 legacy marker (`{}`),
+so `done_covers()`/`done_is_current()` both certified it "done,
+current" for elevation with zero verification -- and `write_done_
+manifest()` has no `fsync` anywhere in this codebase (only
+tmp+`os.replace`, which guarantees ordering, not durability), so a
+crash mid-write plausibly produces exactly this. Fixed by
+distinguishing a REAL legacy marker (always exactly 0 bytes, from a
+bare `touch`) from a corrupt one (non-empty but unparseable or wrong
+format) -- the latter now returns a distinct `False` sentinel that
+`done_covers()`/`done_is_current()` never trust. Verified: a 0-byte
+file still reads as `{}` (elevation-only, backward compatible); a
+truncated-JSON file now correctly fails both checks. Also directly
+strengthens D163/D164's B1 fix (the legacy-manifest guard in
+`try_reuse_from_previous_generation()`), which already used the same
+truthiness check and now correctly rejects corrupt manifests too, not
+just empty ones.
+
+**#2 (partial)**: `lineage_provenance.py`'s `compute_provenance()` used
+an unguarded `glob(f'{tmp_folder}/*-3857.tiff')` that also matches
+`merged-3857.tiff` on a crash-and-resume -- the exact D48 hazard
+`aggregation_merge.py`'s own glob was already narrowed to avoid,
+copied here before that narrowing existed. Fixed by matching the same
+`[0-9]*-3857.tiff` pattern. **Deliberately NOT fully fixed**: a deeper
+resume-safety gap remains -- `reproject()`'s own early-return (skips
+if `reprojection.json` exists) means the per-group tiffs are never
+regenerated on resume either, so if `run()` crashes after `merge()`
+has already consumed them but before the item's own `.done` gets
+written, `emit_lineage()` now raises a clean `ValueError` instead of
+silently miscounting, but still has no real inputs to recover from.
+Making the whole reproject→lineage→merge→tile chain safely resumable
+at any crash point needs its own design pass (each stage would need to
+record enough to skip correctly or regenerate what a later stage
+consumed) -- a rushed patch here (e.g. "just skip lineage if merge-done
+exists") risks silently certifying an item's lineage as done when it
+was never actually computed, exactly the class of bug this whole
+review exists to catch. Documented in a new comment on `emit_lineage()`
+itself so a future session doesn't have to re-derive this.
+
+**#9**: `aggregation_covering.py`'s `write_aggregation_todos()` ignored
+the `AGGREGATION_ID` override `main()` had just honored when minting a
+covering, always re-deriving "newest generation on disk" instead of
+the one actually being planned -- re-running covering against a
+specific non-latest generation (e.g. to re-plan it after a source
+repair) was a silent no-op for that generation while an unrelated,
+actually-newest generation got its `.todo`/`.done`/reuse-copies
+churned instead. Fixed: `write_aggregation_todos()` now takes an
+explicit `aggregation_id` parameter (default `None` preserves the old
+re-derive behavior for standalone/backward-compatible invocation);
+`main()` passes its own resolved id. Verified with a 3-generation
+test (oldest=A, target=B, unrelated-newest=C all present on disk):
+calling `write_aggregation_todos(aggregation_id=B)` correctly reused
+from A and left C completely untouched.
+
+### Tracked for follow-up, not fixed this session
+
+Each of these is a real, CONFIRMED (or one PLAUSIBLE) finding --
+deferred for scope/depth reasons, not doubt about whether they're
+real:
+
+- **#3**: `aggregation_run.py`'s own `.done` check uses `done_covers()`
+  (no freshness check, never verifies the output file exists) instead
+  of `done_is_current()` plus an explicit existence check the way
+  `aggregation_covering.py`'s reuse path and `downsampling_run.py`
+  both already do. Latent today (audited live: 1.5号 is 6,373/6,373
+  `.done` with 0 missing outputs, 0 legacy/corrupt manifests) but a
+  real gap for 2号, where a source file could legitimately get
+  corrected mid-run (the actual D18/D35 scenario) after this item's
+  own `.done` already exists.
+- **#5**: `downsampling_run.py`'s own freshness gate verifies its
+  input children but never stats its own output file -- the manifest
+  even records the output path (`extra={'output': out_filepath}`) and
+  nothing ever reads it back. Same shape as #3, one layer up.
+- **#6**: `lineage_provenance.py`'s `compute_provenance()` reads whole
+  reprojected rasters into RAM unwindowed, where `aggregation_merge.py`
+  processes the same data in 512px windows specifically to avoid this
+  -- measured up to ~10.7 GiB peak for a single worker on the largest
+  real covering items. Not fatal (1.5号's own lineage archive exists),
+  but it's the exact mechanism D129/D130/D131 fixed `AGGREGATION_
+  WORKERS` at 3 to avoid, landed in a code path that predates that
+  fix and was never revisited against it. A real fix means rewriting
+  `compute_provenance()`'s core loop around windowed reads -- more
+  invasive than the fixes above, deferred rather than rushed.
+- **#7**: `remove_dangling_pmtiles.py` classifies D146's entire
+  standalone `0-0-0-{4..7}.pmtiles` lineage low-zoom pyramid as
+  dangling, since those files have no covering CSV by design (that
+  standalone script's whole point). Running the documented cleanup
+  tool after a 2号 lineage pass would delete that whole feature.
+  Needs the tool's own `expected_pmtiles_filenames` set taught about
+  this one deliberate exception -- straightforward, deferred only for
+  time this session, should be picked up before it's ever run against
+  a post-2号 lineage generation.
+- **#8**: `downsampling_run.py`'s own tmp folder
+  (`{z}-{x}-{y}-{pz}-tmp`) is the one shared path in the D107
+  datatype-separation restructure that never got scoped by datatype --
+  both elevation and lineage downsampling passes would write
+  identically-named files there if ever run concurrently (nothing in
+  the code prevents that; only convention does).
+- **#10** (PLAUSIBLE, not CONFIRMED): `aggregation_covering.py`'s
+  `write_aggregation_items()` never removes a superseded covering CSV
+  from a previous pass into the same generation, unlike its
+  `downsampling_covering.py` sibling. Combined with `aggregation_
+  tile.py`'s own stale-output cleanup glob, two same-position workers
+  could in principle delete each other's output if a position's source
+  composition (and therefore its `child_z`) changes between two
+  covering runs into the same generation -- exactly 2号's own shape if
+  more source data lands mid-generation. No duplicate position exists
+  in any current generation (verified), so this is a real but
+  currently-dormant risk, not an active one.
+
+### What this means for the 2号 dress rehearsal
+
+Per Hidenori's own framing: the dress rehearsal (and any "1.7号" full
+re-publish that might follow it, reprocessing 1.5号's own source data
+with all these fixes applied rather than waiting for 2号's fresh GSI
+data) should wait until bug-squashing feels thorough, not just until
+this one Opus pass is fully closed out. The 6 deferred items above are
+the concrete remaining list -- #3/#5/#7/#8 are all reasonably
+contained; #6 is a real rewrite; #10 needs either a fix or an explicit
+risk-acceptance decision before 2号's own covering could plausibly be
+re-run into an existing generation.
+
+**Also verified as real by the Opus review but below its own top-10
+cutoff, not yet triaged**: divergent copies of `get_worker_count()`'s
+`Pool(processes=0)` guard (fixed in `aggregation_run.py` only, not
+`downsampling_run.py`/`bundle.py`); a 533x redundant per-parent
+recomputation in `downsampling_run.py`'s hot path (~0.9 CPU-hours
+across 2号's two datatype passes); `downsampling_run.py --fix`/
+`--regenerate` globbing across ALL generations rather than the one
+being operated on; duplicated Terrarium-encoding logic between
+`utils.save_terrarium_tile()` and `downsampling_run.py`'s own inline
+version; several small dead-code items; Freetown-deployment defaults
+(`CENTER_LAT`/`CENTER_LON`/`PRIORITY_MODE`) silently governing the
+national runbook's own processing order since `CLAUDE.md`'s documented
+commands never override them. None of these block a rehearsal on their
+own; worth a lighter pass before or during it.
