@@ -361,8 +361,14 @@ place; D35 is where it was fully closed out:
   2026-08-29 (D56)** — now runs automatically as part of `publish_
   cycle.py`'s own preflight, idempotently, every cycle. No longer a
   2号-specific concern; carries forward automatically.
-- **D57's dirty-tracking trade-off, a real open design question for
-  2号**: `aggregation_covering.py`'s own cross-generation "skip if
+- **D57's dirty-tracking trade-off — RESOLVED 2026-09-12, see D163**:
+  the safe redesign this section calls for below (verifying actual
+  output existence, plus an added MD5-based content check the original
+  question hadn't anticipated) is now implemented and small-scale
+  tested — see PLAN.md §8 and DECISIONS1.md D163 for the current state.
+  The narrative below is kept for the original problem statement's own
+  reasoning, not as a still-open item.
+  `aggregation_covering.py`'s own cross-generation "skip if
   unchanged from last generation" optimization was removed entirely
   (2026-08-29, D57) after being found to silently skip positions the
   *previous* generation itself never finished building — 2,343 native
@@ -525,10 +531,19 @@ D番号まで遡って確認すること(タイトルだけで信用しない)�
   `jpnational5`の2,062件0%validは別現象(正当な空メッシュ)と判明・除外済み。
   2026-09-12にscreen_results_*.csvの生データで再検証し数字が一致することを
   確認済み。**2号起動前の追加作業は不要。**
-- ⚠️ **dirty-tracking(差分再処理)の設計判断が未確定(D57)**: 現状は全件再処理
-  (安全だが2号の規模次第で遅い)。D42の見積もりでは実データの1/3程度が変わる
-  想定——全件再処理を許容するか、`pmtiles-store`の実在確認込みの安全な
-  差分再処理を設計するか、まだ決めていない。
+- ✅ **dirty-tracking(差分再処理)——安全な設計を実装・小規模検証済み(D163、
+  2026-09-12)**: D57が撤去した世代間再利用を、D119/D120の`.done`マニフェスト
+  フィンガープリント機構を流用して再設計・実装。`aggregation.csv`の内容一致
+  だけでなく、各ソースファイル自身のMD5(`file_list.csv.gz`由来)まで突き
+  合わせ、かつ前世代の出力ファイルが実在することを確認した場合のみ、その
+  ファイルを現世代自身のフォルダにコピーして新規`.done`を発行する(前世代への
+  裸の参照は一切作らない)。D18/D35型の「同名・同サイズだが中身が違う」ケース
+  も明示的にテストし、正しく再利用を拒否することを確認済み。1.5号の全6,373件
+  の`.done`マニフェストにもMD5フィンガープリントを後付け済み(`backfill_
+  aggregation_md5_fingerprints.py`、バイナリ成果物は一切触れていない)——
+  これにより2号は起動した瞬間から1.5号との比較が可能。**小規模(単一/複数
+  ソース、両datatype、正常系・異常系)は実データで検証済み。全国規模での
+  実地検証は2号自身の起動時が初めて**——詳細はDECISIONS1.md D163参照。
 - ⚠️ **GSIの次回更新確認(§1)**: 2026-09-11時点でもまだ2026-07-31が最新
   (新規更新なし、ライブ確認済み)。想定は2026年11月末——起動直前に必ず
   再確認すること。

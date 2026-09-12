@@ -3300,3 +3300,178 @@ three weeks ago. Worth remembering as a pattern: a checklist item's
 own cited decision number is the thing to re-check, not just its
 prose — the prose can (and did) survive unchanged long after the
 decision it describes was resolved.
+
+## D163: D57's dirty-tracking redesigned safely and implemented — MD5-backed cross-generation reuse for `aggregation_covering.py`
+
+**Status**: Implemented and tested at small scale (`hfu-mapterhorn`
+`utils.py`/`aggregation_run.py`/`aggregation_covering.py`, plus a new
+one-off `backfill_aggregation_md5_fingerprints.py`). Not yet exercised
+at national scale — that only happens for real once 2号 actually
+launches and its `aggregation_covering.py` run compares itself against
+1.5号 for the first time. Hidenori's own framing for this session:
+"2号ローンチへのリードタイムを活用すべき時だ。急がず慌てず確実に" —
+this is exactly that lead-time work, done carefully rather than under
+launch pressure.
+
+**Context**: D57 (2026-08-29) ripped out `aggregation_covering.py`'s
+original cross-generation dirty-filter after finding it silently
+skipped 2,343 positions that the *previous* generation itself had never
+finished building — `pmtiles-store` was flat at the time, so "unchanged
+since Kyushu" inherited Kyushu's own incomplete positions forward
+forever. The fix made every generation reprocess everything from zero
+(safe, but sacrifices the ~2/3-unchanged efficiency D42's own estimate
+implies a real GSI update cycle should allow), and explicitly flagged a
+"safer version that also verifies the referenced output actually
+exists" as a real design question for 2号, not solved that night.
+
+D162 (this session, same review pass) found this was still genuinely
+open — unlike the 5m/10m item next to it in `PLAN.md` §8, nobody had
+quietly closed this one. Hidenori's decision, asked directly: implement
+the safe design now, reusing D119/D120's `.done`-manifest fingerprint
+machinery (already proven in production for `downsampling_run.py`'s own
+freshness checks) rather than reinventing dirty-tracking from scratch.
+
+**A second gap found while designing, before any code was written**:
+comparing aggregation.csv content alone (filename + maxzoom, the
+original D57-era approach) cannot detect the exact failure class D18/
+D35 already produced once in this project's own history — a source
+file whose name AND byte size stay identical but whose actual content
+silently changes (a corruption fix). `aws s3 sync --size-only` would
+have missed exactly this in D35's own account. Confirmed with Hidenori
+before scoping the implementation: yes, close this gap too, using each
+source's own manifest MD5 (`source-catalog/{source}/file_list.csv[.gz]`,
+D14's `url,size,md5` columns) as the real content fingerprint, not
+filename/size.
+
+**Design** (`hfu-mapterhorn` pipelines):
+
+1. `utils.get_source_md5_map(source)` — `{filename: md5}` for one
+   source, read via the existing `open_manifest()` helper (D14/D26,
+   reused rather than reimplemented), memoized per process (a national
+   run looks this up per source file per aggregation item; jpnational1
+   alone is 291,779 rows).
+2. `utils.md5_input_entries_for_aggregation_csv(filepath)` — one
+   fingerprint entry per (source, filename) referenced by a covering
+   CSV, each `{'path': f'{source}/{filename}', 'md5': ...}`. A lookup
+   miss produces an explicit `{'missing': True}` entry rather than
+   silently omitting the file, so a stale/incomplete manifest can never
+   look like a match by omission.
+3. `utils.compute_inputs_fingerprint()` extended with an `elif 'md5' in
+   e:` branch (additive; every existing `sha256`/stat-based caller is
+   unaffected).
+4. `aggregation_run.py`'s `run()` now includes these MD5 entries
+   alongside the existing covering-CSV content entry in every NEW
+   item's own `.done` manifest, going forward, at zero extra ops cost
+   (this is just what the code does by default from now on).
+5. `aggregation_covering.py`'s `write_aggregation_todos()` gets a new
+   `try_reuse_from_previous_generation()` step per item, checked BEFORE
+   falling back to writing a `.todo`. It requires ALL of: an equivalent
+   item exists in the previous generation with a `.done` manifest
+   certifying every required datatype; today's fingerprint (covering
+   CSV content + every referenced file's current MD5) exactly matches
+   what that manifest recorded at build time; and the previous
+   generation's own pmtiles-store output file actually exists on disk
+   for every required datatype (D57's own explicit "verify existence,
+   don't trust the marker" requirement). On success it COPIES the
+   previous generation's file(s) into the CURRENT generation's own
+   generation_id-scoped folder and writes a FRESH `.done` manifest
+   there (with a `reused_from_generation_id` marker for auditability) —
+   never a bare cross-generation skip. This is the load-bearing
+   difference from the pre-D57 code: after this, the current generation
+   owns a real file and a real marker, indistinguishable from a
+   genuine build to every other tool in the pipeline, and immune to
+   D69's stale-marker failure mode (no other generation's run can ever
+   rename/delete a file out from under a *different* generation's own
+   folder — that per-generation isolation already exists since D95/
+   D124, this just makes sure reuse never creates a cross-generation
+   pointer that could dangle).
+6. `backfill_aggregation_md5_fingerprints.py` (new, one-off but kept as
+   a committed tool, dry-run by default) — retrofits the MD5 entries
+   above onto an ALREADY-BUILT generation's existing `.done` manifests
+   (they predate this fingerprint and have nothing to compare against
+   otherwise). Applied to 1.5号 (`01M1MKD73P0KDT719H21NJV9VR`, all
+   6,373 items) this session. Preconditioned on verifying, before
+   running, that no source manifest (`jpnational1`/`5`/`10`/`sea`) had
+   regenerated since 1.5号's own aggregation build (D132, 2026-09-04/05)
+   — confirmed via `git log`/`stat` (jpnational1 last regenerated
+   2026-08-25 per D18's own closing fixes; 5/10/sea all Aug 19-21) —
+   so today's MD5 for any of these files is provably the same MD5 that
+   was true when 1.5号 actually consumed it. This step is what makes
+   2号's own future comparison against 1.5号 possible at all; without
+   it every item would (safely, just wastefully) fall through to full
+   reprocessing since 1.5号's original manifests have nothing to
+   compare against.
+
+**A real bug caught during design, before any code ran — worth keeping
+as its own lesson**: the first draft used each item's real on-disk
+`filepath` (e.g. `aggregation-store/01M1MKD73P0KDT719H21NJV9VR/{filename}`)
+as the covering-CSV fingerprint entry's own `path` field, copying the
+existing `content_input_entry()` convention verbatim. Since that path
+string embeds the generation_id, two byte-identical CSVs in two
+different generations would have recorded two DIFFERENT fingerprint
+entries purely from the path text differing — `inputs_fingerprint`
+would never match across generations even for genuinely-unchanged
+content, silently defeating the entire feature (always falling through
+to full reprocessing, never loudly wrong, just permanently useless).
+Fixed by adding `content_input_entry(path, canonical_path=None)` —
+callers doing cross-generation comparison pass `canonical_path=filename`
+(generation-agnostic), so the same item hashes identically in any
+generation. `aggregation_run.py`'s own manifest-writing call was updated
+to use this too, so every future generation's own manifest is written
+in the comparable form from the start.
+
+**Verification, real code against real 1.5号 data, in an isolated test
+generation directory (`aggregation-store/00TESTGEN163...`, deleted
+after each check, never touching 1.5号's own files)**:
+
+| case | setup | expected | actual |
+|---|---|---|---|
+| pre-backfill negative | unchanged item, 1.5号 manifest not yet MD5-backfilled | reuse fails (no fingerprint to compare) | ✅ `False`, no side effects |
+| post-backfill positive, single-source | unchanged item (`jpnationalsea`, 1 file) | reuse succeeds | ✅ `True`; copied file byte-identical (md5 match); fresh manifest with `reused_from_generation_id` |
+| content-changed negative | same position, maxzoom edited 12→13 | reuse fails | ✅ `False`, no side effects |
+| **D18/D35 scenario** | identical covering CSV text, but the referenced source file's MD5 forced to a fake different value | reuse fails | ✅ `False` — this is the specific gap the whole MD5 layer exists to close, confirmed closed |
+| large multi-source item | 1,290-file `jpnational1` (1m) item | reuse succeeds | ✅ `True` |
+| multi-datatype | `EMIT_LINEAGE=1`, both elevation+lineage required | both files copied, both certified | ✅ verified both paths on disk |
+
+After every test, the test generation directory (both `aggregation-
+store/` and `pmtiles-store/{elevation,lineage}/`) was deleted, and
+1.5号's own real `.done`/`.csv`/`.pmtiles` files were confirmed
+byte-unchanged (MD5 spot-check before/after) and count-unchanged
+(6,373/6,373/0 csv/done/todo, same as before this session touched
+anything).
+
+**Expected payoff, from D132's real measurement**: 1.5号's own full
+national aggregation (6,373 items, 3 workers) took ~31.5 hours wall
+clock. D42's own estimate (~1/3 of positions actually change per real
+GSI update cycle) implies 2号 could see roughly that fraction of items
+fall through to full reprocessing and the rest reused in a few minutes
+each (a copy + a manifest write, not a re-aggregation) — very roughly a
+same-order-of-magnitude reduction, though the true number depends
+entirely on how much of Japan's 1m/5m/10m/sea coverage genuinely
+changes in the next real GSI update, which is not knowable until 2号
+actually runs its own fresh covering.
+
+**Deliberately not done this session**: a full-scale rehearsal against
+a synthetic "3rd generation" spanning all 6,373 items (would require
+either faking a full covering or waiting for a real one) — the small-
+scale tests above exercise every distinct code path (positive, negative,
+the specific D18/D35 case, multi-file, multi-datatype) with real
+production data, which is the proportionate amount of verification for
+work that won't actually run at full scale until 2号 itself launches,
+per Hidenori's own "急がず慌てず確実に" framing rather than either
+rushing to "done" or over-building a synthetic full-scale harness for a
+launch that is still GSI-gated and months out.
+
+**What 2号 itself should do differently from 1.5号 because of this**:
+nothing operationally — `aggregation_covering.py`'s own `main()` is
+unchanged in its calling convention, so 2号 launches exactly as
+documented in `PLAN.md`/`CLAUDE.md` today. The only visible difference
+will be `write_aggregation_todos()`'s new summary line reporting how
+many items got reused vs. queued, and (if reuse works as designed) a
+meaningfully shorter aggregation wall-clock time than 1.5号's own 31.5
+hours. Worth watching that summary line specifically when 2号 actually
+runs, and treating a reuse count near zero as a signal to investigate
+(most likely explanation: the MD5-backfill precondition -- no source
+manifest changing since 1.5号 -- no longer holds by the time 2号
+starts, which is expected and fine, just means less reuse than hoped,
+not a bug) rather than assuming the feature itself is silently broken.
