@@ -181,3 +181,4 @@ This file is an index only (D0) -- entry bodies live in
 | [D159](DECISIONS1.md#d159-hidenoriさんがstarsの空き容量を拡張以後の公開は先に削除不要になる見込み) | Hidenoriさんがstarsの空き容量を201GB→1.6TBに拡張。以後の公開は「先に削除」不要になる見込み | Recorded |
 | [D160](DECISIONS1.md#d160-重要な方針決定上流が同じ源泉に繋がっても2号は継続する供給責任を果たすには自分で作り続ける必要がある) | **【方針決定】**上流の`jpdem1a`がこちらの公開物と同一源泉に繋がったことが実測判明。それでも2号は継続——供給責任を果たすには自分で作り続ける必要がある | **Decided** |
 | [D161](DECISIONS1.md#d161-d155丸め上限1md154lineage修正のstars公開完了実地確認クリーン小口整理3件も同時に完了) | D155(丸め上限1m)・D154(lineage修正)のstars公開完了・実地確認クリーン。2号前の小口整理3件も完了、副産物で孤立scratch 765GiBを回収 | Published |
+| [D162](DECISIONS1.md#d162-plan-mds-5m10m-corruption-check-item-was-stale-it-had-already-been-closed-by-d35-on-2026-08-25) | `PLAN.md`'s 5m/10m corruption-check item was stale — it had already been closed by D35 on 2026-08-25 | Fixed |

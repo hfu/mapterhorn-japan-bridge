@@ -3241,3 +3241,62 @@ D153の記録値と既知座標のバイト数を比較した。**判定基準�
 ### Resume prompt
 
 > D161: D155(丸め上限32m→1m)・D154(lineageのall-nodata-skip修正)のstars公開が完了(02:05→08:17 JST、6時間12分、EXIT_CODE=0)。実地確認は全項目が事前予測どおりで、特に**elevation z13が不変(64,276バイト)・z8が+67.5%(103,546バイト)**という対の観測により、丸め変更が設計どおりz≤10の層だけに効いたことを確定した。あわせて2号前の小口整理を3件完了(`START_HERE.md`のstaleness、`check_disk_headroom.py`の閾値+scratch可視化、古い上流クローン削除)——後者の可視化改良が同日中に765GiBの孤立scratchを掘り当て、これも削除して`pmtiles-store`が1.3Ti空きになった。**次のアクション**: 残る2号前タスクは「公開スクリプトのtransfer-then-delete化」(2号の公開スクリプト作成時に適用)と、`PLAN.md` §8の⚠️項目2件(5m/10m破損チェック、dirty-tracking設計判断)。2号自体はGSIの次回DEM1A更新待ち(2026-09-11時点で2026-07-31が最新のまま、想定は11〜12月)。
+
+## D162: `PLAN.md`'s 5m/10m corruption-check item was stale — it had already been closed by D35 on 2026-08-25
+
+**Status**: Fixed (documentation only, no code/pipeline change).
+
+**Context**: While resuming from `HANDOVER.md`, a 2026-09-12 review of
+the two remaining `PLAN.md` §8 "decision needed before 2号" items found
+that one of them — "5m/10m corruption-bug-class question, never
+tested" — was factually wrong. D35 (this file's own predecessor,
+`DECISIONS0.md`) had already closed this exact question on 2026-08-25:
+`screen_source.py` was run against the full `jpnational10`/
+`jpnationalsea`/`jpnational5` corpora and found them unaffected by
+D18's `gmldem2tif.rb` bug. `PLAN.md` §3/§8 simply never had this
+closure folded back in, and the stale line survived unchanged through
+at least three later `PLAN.md` edits (2026-09-06, 09-09, 09-11) without
+anyone re-checking whether it was still true.
+
+**Verification, not just a re-read of D35's prose**: the raw screening
+outputs D35 describes are still on disk, untracked, in `hfu-mapterhorn`
+(`pipelines/screen_results_jpnational{5,10,sea}.csv`, dated 2026-08-22
+— these are the same files this repo's own `HANDOVER.md` already lists
+as pre-existing untracked scratch to leave alone). Row counts and
+zero-valid-pct counts were re-derived directly from these files and
+matched D35's own numbers exactly: `jpnational5` 422,119 rows / 2,062
+at 0% valid; `jpnational10` 4,981 rows / 0 at 0%; `jpnationalsea` 275
+rows / 0 at 0%. No decode-error rows in any of the three. This is
+independent re-confirmation against primary evidence, not just trust
+in a prior session's own summary.
+
+**Decision**: updated `PLAN.md` §3 and §8 to mark this item resolved,
+with the verification numbers inline, and added a note in §8 warning
+future readers to check a "still open" item's cited D-number before
+trusting the checklist's own prose. Left §57's dirty-tracking design
+question untouched — that one really is still open, no evidence found
+that it was ever decided.
+
+**A related, adjacent finding from the same review, also fixed**: the
+sibling `japan-geotiff-dem` repo's own local clone on `slate`
+(`/Volumes/Migrate-2025-04/github/japan-geotiff-dem-repo`) was itself
+simply behind `origin/main` by about a month (last local commit
+2026-08-14, `origin/main` actually at 2026-08-22's D18 entry) —
+fast-forwarded, no conflicts, working tree was already clean. Separately
+from that, `origin/main` itself stops at D18's "partially fixed,
+investigation ongoing" state; the actual closure (D35, above) only
+ever got written into *this* repo's docs, never back into
+`japan-geotiff-dem`'s own `DECISIONS.md`/`HANDOVER.md`. Backfilled a
+closing addendum there (D18's own entry) and a short HANDOVER.md entry
+pointing back to D35, so a future session reading that repo in
+isolation doesn't restart already-finished corruption-sweep work.
+
+**Consequences**: no pipeline or data change — this was a pure
+documentation/consistency fix. The practical effect is that PLAN.md
+§8's 2号-readiness checklist now has exactly one genuinely open item
+(D57's dirty-tracking design question) instead of two, and a future
+session won't waste time re-litigating a question already answered
+three weeks ago. Worth remembering as a pattern: a checklist item's
+own cited decision number is the thing to re-check, not just its
+prose — the prose can (and did) survive unchanged long after the
+decision it describes was resolved.
