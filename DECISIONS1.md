@@ -647,6 +647,31 @@ Fable項目#2-6・Opus Phase 1/2の残作業は、内容が具体的に分かっ
 
 > D120で、D115が「セッションログ参照」として持ち越していたFableコードレビュー・Opus修正計画を、これ以上復元不可能という前提で最終整理・一本化した。Fable16件中6件のみ内容判明(1件対応済み、5件未対応)、Opus 5フェーズは見出しのみ判明(Phase 0・3完了、Phase 1一部・2・4未着手)。H1-H6は完全に復元不可能。**次のアクション**: Fable項目#2-6・Opus Phase 1/2の残作業を、1.5号着手前の優先度検討リストとして扱う(1.5号のセクションD着手前に再確認)。
 
+## D164: D120's Fable review tracking was itself stale — 5 of 6 items already fixed, the 6th fixed now
+
+**Status**: Fixed, 2026-09-13. Same "the tracking table is stale, not the underlying work" pattern as D162, found this time in the middle of Hidenori's own "他に直すべきバグなどはあるか" (are there other bugs left to fix) question — see D120's own table below for the re-check.
+
+D162(PLAN.mdの5m/10m項目)・D163(dirty-tracking)に続き、同じ「解決済みなのに記録だけ古いまま」パターンが今度はこの表自体で見つかった。Hidenoriさんの「他に直すべきバグはあるか」という問いを受けて実コードを1件ずつ再確認した結果:
+
+| # | 指摘内容 | 再確認結果 |
+|---|---|---|
+| 2 | `TMPDIR`未設定 | **修正済み**。`extract_z8plus.py`/`build_global_overview.py`とも冒頭で`os.environ['TMPDIR']`を明示設定するコードが既に入っている(いつ入ったかの個別コミットは未特定だが、恐らく1.5号pre-launch hardeningの一環)。 |
+| 3 | `run_command()`が終了コードを見ていない | **修正済み**。`utils.run_command()`は`check=True`がデフォルトになっており、コード内コメントに**「mapterhorn-japan-bridge DECISIONS.md D120 Fable review item #3」と明記**——この項目自体を指して直したという記録が実装コメントに残っている。 |
+| 4 | `merged-3857.tiff`の非原子的書き込み | **今回(2026-09-13)修正**。唯一、実際に未修正のまま残っていた項目——後述。 |
+| 5 | `remove_dangling_pmtiles.py`の危険な設計 | **修正済み**。ファイル冒頭のdocstringに**「rewritten 2026-09-04, mapterhorn-japan-bridge DECISIONS.md D120 Fable review item #5」と明記**。世代IDを明示指定必須(「latest」推測禁止)、generation_idスコープのサブツリーのみ走査、1号の旧flat構造は明示的に拒否、dry-runがデフォルト——指摘の3点全てに対処済み。 |
+| 6 | `.done`マーカーがdatatypeでスコープされていない | **修正済み**。D119/D120自身の予告通り、`write_done_manifest()`の`datatype`フィールド導入(D95/D107以降の namespace分離作業の一環)で自然に解消。`done_covers()`/`done_is_current()`が`datatypes`集合を見て判定する現行実装で確認。 |
+
+**つまり実質的には#4の1件を除いて全て決着していたが、この表自体は2026-08-29の記録のまま一度も更新されていなかった。** #2/#3/#5は実装コメント・docstringが自らD120のこの表を名指しして「直した」と書いているのに、この表側は追いついていなかった——コードのコミットメッセージ/コメントとDECISIONS.mdの記述が非同期になりうる典型例。
+
+**#4(`aggregation_merge.py`の非原子的書き込み)は本セッションで修正**: `merged-3857.tiff`への直接書き込み(`rasterio.open(output_path, 'w', ...)`、単一グループ・複数グループ両方の書き込みブランチ)を、`tmp_output_path = f'{output_path}.tmp'`への書き込み+書き込み完了後の`os.replace()`に変更(`utils.create_archive()`等、このコードベースで既に確立されているtmp+os.replaceパターンを踏襲)。関数冒頭の再開ロジック(`if os.path.isfile(output_path):` → 「既に完了済みとみなしてクリーンアップだけ済ませる」)は元々このFable指摘が懸念していた「部分書き込みされたファイルを完了と誤認する」リスクを実際に抱えていた——今回の修正で、`output_path`が存在する時点でそれは常に完全な書き込みの結果であることが保証されるため、この再開ロジック自体は無変更で安全になった。
+
+実データで両ブランチとも動作確認(隔離した一時ディレクトリ、本番データは一切変更せず):
+- 単一グループ(jpnationalsea×4ファイル、`10-864-438-12`): 正常完了、出力は有効なGeoTIFF(2048×2048、-9999残留ゼロ)。
+- 複数グループ(`jpnational10`+`jpnationalsea`、`11-1723-880-13`): 正常完了、境界ブラー処理を含む本格的なマージパスを実際に通過。出力は実地形データ(標高範囲-0.57〜230.3m、平均4.5m、対馬近海と整合)、`.tmp`ファイルの残留なし。
+
+**このセッションでの教訓**: 「まだ直っていないバグはあるか」という問いに答えるには、DECISIONS.mdの`未対応`という記載を鵜呑みにせず、必ず実コードを読んで確認する必要がある——D162と全く同じ教訓が、今度は「バグ一覧」というより高リスクな文脈で再現した。
+
+**ついでに確認、真のバグではないと確認できたもの**: D119由来の「`get_pmtiles_folder()`のz<7ギャップ(P2.A、67ファイルが不可視)」も同じ棚卸しで再確認した。これは**1号(`FLAT_LEGACY_GENERATION_ID`)専用のフォールバック分岐が`z>=7`でしか発火しない**という構造であり、コード自体は現行のまま(`hfu-mapterhorn` `utils.py`の`get_pmtiles_folder()`を直接確認)。ただし当時の記録自身が「1.5号は`min_output_zoom=8`なのでz<7ファイルは存在しない、起動判断には影響しない」と明記しており、実際1.5号はz<7ファイルを一切生成していない。D146のlineage低ズーム拡張(z8→z4)は「z<7の新規生成」という当時懸念されていたシナリオそのものだが、これは1.5号自身の(非legacy)generation_idの下で新しいレイヤー構造にそのまま書き込まれるだけで、legacy分岐(1号専用)を一切通らないため無関係——実際D146は実装・公開・D154/D161の実地確認まで完了しており問題は起きていない。2号も新規generation_idを使う以上、この分岐には触れない。**結論: 真のギャップではあるが、1号の遺産データ専用スコープに限定されており、1.5号でも2号でも発現しない。放置して問題ない。**
 
 ## D121: P1.C(開放海域z16充填)のゲーティング実験完了(Fable) — 却下、沿岸部充填(P1.B)のみ採用
 
