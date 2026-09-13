@@ -31,7 +31,7 @@ updated whenever a new generation starts:
 |---|---|---|
 | 1号 | `01M0MWK852631SHCHPA66F21WQ` | Complete, published to stars (D106) |
 | 1.5号 | `01M1MKD73P0KDT719H21NJV9VR` | **Mission complete (D145/D146), 2026-09-06.** Both goals achieved: D95 namespace separation validated at national scale, lineage feature implemented/published/extended to z4. elevation (314.66GB) + lineage (204.6MB) both live on stars, verified clean. Worker count fixed at **3, permanently, for both 1.5号 and 2号 (D130/D131)**. 1号 untouched throughout. See DECISIONS.md D124-D146 for the full runbook and PLAN.md §9 for lessons handed to 2号 |
-| 1.6号 | *(not yet minted)* | **Next real launch (decided 2026-09-13, supersedes the earlier "1.7号" placeholder — 1.7号 stays unassigned)**. Same source data as 1.5号, plus (a) D165's own fixes including the live nodata/alpha bug, (b) land-area maxzoom upsampling (D149-151 design, corrected and implemented as D166 after a design review caught the original plan's `resolve_layer()` fix would have broken ~half the national downsampling pyramid). Code is implemented/design-reviewed/code-reviewed/tested against real 1.5号 data, but `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty — mint this generation's own ULID and add it to that table **at the same time**, before any aggregation_run.py work starts for it (D166's own finding #3: adding the table entry after some items are already built natively silently skips upsampling them forever). Gated on: this ID being minted, D165's remaining 5 findings being addressed, then a dress rehearsal / wet dress rehearsal per Hidenori's own sequencing. |
+| 1.6号 | *(not yet minted)* | **Next real launch (decided 2026-09-13, supersedes the earlier "1.7号" placeholder — 1.7号 stays unassigned)**. Same source data as 1.5号, plus (a) D165's own fixes including the live nodata/alpha bug, (b) land-area maxzoom upsampling (D149-151 design, corrected and implemented as D166 after a design review caught the original plan's `resolve_layer()` fix would have broken ~half the national downsampling pyramid). Code is implemented/design-reviewed/code-reviewed/tested against real 1.5号 data, but `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty — mint this generation's own ULID and add it to that table **at the same time**, before any aggregation_run.py work starts for it (D166's own finding #3: adding the table entry after some items are already built natively silently skips upsampling them forever). D165's remaining 5 findings are now all fixed and tested (D167, 2026-09-14, including a critical regression in #10's own fix caught by Opus code review before it ever ran). Gated on: this ID being minted, then a dress rehearsal / wet dress rehearsal per Hidenori's own sequencing. |
 | 2号 | *(not started)* | Gated on GSI's next quarterly DEM1A update (section 1). **Live-checked 2026-09-06: still 2026-07-31, no new update yet**. Now expected to launch AFTER 1.6号, not before. |
 
 ## 1. What triggers 2号
@@ -556,16 +556,26 @@ D番号まで遡って確認すること(タイトルだけで信用しない)�
 (**うち1件は既に公開中の1.5号データに実害あり**——`aggregation_merge.py`
 がnodataを常に偽の標高0mとして0埋めしており、alphaマスク機構が死んでいた。
 修正・検証済み。#7の`remove_dangling_pmtiles.py`のD146誤検出もD166で
-合わせて修正済み)。残り5件は2号起動前に対応が必要な項目として持ち越し:
-- ⚠️ `aggregation_run.py`の完了判定が鮮度・出力実在を確認しない(D18/D35型
-  の再発リスク、#3)
-- ⚠️ `downsampling_run.py`の完了判定も同様に自分の出力実在を確認しない(#5)
-- ⚠️ lineageの`compute_provenance()`がラスタ全体を無圧縮でメモリに読み込む
-  (最大ワーカー1つで約10.7GiB、D129のクラッシュと同じ機構、#6)
-- ⚠️ `downsampling_run.py`のtmpフォルダがdatatypeでスコープされていない(#8)
-- ⚠️ 古いcoveringが削除されず、2ワーカーが互いの出力を削除しうる(PLAUSIBLE、#10)
+合わせて修正済み)。残り5件はD167(2026-09-14)で全件修正・実データ検証済み:
+- ✅ `aggregation_run.py`の完了判定が鮮度・出力実在を確認しない(D18/D35型
+  の再発リスク、#3) → `done_is_current()`+出力実在チェックに修正済み。
+- ✅ `downsampling_run.py`の完了判定も同様に自分の出力実在を確認しない(#5)
+  → 同様に修正済み。
+- ✅ lineageの`compute_provenance()`がラスタ全体を無圧縮でメモリに読み込む
+  (最大ワーカー1つで約10.7GiB、D129のクラッシュと同じ機構、#6) →
+  512pxウィンドウ処理に書き換え、実データ(5ソース・33018×33018px、約
+  10.9億ピクセル)で新旧実装の差分0を確認。1.6号のアップサンプリングで
+  一部アイテムが32768×32768pxに達する点を踏まえると、放置していれば
+  1.6号でむしろ悪化するところだった。
+- ✅ `downsampling_run.py`のtmpフォルダがdatatypeでスコープされていない(#8)
+  → 修正済み。
+- ✅ 古いcoveringが削除されず、2ワーカーが互いの出力を削除しうる
+  (PLAUSIBLE、#10) → 修正済み。**ただし最初の修正案には、同一世代への
+  再カバリング実行(変更なしの再実行を含む)のたびに既存アイテム全ての
+  `.done`を誤って削除してしまう重大な回帰バグがあり、Opusのコードレビュー
+  で実行前に検出・修正**(詳細はDECISIONS1.md D167参照)。
 
-詳細・各項目の対応方針(なぜ今回は見送ったか含む)はDECISIONS1.md D165参照。
+詳細・各項目の対応方針はDECISIONS1.md D165(元の発見)・D167(修正)参照。
 
 **方針転換(2026-09-13、Hidenoriさんの決定)**: 当初想定していた
 「大改修→ドレスリハーサル→1.7号」の流れを**「大改修→アップサンプリング
@@ -577,8 +587,9 @@ D166参照)——当初案(`resolve_layer()`を位置だけで一致判定)はOp
 レビューにより実データで検証した結果、アップサンプル無関係に全国の
 downsamplingピラミッドの約半分を壊す設計ミスと判明し、実装前に修正済み。
 **`LAND_UPSAMPLE_ZOOM_BY_GENERATION`テーブルは1.6号自身のgeneration_id
-発番待ちでまだ空。ドレスリハーサル・1.6号本launchは、この発番＋D165の
-残り5件への対応が済んでから**、というのがHidenoriさんの指示。
+発番待ちでまだ空。D165の残り5件は2026-09-14(D167)に全件対応済み——
+ドレスリハーサル・1.6号本launchの残る前提条件はこのID発番のみ**、という
+のがHidenoriさんの指示した流れ。
 
 **2号起動前に片付ける小口の整理(D160、2026-09-11)**:
 いずれも2号の成否を左右するものではないが、放置すると次のセッションを
