@@ -3742,3 +3742,54 @@ version; several small dead-code items; Freetown-deployment defaults
 national runbook's own processing order since `CLAUDE.md`'s documented
 commands never override them. None of these block a rehearsal on their
 own; worth a lighter pass before or during it.
+
+## D166: 1.6号 land-area maxzoom upsampling implemented, after a design review caught a catastrophic flaw in the original plan
+
+**Status**: Implemented, design-reviewed, code-reviewed, tested against real 1.5号 data. Not yet exercised in a real national run — `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty pending 1.6号's own generation_id.
+
+**Scope decision (Hidenoriさん, 2026-09-13)**: 1.7号は未発番のまま据え置く。当初想定していた流れ(「大改修→ドレスリハーサル→1.7号」)を「**大改修→アップサンプリング実装→ドレスリハーサル→1.6号**」に変更——1.6号という呼称自体は既にD149-151で使われていたものを正式な次の実launchの名前として確定し、番号を1つ増やさない。この記録の残りは、その流れの「アップサンプリング実装」部分の顛末。
+
+### 経緯: 当初の設計案が壊滅的だった
+
+D149-151(1.6号の当初設計、2026-09-07)は`downsampling_covering.py`の`get_extents_from_coverings()`が「アップサンプルされたz14-z16のリーフを一切発見できない」ことまでは正しく特定していたが、対処案(実ファイルグロブを追加、`utils.resolve_layer()`を位置だけで一致判定)は未実装のまま放置されていた。
+
+このセッションで設計を詰め直す過程で、実装前にOpusへ設計レビューを依頼した——**これが致命的な判断ミスを未然に防いだ**。Opusが実データで検証した結果:
+
+- 「`resolve_layer()`を位置だけで一致判定」という当初案は、**1.5号の実データだけで(アップサンプル無関係に)全参照14,489件中7,226件(49.9%)の判定を変え、8,223件中4,553件のdownsamplingアイテムに影響する**ことが判明。原因: leafの位置と、そのleafから再帰的に構築されたoverviewは、ピラミッド構造上**同じ(z,x,y)に異なるchild_zで正当に共存する**(実データで3,344/6,373ポジションがこれに該当)。「1ポジションにaggregation.csvは高々1つ」という前提の後半(「child_zは位置の識別子の一部ではない」)が誤りだった。
+- D163/D164の世代間再利用機構についての当初の安全性判断も**向きが逆**だった。1.6号(アップサンプル世代)は1.5号(非アップサンプル)の直後に来るが、covering CSVの中身(`source,filename,maxzoom`)はアップサンプルしても変わらないため、フィンガープリントが一致し、**再利用機構が1.5号の非アップサンプル出力を1.6号にそのままコピーしてしまう**。対象2,128件中1,974件がmacrotile_z上限のz12にあり、粒度変更をしてもファイル名が変わらないため、この再利用ハザードは常に発動し、1.6号は主要な対象アイテムに対して何もせず終わるところだった。
+
+このAsk-before-code方式(設計→Opusレビュー→修正→実装→Opusコードレビュー→実データ回帰テスト)がHidenoriさんの明示的な指示であり、まさにその通りに機能した。
+
+### 修正した設計
+
+`FLAT_LEGACY_GENERATION_ID`と同じパターンで、世代IDキー付きポリシーテーブル`utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION`を導入。「アップサンプルが有効かどうか」はcoveringの中身では判別できない世代ごとのポリシーであり(同じcoveringでも1.5号と1.6号で判定が変わるべき)、env varのような揮発性の切り替えではなく、データについての恒久的な事実として世代IDに紐付ける。
+
+中核: `utils.leaf_child_z(aggregation_id, z, x, y)` — coveringの中身とこのポリシーテーブルだけから計算する**純粋関数**(pmtiles-storeの実ファイルスキャンではない——Opusの設計レビューが指摘した通り、実ファイルスキャンだと「aggregation未完了のリーフがプランから静かに消える」「世代間でchild_zが変わった際に古いdownsampling出力が残る」という新たな問題を生む)。これを`resolve_layer()`・`get_extents_from_coverings()`・`remove_dangling_pmtiles.py`・D163再利用フィンガープリント・`check_stale_duplicates_v2.py`の5箇所全てで共有。`aggregation_tile.py`/`lineage_tile.py`には「実際のラスタから計算したchild_zが`leaf_child_z()`の予測と一致するはず」というhard assertを追加——これが仕組み全体の安全弁。
+
+### 実装・検証(実データ)
+
+- `resolve_layer()`新旧比較: 1.5号の実参照14,489件、差分0件(修正前後で完全一致)。
+- `get_extents_from_coverings()`新旧比較: 隔離コピー上で`write_downsampling_items()`を新旧両方実行、8,223/8,223件のdownsampling.csvが完全一致(ファイル名・内容とも)。
+- 実際のアップサンプル: 与那国島の実アイテム(`11-1727-881-13`、native z13、D150のリハーサルと同一アイテム)を本番コードパスでz16まで実際にアップサンプル。標高最大311.67m(D150のリハーサル値312mとほぼ一致)。
+- 再利用拒否の3シナリオ全て実データで確認: (A)前世代に記録なし→拒否、(B)前世代がnative記録・現世代がアップサンプル要求→拒否(まさに修正対象のハザード)、(C)海域限定アイテム→現世代がアップサンプル世代でも正常に再利用。
+- `remove_dangling_pmtiles.py`: 修正前は1.5号で4件(D146のlineage低ズームピラミッド)を誤検出、修正後0件。
+
+### Opusによる実装コードレビューで判明した7件の追加問題(全て修正・再検証済み)
+
+1. `leaf_child_z()`が`reproject()`の`target_zoom > maxzoom`ガードを持たず、ポリシーテーブルの値が既存のnative解像度を下回る設定だと両者が食い違いうる→`max(native, target)`相当のガードを追加。
+2. 同一世代内に重複coveringが存在する場合(dormant、今日は未発生)、`get_leaf_child_z_map()`が黙って1つだけ残す設計になっており、`remove_dangling_pmtiles.py`が正当なリーフを削除しうる→検出したら例外を投げる設計に変更。
+3. **`aggregation_run.py`の同一世代内`.done`スキップが`leaf_child_z`を確認していなかった**——ポリシーテーブルへの世代ID追加が(そのIDが既に存在する必要があるため)「世代ミント→ポリシー追加」という順序になりがちで、その間にビルドされたアイテムが永遠にアップサンプルされずスキップされ続ける実害あるバグ。修正し、実際にそのシナリオを再現して正しく再ビルドが強制されることを確認。
+4. `remove_dangling_pmtiles.py`のD146除外条件が`< 8`をハードコードしていたが、`lineage_extend_low_zoom.py`のズーム範囲は環境変数で変更可能→実際の`.done`マーカーから読むよう修正。
+5. backfillスクリプトがポリシーテーブルの予測を無検証で書き込んでいた→実ファイルの実在確認を追加。
+6. backfillスクリプトの成功カウンタが書き込み前にインクリメントされており、書き込み失敗時に二重計上されうる→書き込み成功後にインクリメントするよう修正。
+7. `check_stale_duplicates_v2.py`(`--aggregation-id`引数を取る、真に汎用的な監査ツール)が素朴なファイル名パースのままだった→`utils.get_leaf_child_z_map()`を使うよう修正。
+
+**見送った項目(理由付きで記録)**: `check_covering_gaps.py`は1号の生成IDにハードコードされた歴史的な一回性ツールで、1号が今後`LAND_UPSAMPLE_ZOOM_BY_GENERATION`に入ることはないため実害なし。`is_land_item_covering()`の非ショートサーキット(実測約1秒/プロセスの無駄、正確性には無関係)。アップサンプルで一部アイテム(5件)が32768×32768pxのワープに達する点(1.5号の既存231件の同規模アイテムが3ワーカーで実際に完走済みなので許容範囲内と判断、ただし打ち上げ前に意識的な確認は必要)。
+
+### 現在の状態・次のアクション
+
+コードは実装・レビュー・実データ検証済みだが、`LAND_UPSAMPLE_ZOOM_BY_GENERATION`は空のまま——1.6号自身のgeneration_idがまだ発番されていない。次に必要なのは:
+1. 1.6号のgeneration_idを発番し、`PLAN.md`の世代表に記録した上でこのテーブルに追加(このタイミングを間違えると項目3のハザードを踏む——**ID発番とテーブル登録は同じタイミングで行い、ビルド開始前に完了させること**)。
+2. 「陸域か」の判定(`is_land_item_covering()`)・target zoom(16)を実際の1.6号本番runで通す。
+3. D165で見つかった残り6件(#3/#5/#7/#8は比較的軽微、#6はlineage_provenance.pyの書き直しが必要、#10はaggregation_covering.pyの粒度変更または明示的リスク受容)への対応。
+4. その後、ドレスリハーサル・ウェットドレスリハーサルを経て1.6号を本launchする、というのがHidenoriさんの指示した流れ。
