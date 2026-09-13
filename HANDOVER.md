@@ -18,7 +18,7 @@ to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
 the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-13): D162-D166 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, and 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan
+## Current state (2026-09-14): D162-D167 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, and all of D165's deferred findings closed (one of them after ANOTHER Opus-caught near-miss)
 
 **Read `DECISIONS.md` D162 through D166 for the full arc (all in
 `DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
@@ -28,8 +28,8 @@ Summary, most important first:
 
 ### 0. The single most important methodological result of this session: ask for review BEFORE writing code, not just after
 
-This session validated, twice, a workflow Hidenori explicitly requested
-mid-session and that should become standing practice for any
+This session validated, three times now, a workflow Hidenori explicitly
+requested mid-session and that should become standing practice for any
 nontrivial pipeline change from here on: **write a design as a text
 document, have an independent reviewer (Opus, via a background Agent)
 critique the DESIGN before any code exists, revise, THEN implement,
@@ -44,14 +44,20 @@ unrelated to upsampling**, the moment the code was merged. This was
 caught by a design review BEFORE a single line of that fix was
 written. A second Opus pass, this time reviewing the actual
 implementation of the corrected design, then found 7 more real issues
-(all fixed). If you are about to implement a nontrivial change to
-`aggregation_covering.py`, `downsampling_covering.py`, `utils.py`'s
-shared machinery, or anything else touching the generation/layer/
-datatype namespace, do the same: write the design as a short text
-file (not a live conversation — the reviewer needs a self-contained
-document), spawn an Opus-model Agent to review it in the background,
-and don't write implementation code until that review comes back clean
-or its findings are addressed.
+(all fixed). A THIRD pass, the next day (§5, D167), reviewing what
+looked like a small, mechanical cleanup fix for D165's #10, found that
+its cleanup glob would delete the CURRENT item's own `.done`/`.todo`
+sidecars on every re-covering pass — a bug the fix's own
+author-written test could not have caught, since the test never gave
+the current item real sidecars to lose. If you are about to implement
+a nontrivial change to `aggregation_covering.py`,
+`downsampling_covering.py`, `utils.py`'s shared machinery, or anything
+else touching the generation/layer/datatype namespace, do the same:
+write the design as a short text file (not a live conversation — the
+reviewer needs a self-contained document), spawn an Opus-model Agent
+to review it in the background, and don't trust a "looks correct, my
+test passes" diff on its own — send it for code review too, even when
+the change looks small.
 
 ### 1. D162: two "already resolved but nobody updated the tracker" staleness bugs, both fixed
 
@@ -249,48 +255,102 @@ dress rehearsal → 1.6号" rather than the earlier "major rework → dress
 rehearsal → 1.7号" framing. `PLAN.md` §0's generation table has a new
 1.6号 row.
 
+### 5. D167: D165's remaining 5 findings (#3/#5/#6/#8/#10) all fixed and verified -- including a THIRD near-miss caught by Opus review this session
+
+Picked up the next day (2026-09-14) as the explicit condition Hidenori
+set before a dress rehearsal. All 5 fixed and verified against real
+1.5号 data or synthetic scenarios built from real code paths, inside
+isolated fake generation_ids as usual:
+
+- **#3/#5**: `aggregation_run.py`/`downsampling_run.py`'s own-item
+  `.done`-skip checks now require an inputs-fingerprint freshness
+  match AND a real `os.path.isfile()` check on the actual output file
+  — not just `done_covers()`/`done_is_current()` alone, which never
+  verified the output was still on disk.
+- **#6**: `lineage_provenance.py`'s `compute_provenance()` rewritten to
+  read every per-group tiff in 512x512 windows instead of loading each
+  fully into RAM (was ~10.7 GiB peak on the largest real items — the
+  same `AGGREGATION_WORKERS=3` ceiling D129-D131 fixed elsewhere, and
+  about to matter a lot more once 1.6号's own upsampling pushes some
+  items to 32768x32768). Safe with no overlap margin — no cross-pixel
+  operation exists in this function. Verified byte-identical on a real
+  5-group, 33018x33018 item: 0 differing pixels out of ~1.09 billion.
+- **#8**: `downsampling_run.py`'s tmp folder now scoped by datatype.
+- **#10**: `aggregation_covering.py`'s `write_aggregation_items()` now
+  cleans up a superseded covering CSV (plus `.todo`/`.done` stubs)
+  when re-covering an EXISTING generation changes a position's
+  `child_z`, or drops it to zero coverage. **A first version of this
+  fix had a critical regression, caught by Opus code review BEFORE it
+  ever ran**: the cleanup glob also matched the CURRENT item's own
+  `.todo`/`.done` sidecars, so any re-covering pass into an existing
+  generation — including the single most common real case, a
+  same-composition no-op retry — would have silently deleted every
+  already-built item's completion marker generation-wide, forcing a
+  full national rebuild and destroying the D163/D164 fingerprint data
+  a later generation's reuse depends on. The test written alongside
+  the original fix could not have caught this (it never gave the
+  CURRENT item its own `.done`/`.todo` before the no-op-rerun
+  assertion) — rewritten to actually exercise it.
+
+This is the **third** time this session an independent Opus review
+caught something a locally-correct-looking diff (and its own
+author-written test) both missed — after the `resolve_layer()`
+position-only-match catastrophe and the reuse-direction reversal, both
+D166. Full narrative: `DECISIONS1.md` D167.
+
+**Unrelated lesson from this session's own verification work**: the #5
+test script hung for **over 12 hours** before being diagnosed as a bug
+in the ad hoc script itself, not the pipeline — it called
+`downsampling_run.main()` (which spawns a `multiprocessing.Pool`) at
+module level with no `if __name__ == '__main__':` guard, so macOS's
+`spawn` start method re-ran the whole test file as `__main__` inside
+each worker, recursively spawning more pools forever. Any future
+one-off script that calls `aggregation_run.main()` / `downsampling_
+run.main()` / `bundle.py` / `merge_japan_bundles.py` (the functions in
+this codebase that create a `Pool`) needs this guard, even for a
+"just call this once" throwaway.
+
 ### What's next, in likely order
 
-1. **`utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty.** Before
-   any aggregation work starts for 1.6号: mint its generation_id, record
+1. **`utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty.** This is
+   now the ONLY remaining precondition for 1.6号's dress rehearsal —
+   D165's deferred findings are all closed as of D167. Before any
+   aggregation work starts for 1.6号: mint its generation_id, record
    it in `PLAN.md` §0, and add it to that table **at the same time** —
    D166's own finding #3 (fixed, but the discipline still matters
    operationally) is exactly what goes wrong if the table entry is
    added after some items are already built natively.
-2. Address D165's remaining 5 items before the dress rehearsal (#3/#5/
-   #7 already folded in via D166's own fixes where they overlapped;
-   #3/#5's OWN remaining scope — `aggregation_run.py`/`downsampling_
-   run.py`'s freshness/existence checks — #6's `lineage_provenance.py`
-   memory rewrite, #8's tmp-folder datatype scoping, #10's stale-
-   covering cleanup — see `PLAN.md`/`DECISIONS1.md` D165 for the exact
-   list). This was the explicit condition Hidenori set before a dress
-   rehearsal.
-3. Then: dress rehearsal → wet dress rehearsal → 1.6号 launch for real
+2. Then: dress rehearsal → wet dress rehearsal → 1.6号 launch for real
    (per Hidenori's own stated sequencing this session).
-4. The live nodata/alpha fix (D165) means 1.6号, once launched, will
+3. The live nodata/alpha fix (D165) means 1.6号, once launched, will
    need its OWN publish to actually replace the currently-affected
    1.5号 archive on `stars` — this is presumably 1.6号's own launch,
    not a separate emergency republish, per the "major rework →
    upsampling → dress rehearsal → 1.6号" sequencing Hidenori chose.
-5. GSI's next DEM1A update — live-checked 2026-09-11, still
+4. GSI's next DEM1A update — live-checked 2026-09-11, still
    **2026-07-31** (no new update). This gates 2号 specifically, which
    now launches AFTER 1.6号, not before.
-6. Someday, not urgent (D160's own framing, unchanged): the coastal
+5. Someday, not urgent (D160's own framing, unchanged): the coastal
    erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) is a real
    upstream-PR candidate whenever contributing upstream becomes a
    priority.
+6. Not yet triaged, below D165's own top-10 cutoff (see D165's own
+   "also verified as real" list): a small batch of minor/dead-code
+   items, worth a lighter pass before or during the dress rehearsal
+   but not blocking it.
 
 ### Git state
 
 Both repos should be fully committed and pushed as of this snapshot —
 verify with `git status --short` (expect clean) and `git log
 origin/main..HEAD` (expect empty) in both before trusting this note.
-`mapterhorn-japan-bridge` HEAD is this session's own D166 documentation
-commit. `hfu-mapterhorn` HEAD is `976884f` (the D166 code-review
-fixups); the commit chain from `bfef7cd` (D164's atomicity fix) through
-`976884f` is entirely this session's own work. `hfu-mapterhorn` still
-has the same pre-existing untracked scratch files noted in the
-archived handover (`pipelines-rehearsal*/`, `screen_results_
+`mapterhorn-japan-bridge` HEAD is this session's own D167 documentation
+commit. `hfu-mapterhorn` HEAD is `79397e7` (D167's FORK_NOTES.md
+entry, on top of `ba6dbfd`'s actual fixes); the commit chain from
+`bfef7cd` (D164's atomicity fix) through `79397e7` is entirely this
+session's own work. `hfu-mapterhorn` still has the same pre-existing
+untracked scratch files noted in the archived handover
+(`pipelines-rehearsal*/`, `screen_results_
 jpnational{5,10,sea}.csv` — the last three are now load-bearing
 evidence for D162's own re-verification, don't delete them,
 `stale_done_manifest.txt`) — leave them alone.
