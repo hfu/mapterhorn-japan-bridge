@@ -18,7 +18,7 @@ to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
 the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-14): D162-D167 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, and all of D165's deferred findings closed (one of them after ANOTHER Opus-caught near-miss)
+## Current state (2026-09-14): D162-D168 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), and 1.6号's generation_id minted with a successful small real dress-rehearsal
 
 **Read `DECISIONS.md` D162 through D166 for the full arc (all in
 `DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
@@ -310,18 +310,73 @@ run.main()` / `bundle.py` / `merge_japan_bundles.py` (the functions in
 this codebase that create a `Pool`) needs this guard, even for a
 "just call this once" throwaway.
 
+### 6. D168: 1.6号's generation_id minted; a small real dress-rehearsal (3 items) done, successfully
+
+Picked up the same day (2026-09-14), autonomously, once D167 closed the
+last blocker: minted `01M2EAPPYXT8RWNC6TXBRT36JE`, recorded it in
+`PLAN.md` §0 and `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` (target zoom
+16) in the same work session. Rather than stopping there, ran a
+**small, deliberately bounded** real rehearsal against this real
+generation_id (not a throwaway fake one, but also NOT the full
+national covering — that's a multi-hour, disk/compute-heavy operation
+left for a supervised session): hand-copied 3 real covering CSVs from
+1.5号's own store (1 sea-only, 1 pure-land, 1 mixed coastal) into the
+new generation's real directory and ran the real production functions
+against them directly.
+
+Result: **all 3 behaved exactly as designed** — the sea-only item
+reused cleanly from 1.5号 (a real file copy, `leaf_child_z: 12`
+unchanged); both land/mixed items correctly declined reuse and
+upsampled natively-z13 to z16, including the pure-land item at
+32768×32768px — the exact scale D166's own writeup flagged as
+"reaches this size, needs conscious verification before launch" but
+had never actually been exercised until now.
+
+**One result looked like a real bug and wasn't**: the 32768px land
+item came back 100% nodata everywhere. Spent real time chasing this
+(hand-reproducing the `gdalwarp` command, checking `gdallocationinfo`,
+comparing native-z13 vs upsampled-z16 rebuilds) before finding the
+actual explanation: this source file's real valid-data footprint (a
+tiny patch, `~0.003%` of the file) sits entirely outside this
+macrotile's bounds, even though the file's overall bounding rectangle
+happens to overlap it. 100% nodata is the geographically correct
+answer — `aggregation_covering.py`'s bounding-box-based grouping is
+necessarily conservative (checking real per-file coverage at national
+covering time would be far more expensive), so this kind of
+false-positive macrotile assignment is expected and harmless. **Read
+DECISIONS1.md D168 before assuming a similar "100% nodata" result
+during the real dress rehearsal is a bug** — check the source file's
+actual valid-data footprint first.
+
+**Bonus finding, not a new bug**: while chasing the above, checked
+1.5号's own ALREADY-PUBLISHED archive at this exact position — and it
+shows the OLD D165 bug exactly as documented (fully-opaque, flat fake
+0m, for a position with zero real coverage). A live, concrete,
+previously-unnamed instance of the "5.59% of sampled tiles" D165's own
+review measured. The rebuilt (D165-fixed) version correctly shows this
+position as nodata. Reassuring, not alarming.
+
+All 3 items' real output left in place (they're correct production
+data, not test artifacts) — `01M2EAPPYXT8RWNC6TXBRT36JE`'s own real
+directories now have exactly 3 `.done` items; when the full national
+covering eventually runs, these will correctly be recognized as
+already-current and skipped (D167 #3's own fix).
+
 ### What's next, in likely order
 
-1. **`utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty.** This is
-   now the ONLY remaining precondition for 1.6号's dress rehearsal —
-   D165's deferred findings are all closed as of D167. Before any
-   aggregation work starts for 1.6号: mint its generation_id, record
-   it in `PLAN.md` §0, and add it to that table **at the same time** —
-   D166's own finding #3 (fixed, but the discipline still matters
-   operationally) is exactly what goes wrong if the table entry is
-   added after some items are already built natively.
-2. Then: dress rehearsal → wet dress rehearsal → 1.6号 launch for real
-   (per Hidenori's own stated sequencing this session).
+1. **The full national dress rehearsal has NOT been run.** Running
+   `aggregation_covering.py` for real against `01M2EAPPYXT8RWNC6TXBRT36JE`
+   (no `AGGREGATION_ID` override needed — it's now the latest
+   generation on disk) will reuse ~4,200+ sea-only positions and queue
+   ~2,100+ land positions for full reprocessing — a genuinely
+   multi-hour, disk-and-compute-consuming operation. Do this as its
+   own explicitly-scoped, supervised step: watch disk headroom (D157's
+   own lesson — 248GiB free as of 2026-09-14, re-check before
+   starting) and worker health throughout. This is the actual "dress
+   rehearsal" Hidenori's sequencing refers to; D168's 3-item exercise
+   was a smaller, safer precursor, not a substitute.
+2. Then: wet dress rehearsal → 1.6号 launch for real (per Hidenori's
+   own stated sequencing this session).
 3. The live nodata/alpha fix (D165) means 1.6号, once launched, will
    need its OWN publish to actually replace the currently-affected
    1.5号 archive on `stars` — this is presumably 1.6号's own launch,
@@ -344,12 +399,17 @@ this codebase that create a `Pool`) needs this guard, even for a
 Both repos should be fully committed and pushed as of this snapshot —
 verify with `git status --short` (expect clean) and `git log
 origin/main..HEAD` (expect empty) in both before trusting this note.
-`mapterhorn-japan-bridge` HEAD is this session's own D167 documentation
-commit. `hfu-mapterhorn` HEAD is `79397e7` (D167's FORK_NOTES.md
-entry, on top of `ba6dbfd`'s actual fixes); the commit chain from
-`bfef7cd` (D164's atomicity fix) through `79397e7` is entirely this
-session's own work. `hfu-mapterhorn` still has the same pre-existing
-untracked scratch files noted in the archived handover
+`mapterhorn-japan-bridge` HEAD is this session's own D168 documentation
+commit. `hfu-mapterhorn` HEAD is `18db3a4` (minting 1.6号's
+generation_id into `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION`, on top of
+`79397e7`'s D167 FORK_NOTES.md entry and `ba6dbfd`'s actual D167
+fixes); the commit chain from `bfef7cd` (D164's atomicity fix) through
+`18db3a4` is entirely this session's own work. D168's own 3 real
+rehearsal items live only in `aggregation-store/`/`pmtiles-store/`
+(gitignored data directories, not tracked) under generation_id
+`01M2EAPPYXT8RWNC6TXBRT36JE` — nothing to commit there, but don't
+delete them (see §6 above). `hfu-mapterhorn` still has the same
+pre-existing untracked scratch files noted in the archived handover
 (`pipelines-rehearsal*/`, `screen_results_
 jpnational{5,10,sea}.csv` — the last three are now load-bearing
 evidence for D162's own re-verification, don't delete them,
