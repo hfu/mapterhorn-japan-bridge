@@ -6,24 +6,298 @@ for the standing rules (especially the repo×machine split table) and
 `DECISIONS.md` for why things are the way they are; this file is what
 actually happened, session by session.
 
-**Compacted 2026-09-11**: the 2026-09-09 (night JST) "current state"
-section (D147-D155, elevation regen in flight) has been moved into
-`HANDOVER-archive.md`, unedited. This file keeps only the current
-state and a short recent-context summary. Compact again the same way
-once this file itself grows unwieldy — archive everything above the
-current-state section, keep only a fresh snapshot.
+**Compacted 2026-09-13**: the 2026-09-11 (morning JST) "current state"
+section (D156-D161, the D160 strategic decision, D155/D154 publish) has
+been moved into `HANDOVER-archive.md`, unedited. This file keeps only
+the current state and a short recent-context summary. Compact again the
+same way once this file itself grows unwieldy — archive everything
+above the current-state section, keep only a fresh snapshot.
 
 **This handover is deliberately long.** The outgoing session expects
 to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
-the strategic decision in the first bullet below.
+the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-11, morning JST): D155/D154 published and verified; mission-critical strategic decision made; several infrastructure fixes landed
+## Current state (2026-09-13): D162-D166 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, and 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan
 
-**Read `DECISIONS.md` D156 through D161 for the full arc since the
-last compaction — six entries in one session, one of them (D160) is
-the single most important thing to understand about this project's
-future.** Summary, most important first:
+**Read `DECISIONS.md` D162 through D166 for the full arc (all in
+`DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
+into) — this was one long session with five numbered decisions, two of
+which (D165, D166) are substantial engineering work, not just records.**
+Summary, most important first:
+
+### 0. The single most important methodological result of this session: ask for review BEFORE writing code, not just after
+
+This session validated, twice, a workflow Hidenori explicitly requested
+mid-session and that should become standing practice for any
+nontrivial pipeline change from here on: **write a design as a text
+document, have an independent reviewer (Opus, via a background Agent)
+critique the DESIGN before any code exists, revise, THEN implement,
+THEN have Opus code-review the implementation, THEN re-verify against
+real data.**
+
+The concrete payoff (see §4 below for the full story): the first
+design for 1.6号's upsampling feature proposed a `resolve_layer()` fix
+that — verified against real 1.5号 data — would have silently broken
+**49.9% of all real child-layer references nationwide, completely
+unrelated to upsampling**, the moment the code was merged. This was
+caught by a design review BEFORE a single line of that fix was
+written. A second Opus pass, this time reviewing the actual
+implementation of the corrected design, then found 7 more real issues
+(all fixed). If you are about to implement a nontrivial change to
+`aggregation_covering.py`, `downsampling_covering.py`, `utils.py`'s
+shared machinery, or anything else touching the generation/layer/
+datatype namespace, do the same: write the design as a short text
+file (not a live conversation — the reviewer needs a self-contained
+document), spawn an Opus-model Agent to review it in the background,
+and don't write implementation code until that review comes back clean
+or its findings are addressed.
+
+### 1. D162: two "already resolved but nobody updated the tracker" staleness bugs, both fixed
+
+Unrelated to each other, found while checking whether `PLAN.md` §8's
+2号-readiness checklist was still accurate before touching it:
+
+- `PLAN.md` §3/§8's "5m/10m corruption-bug-class question, never
+  tested" line had been carried forward unchanged through at least
+  three later edits (2026-09-06/09/11) despite `DECISIONS0.md` D35
+  having actually closed it on **2026-08-25** — `screen_source.py`'s
+  real output files (`hfu-mapterhorn/pipelines/screen_results_
+  jpnational{5,10,sea}.csv`, still on disk, untracked, don't delete
+  them) were re-read this session and their row counts/zero-valid-pct
+  counts matched D35's own numbers exactly. Fixed the checklist; this
+  is no longer an open 2号-readiness item.
+- `japan-geotiff-dem-repo`'s local clone on `slate` was simply ~1 month
+  behind its own `origin/main` (fast-forwarded, clean). Separately,
+  even `origin/main` itself stopped recording D18's corruption-fix
+  saga partway through ("partially fixed, investigation ongoing") —
+  the actual closure (48/48 files fixed, full 109-mesh sweep done,
+  5m/10m/sea confirmed unaffected) only ever got written into *this*
+  repo's own `DECISIONS0.md` D35, never back into that repo's own
+  `HANDOVER.md`/`DECISIONS.md`. Backfilled a closing addendum there so
+  a future session reading that repo in isolation doesn't restart
+  already-finished work.
+
+### 2. D163/D164: safe cross-generation reuse (dirty-tracking) redesigned, implemented, and self-reviewed
+
+D57 (2026-08-29, see the archived handover) had ripped out
+`aggregation_covering.py`'s original cross-generation "skip if
+unchanged" optimization after it silently lost 2,343 native positions
+across 1号. This session designed and implemented the safe replacement
+Hidenori asked for, reusing D119/D120's existing `.done`-manifest
+fingerprint machinery instead of reinventing dirty-tracking:
+
+- `aggregation_covering.py`'s `try_reuse_from_previous_generation()`:
+  an item is only reused from the immediately-previous generation when
+  (a) that generation's own manifest is a real, non-legacy,
+  fingerprint-bearing one, (b) today's fingerprint — the covering
+  CSV's own content AND every referenced source file's own MD5 (new:
+  `utils.md5_input_entries_for_aggregation_csv()`, closing the exact
+  D18/D35 "same filename, same size, silently different content" gap a
+  content-only fingerprint can't see) — exactly matches what that
+  manifest recorded, and (c) the previous generation's own pmtiles-
+  store output file actually exists on disk. On a match, the file is
+  COPIED into the current generation's own folder and a fresh manifest
+  written — never a bare cross-generation reference.
+- A **self-review pass** (this session's own idea, before Hidenori
+  asked for Opus) found and fixed 10 more issues in that same feature,
+  most importantly: `done_is_current()`'s legacy-manifest bypass
+  (`{}` → "always current") was reachable from the new reuse check,
+  which would have silently reintroduced the exact D18/D35 gap the
+  whole feature exists to close if a future generation's predecessor
+  ever had a corrupt/legacy manifest. Also while re-checking D120's own
+  old Fable-review tracking table: 5 of 6 previously-"unaddressed"
+  items turned out to already be fixed (their own code comments cite
+  D120 by name — the table just never got updated); the 6th
+  (`aggregation_merge.py`'s non-atomic `merged-3857.tiff` write) was
+  genuinely still open and is fixed now.
+- 1.5号's own 6,373 `.done` manifests were backfilled (metadata-only,
+  no binary files touched) with the MD5 fingerprint entries needed so
+  a future generation can actually compare against it.
+
+### 3. D165: an Opus review of the ENTIRE production pipeline (not just this session's own diff) found a live data-quality bug already affecting the published 1.5号 archive
+
+Per Hidenori's own explicit sequencing ("Claude's own findings clear
+first, then an independent Opus review, then a dress rehearsal only
+once bug-squashing feels thorough"), a background Opus Agent reviewed
+`source_download.py` through `bundle.py`/`merge_japan_bundles.py` — the
+whole chain, not just the D163/D164 diff. Found 10 confirmed issues;
+**4 fixed this session, 6 deferred with reasons recorded**:
+
+**Fixed, most important first**:
+- **`aggregation_merge.py` zero-filled every nodata pixel
+  unconditionally** (both its single-group and multi-group code paths)
+  before `aggregation_tile.py` ever saw the data — so the alpha-channel
+  "preserve gaps as real nodata, not fake 0m" mechanism
+  (`utils.save_terrarium_tile()`'s own docstring) was always fully
+  opaque. **Verified live: 315/315 sampled 1.5号 elevation tiles decode
+  with no alpha plane at all; a 519-tile sample found 5.59% of leaf
+  pixels affected.** Root cause traced to `1b6e4e1` (D114(B)'s "hard
+  cliff" fix, which correctly made the zero-fill unconditional to stop
+  a worse bug, but never restored nodata semantics afterward). Fixed by
+  snapshotting which pixels no group ever filled BEFORE the
+  numerically-required zero-fill, then restoring `-9999` afterward only
+  where the gaussian blur made zero contribution (preserving D114(B)'s
+  coastal-transition smoothing exactly — verified byte-identical in a
+  synthetic replay of that scenario). Re-verified against real
+  1.5号 source-only items: one goes from 0% to 97.4% correctly-nodata
+  instead of shipping as flat fake sea-level terrain. **This bug is
+  still live in the currently-published 1.5号 archive on `stars`** —
+  the fix is in `hfu-mapterhorn` but nothing has been republished yet.
+- `lineage_provenance.py`'s `compute_provenance()` had the exact D48
+  glob hazard `aggregation_merge.py`'s own glob was already narrowed to
+  avoid (an unguarded `*-3857.tiff` also matches `merged-3857.tiff` on
+  a crash-and-resume) — narrowed to match.
+- `aggregation_covering.py`'s `write_aggregation_todos()` ignored the
+  `AGGREGATION_ID` override `main()` had just honored — re-planning a
+  specific non-latest generation was a silent no-op while an unrelated
+  (actually-latest) generation got churned instead. Now takes an
+  explicit `aggregation_id` parameter.
+- `remove_dangling_pmtiles.py`'s D146 lineage-low-zoom exclusion (see
+  §4 below — this got folded into the same fix as the upsampling
+  feature's own version of the same problem).
+
+**Deferred, with reasons** (see `DECISIONS1.md` D165 for full text):
+`aggregation_run.py`'s/`downsampling_run.py`'s own `.done` checks don't
+verify output existence or freshness the way `aggregation_covering.py`'s
+reuse path does (#3/#5); `lineage_provenance.py`'s `compute_provenance()`
+reads whole rasters unwindowed, up to ~10.7 GiB/worker on the largest
+real items, the same memory axis D129's kernel panic came from (#6);
+`downsampling_run.py`'s tmp folder isn't datatype-scoped, a risk only
+if elevation/lineage passes are ever run concurrently (#8); stale
+coverings from a re-plan aren't cleaned up, dormant today (#10,
+PLAUSIBLE not CONFIRMED).
+
+### 4. D166: 1.6号's land-area maxzoom upsampling — implemented, after a design review caught the original plan would have been catastrophic
+
+Background: D149-151 (see archived handover, 2026-09-07) designed
+"1.6号" — upsampling land-only aggregation items whose native source
+resolution tops out at 5m/10m (51% of all land items, not just "a few
+remote islands") up to z16 via `gdalwarp -r cubicspline`, so
+tile-existence gaps stop rendering badly (HTTP 204 client-side
+fallback isn't in any released MapLibre yet). Two fixes were proposed
+but never implemented, blocked on: `downsampling_covering.py`'s
+`get_extents_from_coverings()` can't see upsampled leaves (their
+covering CSV filename keeps the native/planned child_z forever, by
+design, since D163/D164's dirty-tracking needs that identity stable).
+
+This session (a) asked Hidenori to confirm the scope decision, (b)
+wrote the fix as a design document, (c) got it reviewed by an Opus
+Agent BEFORE writing any code (see §0 above) — **which found the
+originally-proposed `resolve_layer()` fix (match by (z,x,y) position
+alone) would have flipped 49.9% of ALL real child-layer references in
+1.5号, unrelated to upsampling entirely**, because a leaf position and
+an overview recursively built from it legitimately coexist at the same
+(z,x,y) with a *different* child_z (confirmed: 3,344/6,373 real
+positions do this) — and also found the original design's reuse-safety
+reasoning was backwards: D163/D164's reuse does NOT fail safe in the
+actual 1.6号 direction (current generation upsamples, the immediately-
+previous one didn't), and would have silently copied 1.5号's
+non-upsampled output forward into 1.6号 for most of the very items
+upsampling exists to fix (their covering CSV content, which the reuse
+fingerprint depends on, doesn't change at all under upsampling).
+
+**Corrected design, implemented** (`hfu-mapterhorn` `4d0b783`):
+`utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` — a generation_id-keyed policy
+table (same pattern as `FLAT_LEGACY_GENERATION_ID`), because whether a
+leaf's effective child_z differs from its covering's own filename is a
+per-GENERATION fact, not derivable from a covering's content alone.
+`utils.leaf_child_z()` — one shared, memoized, pure function (covering
+content + that policy table, deliberately NOT a pmtiles-store file
+scan) computing each leaf's real child_z, used everywhere a covering
+filename's child_z used to be trusted: `resolve_layer()`,
+`get_extents_from_coverings()`, `remove_dangling_pmtiles.py`, the
+D163/D164 reuse fingerprint, `check_stale_duplicates_v2.py`. A hard
+`assert` in `aggregation_tile.py`/`lineage_tile.py` that the real,
+raster-derived child_z always equals `leaf_child_z()`'s prediction is
+the safety net for the whole scheme.
+
+**A second Opus code-review pass** (reviewing the actual implementation
+this time, `4d0b783`) independently re-verified both headline
+regression-test claims (zero diffs across all 14,489 real `resolve_
+layer()` references; identical `get_extents_from_coverings()` output
+replayed old-vs-new) and found 7 more real issues, all fixed and
+re-tested (`976884f`): `leaf_child_z()` lacked `reproject()`'s own
+`target_zoom > native` guard; duplicate same-position coverings
+(dormant today) would silently pick one instead of failing loudly;
+**`aggregation_run.py`'s own same-generation `.done` skip didn't check
+`leaf_child_z`, so adding a generation to the policy table AFTER some
+of its items were already built natively would skip re-upsampling them
+forever** (reproduced and fixed); the D146 lineage exclusion hardcoded
+`< 8` where that script's own zoom range is env-var-tunable; the
+backfill script trusted the policy table without checking a real file
+exists; a backfill counter bug overstated success on write failure;
+one more real (`--aggregation-id`-parameterized, not the 1号-hardcoded
+`check_covering_gaps.py`) audit tool still parsed covering filenames
+naively.
+
+**Verified end-to-end against real data, not just unit-level**: an
+actual land-only item (`11-1727-881-13`, Yonaguni-area, native z13, the
+same item D150's own disposable rehearsal used) was upsampled to z16
+through the real, permanent code path — 311.67m max elevation vs
+D150's own rehearsal recording 312m. All three reuse scenarios
+(no prior record → reject; prior recorded native, current wants
+upsampled → reject, the actual fix; sea-only item → still reuses
+normally) confirmed against real 1.5号 data in isolated test
+generations, cleaned up after each check.
+
+**Scope decision, Hidenori, 2026-09-13**: "1.7号" stays unassigned. The
+next real launch is **1.6号** itself — same source data as 1.5号, plus
+D165's fixes (including the live nodata/alpha bug) and this upsampling
+feature — reached via "major rework → upsampling implementation →
+dress rehearsal → 1.6号" rather than the earlier "major rework → dress
+rehearsal → 1.7号" framing. `PLAN.md` §0's generation table has a new
+1.6号 row.
+
+### What's next, in likely order
+
+1. **`utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty.** Before
+   any aggregation work starts for 1.6号: mint its generation_id, record
+   it in `PLAN.md` §0, and add it to that table **at the same time** —
+   D166's own finding #3 (fixed, but the discipline still matters
+   operationally) is exactly what goes wrong if the table entry is
+   added after some items are already built natively.
+2. Address D165's remaining 5 items before the dress rehearsal (#3/#5/
+   #7 already folded in via D166's own fixes where they overlapped;
+   #3/#5's OWN remaining scope — `aggregation_run.py`/`downsampling_
+   run.py`'s freshness/existence checks — #6's `lineage_provenance.py`
+   memory rewrite, #8's tmp-folder datatype scoping, #10's stale-
+   covering cleanup — see `PLAN.md`/`DECISIONS1.md` D165 for the exact
+   list). This was the explicit condition Hidenori set before a dress
+   rehearsal.
+3. Then: dress rehearsal → wet dress rehearsal → 1.6号 launch for real
+   (per Hidenori's own stated sequencing this session).
+4. The live nodata/alpha fix (D165) means 1.6号, once launched, will
+   need its OWN publish to actually replace the currently-affected
+   1.5号 archive on `stars` — this is presumably 1.6号's own launch,
+   not a separate emergency republish, per the "major rework →
+   upsampling → dress rehearsal → 1.6号" sequencing Hidenori chose.
+5. GSI's next DEM1A update — live-checked 2026-09-11, still
+   **2026-07-31** (no new update). This gates 2号 specifically, which
+   now launches AFTER 1.6号, not before.
+6. Someday, not urgent (D160's own framing, unchanged): the coastal
+   erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) is a real
+   upstream-PR candidate whenever contributing upstream becomes a
+   priority.
+
+### Git state
+
+Both repos should be fully committed and pushed as of this snapshot —
+verify with `git status --short` (expect clean) and `git log
+origin/main..HEAD` (expect empty) in both before trusting this note.
+`mapterhorn-japan-bridge` HEAD is this session's own D166 documentation
+commit. `hfu-mapterhorn` HEAD is `976884f` (the D166 code-review
+fixups); the commit chain from `bfef7cd` (D164's atomicity fix) through
+`976884f` is entirely this session's own work. `hfu-mapterhorn` still
+has the same pre-existing untracked scratch files noted in the
+archived handover (`pipelines-rehearsal*/`, `screen_results_
+jpnational{5,10,sea}.csv` — the last three are now load-bearing
+evidence for D162's own re-verification, don't delete them,
+`stale_done_manifest.txt`) — leave them alone.
+
+If you're resuming and `git status`/`git log origin/main..HEAD` show
+anything other than clean, something changed after this snapshot was
+written — investigate before assuming this handover is still accurate.
 
 ### 0. D160 — the mission does NOT wind down just because upstream caught up
 

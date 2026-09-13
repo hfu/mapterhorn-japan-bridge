@@ -64,7 +64,7 @@ stable; the device node is not.
 
 Deeper: `CLAUDE.md` § "The three-way split".
 
-## 3. 1号 / 1.5号 / 2号
+## 3. 1号 / 1.5号 / 1.6号 / 2号
 
 Conversational shorthand for **generations**. A generation is one
 `aggregation_id` ULID, minted by `aggregation_covering.py`, and it is the
@@ -74,19 +74,32 @@ directory key the whole store is organized under.
   `stars`. Frozen: nothing writes to it any more.
 - **1.5号** — same source data as 1号, structurally rebuilt pipeline
   (generation_id store layer, layer/datatype namespace separation, lineage
-  tiles). A staging + regression run, so 2号 does not carry "new code" and
-  "new data" as two unknowns at once.
-- **2号** — the real next build, gated on GSI shipping a new DEM1A quarterly
-  update. Working estimate: end of November 2026.
+  tiles). Mission complete, currently live on `stars` — but see §6 below,
+  its published elevation archive has a known, already-fixed-in-code bug
+  (nodata pixels rendering as fake 0m) not yet republished.
+- **1.6号 — the actual next launch (decided 2026-09-13), not "1.7号".** Same
+  source data as 1.5号 again, plus D165's pipeline fixes (including the
+  nodata bug above) and a new land-area maxzoom upsampling feature (D149-151
+  design, D166 implementation). Generation_id not yet minted — see
+  `HANDOVER.md`'s current top section for the exact remaining steps before
+  it can launch.
+- **2号** — the real next-*data* build, gated on GSI shipping a new DEM1A
+  quarterly update. Now launches AFTER 1.6号, not before. Working estimate:
+  end of November 2026.
 
 **The label → ULID table lives in `PLAN.md` section 0 and nowhere else.**
 Do not copy it into other files; go read it. To find what the code thinks is
 current: `ls pipelines/aggregation-store/` (newest ULID last) — and note that
 `bundle.py` defaults to `get_aggregation_ids()[-1]`, i.e. *the latest
-directory that exists*, which is why 1.5号's directory is deliberately not
-pre-created before launch.
+directory that exists*, which is why a generation's directory is
+deliberately not pre-created before launch. **For 1.6号 specifically, minting
+the ULID and adding it to `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` must
+happen at the same time, before any aggregation work starts for it** — D166's
+own finding #3 documents exactly what silently goes wrong if that table
+entry is added after some items are already built.
 
-Deeper: `PLAN.md` §0 (IDs), §6 (1.5号 scope), §1 (2号 trigger).
+Deeper: `PLAN.md` §0 (IDs), §6 (1.5号 scope), §1 (2号 trigger), `DECISIONS1.md`
+D166 (1.6号's own design + implementation).
 
 ## 4. Where to look for what
 
@@ -155,33 +168,42 @@ These are not style preferences. Each one below cost real data or real days.
 > This section is the one part of this file that is expected to rot.
 > It is a pointer, not a record.
 
-- **Authoritative right now:** `DECISIONS.md` **D145/D146** and `HANDOVER.md`'s
-  topmost "Current state" section.
-- As of 2026-09-06: **1.5号 is mission complete.** Both of D96's founding
-  goals are done — D95's namespace separation validated at real national
-  scale with zero incidents, and the lineage feature implemented, published,
-  and extended to a lower zoom floor (D146) for a nationwide overview. Both
-  elevation (314.66GB) and lineage (204.6MB) archives are live on `stars`,
-  verified clean. A standalone showcase site (`hfu/japan-bridge-lineage`)
-  was also built and shared externally (Oliver Wipfli). 1号's own data was
-  never touched throughout.
-- **Next: 2号**, gated on GSI shipping a new DEM1A update (`PLAN.md` §1 —
-  still not triggered as of a 2026-09-06 live check). Launch-readiness was
-  reviewed the same day (`PLAN.md` §8): code/infra are essentially ready
-  (2号 needs no pipeline code changes, by 1.5号's own design). Of the three
-  open items, one is now fully resolved: the JGD2011→JGD2024 CRS question
-  (§1) was investigated 2026-09-07 and resolved 2026-09-09 (D147) — real
-  source data already carries the new CRS label, but EPSG turned out to
-  resolve JGD2024 by renaming `EPSG:6668` in place rather than minting a
-  new code (`OSGeo/PROJ` v12.055), so the external `gmldem2tif.rb` tool's
-  hardcoded `EPSG:6668` was correct all along and needs no fix. Still
-  open: 5m/10m's corruption-bug-class exposure is untested, and the
-  dirty-tracking design question (D57) is undecided. **2号 itself launches
-  in a fresh session, not whichever session did this prep** (Hidenori's
-  own call).
-- All work through D153 is **pushed** to both repos' `origin/main`. Still
-  always check `git log origin/main..HEAD` before assuming a later session's
-  work is pushed — this has bitten the project before.
+- **Authoritative right now:** `DECISIONS.md` **D162-D166** and `HANDOVER.md`'s
+  topmost "Current state" section (compacted 2026-09-13 — read that section
+  in full before touching anything, it is dense and everything in it is
+  current).
+- As of 2026-09-13: **a live data-quality bug was found and fixed** —
+  `aggregation_merge.py` was zero-filling every nodata pixel unconditionally,
+  so the alpha-based "preserve real gaps, don't fake 0m elevation" mechanism
+  was dead. **This bug is still live in the currently-published 1.5号
+  archive on `stars`** (measured: 5.59% of sampled leaf pixels affected);
+  the fix exists in `hfu-mapterhorn` but hasn't been republished yet.
+- D57's dirty-tracking design question (previously listed here as
+  undecided) is **resolved** — see D163/D164 for the safe, MD5-fingerprint-
+  based cross-generation reuse design, implemented and tested. The 5m/10m
+  corruption-bug-class question (also previously listed as untested) turned
+  out to have **already been closed on 2026-08-25** (D35) — a documentation-
+  tracking staleness, not an actual gap (D162).
+- **Next: 1.6号, not 2号.** Scope decision, Hidenori, 2026-09-13: "1.7号"
+  stays unassigned; the next real launch is called **1.6号** — same source
+  data as 1.5号, plus this session's own fixes (D165) and a new land-area
+  maxzoom upsampling feature (D149-151's original design, corrected and
+  implemented as D166 after a design review caught the original plan would
+  have broken ~half the national downsampling pyramid, unrelated to
+  upsampling — see `HANDOVER.md`'s own §0 for why "design-review before
+  code" is now standing practice). Code is implemented, design-reviewed,
+  code-reviewed, and tested against real 1.5号 data, but **`utils.
+  LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty** — 1.6号's own
+  generation_id isn't minted yet. Remaining before launch: D165's own 5
+  still-open findings (`PLAN.md`/`DECISIONS1.md` D165), then mint the ID +
+  add the table entry together, then a dress rehearsal / wet dress
+  rehearsal. **2号 (the GSI-data-gated build) now launches after 1.6号, not
+  before** — still not triggered as of a 2026-09-11 live check.
+- All work through this session (`hfu-mapterhorn` `976884f`,
+  `mapterhorn-japan-bridge`'s own D166 documentation commit) is **pushed**
+  to both repos' `origin/main`. Still always check `git log
+  origin/main..HEAD` before assuming a later session's work is pushed —
+  this has bitten the project before.
 - `publish_cycle.py` is **hard-guarded off** (it `sys.exit(1)`s immediately,
   D115) and was never used for 1.5号's own publish either — publishing has
   been fully manual since 1号, per the runbook that's now in `DECISIONS.md`
