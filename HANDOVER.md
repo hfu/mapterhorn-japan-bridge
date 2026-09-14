@@ -18,7 +18,7 @@ to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
 the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-14): D162-D168 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), and 1.6号's generation_id minted with a successful small real dress-rehearsal
+## Current state (2026-09-15): D162-D169 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), 1.6号's generation_id minted, and the FULL national dress rehearsal run for real with zero errors -- awaiting Hidenori's decision on whether to proceed to bundle/publish
 
 **Read `DECISIONS.md` D162 through D166 for the full arc (all in
 `DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
@@ -362,19 +362,53 @@ directories now have exactly 3 `.done` items; when the full national
 covering eventually runs, these will correctly be recognized as
 already-current and skipped (D167 #3's own fix).
 
+### 7. D169: the full national dress rehearsal -- run for real, zero errors
+
+Hidenori approved it explicitly ("全国規模ドレスリハーサルの実施を承認する",
+2026-09-14) after D168. Ran `aggregation_covering.py`'s full national
+covering (4,245/6,373 reused from 1.5号, 2,128 queued), caught and
+fixed a real gap before the expensive stage (the covering run was
+first done without `EMIT_LINEAGE=1`, which would have made every
+reused item's `.done` certify elevation only -- re-ran the todo
+decision alone, with lineage required, before spending any real
+compute), then ran `aggregation_run.py` (6,373/6,373, 0 errors) and
+`downsampling_run.py` for both datatypes (8,415/8,415 each, 0 errors).
+~17 hours total (2026-09-14 07:07 -> 2026-09-15 00:10), entirely
+against the REAL `01M2EAPPYXT8RWNC6TXBRT36JE` directories, monitored
+throughout (disk headroom, free memory, full-log error grep every
+~20 minutes).
+
+**Zero errors, disk headroom unchanged from start to finish** (248GiB
+free before and after, despite the aggregation+downsampling layers
+reaching ~251GB combined) -- APFS's `fcopyfile`/clonefile semantics
+make `shutil.copy2()` reuse-copies nearly free in disk terms on this
+filesystem, not obvious going in and worth remembering when sizing
+disk headroom for 2号 or any later generation. Sample-verified 8
+random upsampled land positions directly from the real pmtiles output:
+real, varied elevation values (up to 933m), not degenerate data.
+
+This is the first time 1.6号's upsampling (D166), the D163/D164 reuse
+mechanism, and all of D167's fixes have run together at true national
+scale against real production directories, not an isolated test
+generation. Full detail: `DECISIONS1.md` D169.
+
+**Deliberately NOT run yet**: `lineage_extend_low_zoom.py`,
+`bundle.py`, `merge_japan_bundles.py` -- these assemble the actual
+publishable archive, and that's a decision point posed to Hidenori
+explicitly (see "What's next" #1 below) rather than continued through
+automatically. Coordinated throughout with a concurrent peer session
+(`tokachi20260911`, a Claude Code agent on the same machine running
+OpenDroneMap/video work) about timing memory-heavy jobs around this
+run's two intensive phases -- no actual conflict occurred.
+
 ### What's next, in likely order
 
-1. **The full national dress rehearsal has NOT been run.** Running
-   `aggregation_covering.py` for real against `01M2EAPPYXT8RWNC6TXBRT36JE`
-   (no `AGGREGATION_ID` override needed — it's now the latest
-   generation on disk) will reuse ~4,200+ sea-only positions and queue
-   ~2,100+ land positions for full reprocessing — a genuinely
-   multi-hour, disk-and-compute-consuming operation. Do this as its
-   own explicitly-scoped, supervised step: watch disk headroom (D157's
-   own lesson — 248GiB free as of 2026-09-14, re-check before
-   starting) and worker health throughout. This is the actual "dress
-   rehearsal" Hidenori's sequencing refers to; D168's 3-item exercise
-   was a smaller, safer precursor, not a substitute.
+1. **Awaiting Hidenori's decision**: continue through `lineage_extend_
+   low_zoom.py` + `bundle.py` + `merge_japan_bundles.py` to produce
+   the actual publishable `.pmtiles` archives from this dress
+   rehearsal's real output, or treat the aggregation+downsampling
+   validation above as sufficient for now. Asked directly, 2026-09-15,
+   not yet answered as of this snapshot.
 2. Then: wet dress rehearsal → 1.6号 launch for real (per Hidenori's
    own stated sequencing this session).
 3. The live nodata/alpha fix (D165) means 1.6号, once launched, will
@@ -391,15 +425,15 @@ already-current and skipped (D167 #3's own fix).
    priority.
 6. Not yet triaged, below D165's own top-10 cutoff (see D165's own
    "also verified as real" list): a small batch of minor/dead-code
-   items, worth a lighter pass before or during the dress rehearsal
-   but not blocking it.
+   items, worth a lighter pass before or during the wet dress
+   rehearsal but not blocking it.
 
 ### Git state
 
 Both repos should be fully committed and pushed as of this snapshot —
 verify with `git status --short` (expect clean) and `git log
 origin/main..HEAD` (expect empty) in both before trusting this note.
-`mapterhorn-japan-bridge` HEAD is this session's own D168 documentation
+`mapterhorn-japan-bridge` HEAD is this session's own D169 documentation
 commit. `hfu-mapterhorn` HEAD is `18db3a4` (minting 1.6号's
 generation_id into `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION`, on top of
 `79397e7`'s D167 FORK_NOTES.md entry and `ba6dbfd`'s actual D167
