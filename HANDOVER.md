@@ -18,7 +18,7 @@ to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
 the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-16): D162-D171 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), 1.6号's generation_id minted, the FULL national dress rehearsal run for real with zero errors, and final assembly (bundle.py/merge_japan_bundles.py) underway after a real ENOSPC near-miss was found and resolved
+## Current state (2026-09-16): D162-D172 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), 1.6号's generation_id minted, the FULL national dress rehearsal run end to end (covering through final z0-7 splice and integrity verification), zero-error elevation archive, and a pre-existing (not new) 116-tile lineage gap found -- awaiting Hidenori's call on the wet dress rehearsal / real launch
 
 **Read `DECISIONS.md` D162 through D166 for the full arc (all in
 `DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
@@ -456,36 +456,90 @@ physically separate disks (`/Volumes/Migrate-2025-04`, HFS+; `/Volumes/
 pmtiles-store`, APFS), and which stage's output lands on which one is
 not obvious without checking.
 
+### D172: the dress rehearsal's final assembly finished, end to end -- both datatypes, both fully verified
+
+Hidenori approved the last remaining step ("この工程も進めてよい", 2026-09-16):
+the z0-7 global-overview splice, `./pmtiles merge bundle-store/
+mapterhorn-japan-bridge.z8plus.pmtiles /Volumes/Migrate-2025-04/global-
+overview-backup.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles`
+(elevation only -- lineage's own `bundle-store/mapterhorn-japan-bridge-
+lineage.pmtiles` needs no splice, D109's own established convention).
+Ran clean (34m35s, 254GB merged, 0 errors).
+
+**Final archives, both fully verified**:
+- **elevation**: `mapterhorn-japan-bridge.pmtiles`, 272.9GB, min/max
+  zoom 0/16, 3,461,089 tiles, global bounds. `check_pmtiles_integrity.py`
+  (the deeper directory-walk orphan check, not just `pmtiles verify`) --
+  **CLEAN, zero orphaned tiles.**
+- **lineage**: `mapterhorn-japan-bridge-lineage.pmtiles`, 217MB, min/max
+  zoom 4/16, 3,447,709 tiles. `check_pmtiles_integrity.py` found **116
+  orphaned tiles, all at z8**. Investigated immediately: ran the SAME
+  check against 1.5号's own already-published lineage archive (moved
+  to `/Volumes/pmtiles-store/1.5go-bundle-store-archive-20260916/` by
+  D171) -- **identical 116 tiles, identical positions**, already there.
+  Pre-existing, not a regression from this session's own work; never
+  previously caught (this looks like the first time this integrity
+  check was ever run against the lineage archive specifically). Tracked
+  for a future root-cause pass (likely `lineage_extend_low_zoom.py`'s
+  own z7-from-z8 build step, per its own "440 source tiles -> 117
+  parent tiles, 29 skipped all-nodata" log not fully accounting for all
+  440 inputs -- not traced end-to-end this session). Full detail:
+  `DECISIONS1.md` D172.
+
+**Disk**: all of `bundle.py` (both datatypes) + `merge_japan_bundles.py`
+(both datatypes, including `pmtiles cluster` -- which itself leaves a
+large uncleaned temp file on `/Volumes/pmtiles-store` every time, see
+D171's own addendum, manually cleaned up twice this session) + the
+z0-7 splice completed within headroom after D171's fix, ending at
+**221GiB free on `/Volumes/Migrate-2025-04`**. No further ENOSPC risk
+materialized.
+
+**This closes out the dress-rehearsal arc Hidenori asked for**:
+covering → aggregation → downsampling → bundle → merge → cluster →
+z0-7 splice → integrity verification, all real, all against the real
+`01M2EAPPYXT8RWNC6TXBRT36JE` generation, all the way to a final
+archive in the same shape as what's currently live on `stars` for
+1.5号. What remains is Hidenori's own next call on the wet dress
+rehearsal / real launch sequencing below.
+
 ### What's next, in likely order
 
-1. `bundle.py` (elevation) is running again as of this snapshot;
-   `bundle.py` (lineage) and `merge_japan_bundles.py` (both datatypes)
-   still to come. Watch disk headroom on BOTH volumes now, not just
-   `/Volumes/Migrate-2025-04` -- D171's own lesson.
-2. Then: wet dress rehearsal → 1.6号 launch for real (per Hidenori's
-   own stated sequencing this session).
-3. The live nodata/alpha fix (D165) means 1.6号, once launched, will
+1. **The dress rehearsal itself is done** (D162-D172). Next per
+   Hidenori's own stated sequencing this session: wet dress rehearsal
+   → 1.6号 launch for real. Not yet started as of this snapshot --
+   awaiting Hidenori's own call on timing/scope for that stage.
+2. The live nodata/alpha fix (D165) means 1.6号, once launched, will
    need its OWN publish to actually replace the currently-affected
    1.5号 archive on `stars` — this is presumably 1.6号's own launch,
    not a separate emergency republish, per the "major rework →
    upsampling → dress rehearsal → 1.6号" sequencing Hidenori chose.
-4. GSI's next DEM1A update — live-checked 2026-09-11, still
+3. GSI's next DEM1A update — live-checked 2026-09-11, still
    **2026-07-31** (no new update). This gates 2号 specifically, which
    now launches AFTER 1.6号, not before.
-5. Someday, not urgent (D160's own framing, unchanged): the coastal
+4. Someday, not urgent (D160's own framing, unchanged): the coastal
    erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) is a real
    upstream-PR candidate whenever contributing upstream becomes a
    priority.
-6. Not yet triaged, below D165's own top-10 cutoff (see D165's own
+5. Not yet triaged, below D165's own top-10 cutoff (see D165's own
    "also verified as real" list): a small batch of minor/dead-code
    items, worth a lighter pass before or during the wet dress
    rehearsal but not blocking it.
-7. `bundle.py`'s own local `create_archive()` (distinct from
+6. `bundle.py`'s own local `create_archive()` (distinct from
    `utils.create_archive()`) writes non-atomically -- an ENOSPC or any
    other crash mid-region-write leaves a truncated `.pmtiles` at its
    real final path. Not fixed (D171); worth the same tmp+`os.replace()`
    fix `aggregation_merge.py` already has, before this script is relied
    on unattended again.
+7. D172's own 116-tile lineage orphan gap (z8, both 1.5号 and 1.6号) --
+   real, pre-existing, low-severity, needs root-causing before it's
+   worth fixing. Not blocking.
+8. The dress-rehearsal artifacts themselves (`bundle-store/mapterhorn-
+   japan-bridge.pmtiles` 272.9GB, `-lineage.pmtiles` 217MB, and the
+   `bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles` intermediate
+   still sitting alongside them) are NOT published anywhere -- they
+   exist only in `hfu-mapterhorn/pipelines/bundle-store/` on `slate`.
+   Whether to keep them as-is pending the wet dress rehearsal, or clean
+   them up, is Hidenori's own call -- not decided this session.
 
 ### Git state
 
