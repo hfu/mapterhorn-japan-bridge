@@ -18,7 +18,7 @@ to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
 the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-15): D162-D169 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), 1.6号's generation_id minted, and the FULL national dress rehearsal run for real with zero errors -- awaiting Hidenori's decision on whether to proceed to bundle/publish
+## Current state (2026-09-16): D162-D171 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), 1.6号's generation_id minted, the FULL national dress rehearsal run for real with zero errors, and final assembly (bundle.py/merge_japan_bundles.py) underway after a real ENOSPC near-miss was found and resolved
 
 **Read `DECISIONS.md` D162 through D166 for the full arc (all in
 `DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
@@ -378,12 +378,16 @@ against the REAL `01M2EAPPYXT8RWNC6TXBRT36JE` directories, monitored
 throughout (disk headroom, free memory, full-log error grep every
 ~20 minutes).
 
-**Zero errors, disk headroom unchanged from start to finish** (248GiB
-free before and after, despite the aggregation+downsampling layers
-reaching ~251GB combined) -- APFS's `fcopyfile`/clonefile semantics
-make `shutil.copy2()` reuse-copies nearly free in disk terms on this
-filesystem, not obvious going in and worth remembering when sizing
-disk headroom for 2号 or any later generation. Sample-verified 8
+**Zero errors, disk headroom unchanged from start to finish** on
+`/Volumes/Migrate-2025-04` (248GiB free before and after) -- **but see
+D171 (2026-09-16) for the correction**: this is NOT because of APFS
+clonefile sharing on that volume (it's actually HFS+, no clonefile
+capability at all). `pipelines/pmtiles-store` and `pipelines/tmp-store`
+are **symlinks to a wholly separate disk**, `/Volumes/pmtiles-store`
+(genuinely APFS) -- none of this work ever touched Migrate-2025-04's
+headroom in the first place. `bundle-store/` (used one stage later)
+is NOT a symlink, sits directly on Migrate-2025-04, and is exactly
+where D171's own real ENOSPC near-miss happened. Sample-verified 8
 random upsampled land positions directly from the real pmtiles output:
 real, varied elevation values (up to 933m), not degenerate data.
 
@@ -392,23 +396,72 @@ mechanism, and all of D167's fixes have run together at true national
 scale against real production directories, not an isolated test
 generation. Full detail: `DECISIONS1.md` D169.
 
-**Deliberately NOT run yet**: `lineage_extend_low_zoom.py`,
+**Deliberately NOT run yet, as of the D169 snapshot**: `lineage_extend_low_zoom.py`,
 `bundle.py`, `merge_japan_bundles.py` -- these assemble the actual
-publishable archive, and that's a decision point posed to Hidenori
-explicitly (see "What's next" #1 below) rather than continued through
-automatically. Coordinated throughout with a concurrent peer session
-(`tokachi20260911`, a Claude Code agent on the same machine running
-OpenDroneMap/video work) about timing memory-heavy jobs around this
-run's two intensive phases -- no actual conflict occurred.
+publishable archive, and that was a decision point posed to Hidenori
+explicitly rather than continued through automatically. Coordinated
+throughout with a concurrent peer session (`tokachi20260911`, a Claude
+Code agent on the same machine running OpenDroneMap/video work) about
+timing memory-heavy jobs around this run's two intensive phases -- no
+actual conflict occurred.
+
+### D170/D171: a peer-flagged reuse-fingerprint gap, and a real ENOSPC near-miss during final assembly
+
+Hidenori approved proceeding to final assembly 2026-09-16
+("最終組み立てまで進める"), with an explicit instruction to keep
+prioritizing `tokachi20260911`'s own machine-resource needs throughout
+-- see this session's own transcript for the extended, genuinely
+collaborative coordination that followed (multiple ODM measurement
+windows, each respected by pausing all work on `slate`).
+
+**D170**: during that coordination, tokachi flagged a real gap in
+D163/D164's reuse mechanism -- the fingerprint covers inputs only, not
+the PRODUCER (GDAL/PROJ version). Latent today, real for any future
+toolchain-upgraded generation. Two mitigations tracked (mix producer
+version into the fingerprint, but only right before an actual
+toolchain upgrade; a periodic random-sample rebuild-and-diff audit,
+safe to add anytime) -- neither implemented this session. Read D170's
+own full entry for an important asymmetry tokachi later corrected: for
+THIS deterministic pipeline, a mismatched audit tile is decisive on
+its own (no sample-size threshold needed), while a matched tile only
+ever proves that one tile was fine -- design and read any future audit
+as early-breakage detection, not a health certification.
+
+**D171**: `lineage_extend_low_zoom.py` ran cleanly, then `bundle.py`
+(elevation) drove `/Volumes/Migrate-2025-04` from 248GiB to 112GiB
+free in ~35 minutes -- a real, alarming rate. Investigated and killed
+before ENOSPC hit. Root cause: `bundle-store/` (unlike `pmtiles-store/`/
+`tmp-store/`, which turned out to be **symlinks** to a wholly separate
+disk, `/Volumes/pmtiles-store`) is a real, non-symlinked directory
+directly on `/Volumes/Migrate-2025-04`, and already held **478GB of
+1.5号's own prior publish-cycle output** (`mapterhorn-japan-bridge.pmtiles`
++ `.z8plus.pmtiles` + `-lineage.pmtiles`, 2026-09-10). This also means
+D169's own "disk headroom unchanged, APFS clonefile sharing" claim was
+WRONG in its explanation (right observation, wrong cause) -- corrected
+in both `DECISIONS1.md` D169's own entry and here: Migrate-2025-04 is
+HFS+, not APFS, and none of D169's own aggregation/downsampling work
+ever touched it at all, by construction (it all went to the symlinked
+`/Volumes/pmtiles-store` instead). Resolved by moving the 513GB to
+`/Volumes/pmtiles-store/1.5go-bundle-store-archive-20260916/` (asked
+Hidenori first via `AskUserQuestion` -- move, not delete, since these
+files are plausibly the live source of `stars`' current 1.5号
+publication) -- `/Volumes/Migrate-2025-04` now has 590GiB free.
+`bundle.py` (elevation) restarting. Full detail: `DECISIONS1.md` D170/D171.
+
+**Lesson for whoever resumes next**: before reasoning about disk
+headroom for ANY stage of this pipeline, check `ls -la` for symlinks
+and `diskutil info`/`df -h` on the REAL mount points -- `CLAUDE.md`'s
+own pipeline description reads as one directory tree, but it spans two
+physically separate disks (`/Volumes/Migrate-2025-04`, HFS+; `/Volumes/
+pmtiles-store`, APFS), and which stage's output lands on which one is
+not obvious without checking.
 
 ### What's next, in likely order
 
-1. **Awaiting Hidenori's decision**: continue through `lineage_extend_
-   low_zoom.py` + `bundle.py` + `merge_japan_bundles.py` to produce
-   the actual publishable `.pmtiles` archives from this dress
-   rehearsal's real output, or treat the aggregation+downsampling
-   validation above as sufficient for now. Asked directly, 2026-09-15,
-   not yet answered as of this snapshot.
+1. `bundle.py` (elevation) is running again as of this snapshot;
+   `bundle.py` (lineage) and `merge_japan_bundles.py` (both datatypes)
+   still to come. Watch disk headroom on BOTH volumes now, not just
+   `/Volumes/Migrate-2025-04` -- D171's own lesson.
 2. Then: wet dress rehearsal → 1.6号 launch for real (per Hidenori's
    own stated sequencing this session).
 3. The live nodata/alpha fix (D165) means 1.6号, once launched, will
@@ -427,6 +480,12 @@ run's two intensive phases -- no actual conflict occurred.
    "also verified as real" list): a small batch of minor/dead-code
    items, worth a lighter pass before or during the wet dress
    rehearsal but not blocking it.
+7. `bundle.py`'s own local `create_archive()` (distinct from
+   `utils.create_archive()`) writes non-atomically -- an ENOSPC or any
+   other crash mid-region-write leaves a truncated `.pmtiles` at its
+   real final path. Not fixed (D171); worth the same tmp+`os.replace()`
+   fix `aggregation_merge.py` already has, before this script is relied
+   on unattended again.
 
 ### Git state
 
