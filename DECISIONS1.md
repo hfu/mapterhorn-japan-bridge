@@ -3882,6 +3882,4 @@ This is the first time 1.6号's upsampling feature (D166), the D163/D164 cross-g
 
 ### What's explicitly NOT done yet
 
-`lineage_extend_low_zoom.py` (lineage's own standalone low-zoom extension, D146) and `bundle.py`/`merge_japan_bundles.py` (the steps that actually assemble the final, publishable `.pmtiles` archives) have not been run. These get progressively closer to an actual publish-ready artifact, which is a decision point Hidenori asked to make explicitly rather than have continued through automatically -- see `HANDOVER.md`'s own "what's next" for the exact question posed.</new_string>
-</invoke>
-
+`lineage_extend_low_zoom.py` (lineage's own standalone low-zoom extension, D146) and `bundle.py`/`merge_japan_bundles.py` (the steps that actually assemble the final, publishable `.pmtiles` archives) have not been run. These get progressively closer to an actual publish-ready artifact, which is a decision point Hidenori asked to make explicitly rather than have continued through automatically -- see `HANDOVER.md`'s own "what's next" for the exact question posed.
