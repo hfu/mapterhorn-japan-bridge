@@ -3957,5 +3957,7 @@ Five locations, chosen for specific reasons: Mt. Fuji (a landmark with a precise
 - **Yonaguni**: island shape and terrain correct; a large black region in the rendered PNG turned out to be the verification SCRIPT's own limitation (queried a single fixed zoom, z13, which native-z12 sea-only surroundings simply have no tile at -- not a data gap, confirmed by the script's own tile-count log showing exactly the expected sea-only exclusion), not an archive defect.
 - **Upsampled mountain (native z11 -> z16, 1.6号's own new feature)**: fine ridge/valley detail, a visible river/road line crossing the terrain, 256 stitched z16 tiles with **no visible seams, no blocky upsampling artifacts, no cubicspline ringing** -- the single most important image for confidence in the upsampling feature specifically, and it looks like genuine, physically plausible fine terrain, not degraded/interpolated noise.
 
-Sent to Hidenori directly (3 of 4 images; the largest, `visual_upsampled_mountain.png` at 31.3MiB, exceeded the remote-viewer file-size limit but was already visible inline in this session). **Awaiting Hidenori's own read of these images before treating visual confidence as established** -- this entry records what was checked and found, not yet a go/no-go call on publishing.
+Sent to Hidenori directly (3 of 4 images; the largest, `visual_upsampled_mountain.png` at 31.3MiB, exceeded the remote-viewer file-size limit but was already visible inline in this session).
+
+**Decision (Hidenori, 2026-09-16, "いいね。視覚確認GOとする。")**: visual confidence established. Proceeding to the `stars` publish itself, staged: lineage (217MB) first as a low-risk trial of the new transfer-then-delete procedure, elevation (272.9GB) after that succeeds cleanly.
 
