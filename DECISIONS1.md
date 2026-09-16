@@ -3945,3 +3945,17 @@ For 1.6号, that staging never actually happened as originally imagined: D169 we
 
 This also resolves an open question `HANDOVER.md`'s own "what's next" list has been carrying since D169: whether to await a separate "wet dress rehearsal / real launch" decision. There isn't a separate decision anymore -- proceeding to visual verification now, `stars` publish next, both as 1.6号's own remaining work.
 
+### Visual verification (D79's own established pre-publish practice, applied to 1.6号 for the first time)
+
+Wrote a standalone hillshade-rendering script (`scratchpad/render_visual_check.py`, not committed -- one-off, matches this project's own established "verification scripts stay local" convention) reading directly from the final merged archive (`bundle-store/mapterhorn-japan-bridge.pmtiles`), decoding terrarium tiles via `pmtiles.reader.Reader` + numpy/PIL, and rendering a simple sun-angle hillshade for a human "does this look right" check -- something D162-D172's own extensive programmatic verification never substituted for.
+
+Five locations, chosen for specific reasons: Mt. Fuji (a landmark with a precisely known real elevation, the strongest single sanity check available), Tsushima and Goto (both sites of this project's own worst historical defect, the D113-D118 z8-11 "奈落" voids), Yonaguni (a small island, tests upsampling behavior at the extreme western edge of the archive), and the specific native-z11-to-z16 upsampled item sampled earlier in D169 (`11/1829/776`, rendered at full z16 resolution, 256 tiles stitched).
+
+**Results, all positive**:
+- **Fuji**: summit elevation 3772.5m in the rendered data vs. the real, well-known 3776m -- a 3.5m difference, well within plausible survey/encoding tolerance. Visible parasitic cones (側火山) and radial drainage channels, both real, well-documented features of the volcano -- exactly what a correct render should show.
+- **Tsushima/Goto**: full island terrain rendered, including the smallest outlying islets, with NO voids -- the exact defect class (D113-D118) this project spent real effort fixing in earlier generations stays fixed in 1.6号.
+- **Yonaguni**: island shape and terrain correct; a large black region in the rendered PNG turned out to be the verification SCRIPT's own limitation (queried a single fixed zoom, z13, which native-z12 sea-only surroundings simply have no tile at -- not a data gap, confirmed by the script's own tile-count log showing exactly the expected sea-only exclusion), not an archive defect.
+- **Upsampled mountain (native z11 -> z16, 1.6号's own new feature)**: fine ridge/valley detail, a visible river/road line crossing the terrain, 256 stitched z16 tiles with **no visible seams, no blocky upsampling artifacts, no cubicspline ringing** -- the single most important image for confidence in the upsampling feature specifically, and it looks like genuine, physically plausible fine terrain, not degraded/interpolated noise.
+
+Sent to Hidenori directly (3 of 4 images; the largest, `visual_upsampled_mountain.png` at 31.3MiB, exceeded the remote-viewer file-size limit but was already visible inline in this session). **Awaiting Hidenori's own read of these images before treating visual confidence as established** -- this entry records what was checked and found, not yet a go/no-go call on publishing.
+
