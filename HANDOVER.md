@@ -18,7 +18,11 @@ to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
 the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-16): D162-D172 -- a live data-quality bug found and fixed, safe cross-generation reuse designed and implemented, 1.6号's upsampling feature implemented after a design review caught a catastrophic flaw in the original plan, all of D165's deferred findings closed (one after ANOTHER Opus-caught near-miss), 1.6号's generation_id minted, the FULL national dress rehearsal run end to end (covering through final z0-7 splice and integrity verification), zero-error elevation archive, and a pre-existing (not new) 116-tile lineage gap found -- awaiting Hidenori's call on the wet dress rehearsal / real launch
+## Current state (2026-09-17): D162-D173 -- 1.6号 LAUNCHED. Both elevation (272.9GB) and lineage (217MB) archives are live on `stars`, MD5-verified, publicly confirmed via TileJSON/tile URLs
+
+**1.6号 is done.** Everything from D162 (live data-quality bug fix) through D173 (the actual `stars` publish) is complete: safe cross-generation reuse, the upsampling feature (after a design review caught a catastrophic flaw in the original plan), all of D165's deferred findings, the full national dress rehearsal build, final assembly, visual verification, and now the publish itself. See D173 in `DECISIONS1.md` for the publish details, including a new transfer-then-atomic-rename procedure (replacing the old delete-then-transfer pattern now that `stars` has ample free space) and a caution about remote `md5sum` on `stars` being much slower, proportionally, than the same check on `slate` — use `/proc/<pid>/io`'s `rchar`, not `ps`'s CPU-time field, to confirm a long-running remote hash is actually progressing rather than stuck.
+
+Open, non-blocking follow-ups only (nothing currently running, nothing blocking): D170's reuse-fingerprint producer-version gap (latent until a toolchain upgrade), D172's 116-tile lineage orphan gap (pre-existing in 1.5号 too, low-severity), `bundle.py`'s own non-atomic `create_archive()` (D171), a handful of minor items below D165's top-10 cutoff, and 2号 itself (gated on GSI's next DEM1A update, last checked 2026-09-11 as still 2026-07-31).
 
 **Read `DECISIONS.md` D162 through D166 for the full arc (all in
 `DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
@@ -504,42 +508,44 @@ rehearsal / real launch sequencing below.
 
 ### What's next, in likely order
 
-1. **The dress rehearsal itself is done** (D162-D172). Next per
-   Hidenori's own stated sequencing this session: wet dress rehearsal
-   → 1.6号 launch for real. Not yet started as of this snapshot --
-   awaiting Hidenori's own call on timing/scope for that stage.
-2. The live nodata/alpha fix (D165) means 1.6号, once launched, will
-   need its OWN publish to actually replace the currently-affected
-   1.5号 archive on `stars` — this is presumably 1.6号's own launch,
-   not a separate emergency republish, per the "major rework →
-   upsampling → dress rehearsal → 1.6号" sequencing Hidenori chose.
-3. GSI's next DEM1A update — live-checked 2026-09-11, still
-   **2026-07-31** (no new update). This gates 2号 specifically, which
-   now launches AFTER 1.6号, not before.
-4. Someday, not urgent (D160's own framing, unchanged): the coastal
+1. **1.6号 is launched (D173). Nothing is currently blocking or
+   running.** Both archives are live on `stars`, verified. The old
+   1.5号 files are preserved as dated backups on `stars` itself
+   (`mapterhorn-japan-bridge.pmtiles.1.5go-backup-20260916`,
+   `mapterhorn-japan-bridge-lineage.pmtiles.1.5go-backup-20260916`) --
+   not deleted, per this project's own established caution around
+   destructive actions on live-published data.
+2. GSI's next DEM1A update — live-checked 2026-09-11, still
+   **2026-07-31** (no new update). This gates 2号's launch timing (the
+   decision to launch it at all is already settled, D160).
+3. Someday, not urgent (D160's own framing, unchanged): the coastal
    erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) is a real
    upstream-PR candidate whenever contributing upstream becomes a
    priority.
-5. Not yet triaged, below D165's own top-10 cutoff (see D165's own
+4. Not yet triaged, below D165's own top-10 cutoff (see D165's own
    "also verified as real" list): a small batch of minor/dead-code
-   items, worth a lighter pass before or during the wet dress
-   rehearsal but not blocking it.
-6. `bundle.py`'s own local `create_archive()` (distinct from
+   items.
+5. `bundle.py`'s own local `create_archive()` (distinct from
    `utils.create_archive()`) writes non-atomically -- an ENOSPC or any
    other crash mid-region-write leaves a truncated `.pmtiles` at its
    real final path. Not fixed (D171); worth the same tmp+`os.replace()`
    fix `aggregation_merge.py` already has, before this script is relied
    on unattended again.
-7. D172's own 116-tile lineage orphan gap (z8, both 1.5号 and 1.6号) --
+6. D172's own 116-tile lineage orphan gap (z8, both 1.5号 and 1.6号) --
    real, pre-existing, low-severity, needs root-causing before it's
    worth fixing. Not blocking.
-8. The dress-rehearsal artifacts themselves (`bundle-store/mapterhorn-
-   japan-bridge.pmtiles` 272.9GB, `-lineage.pmtiles` 217MB, and the
-   `bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles` intermediate
-   still sitting alongside them) are NOT published anywhere -- they
-   exist only in `hfu-mapterhorn/pipelines/bundle-store/` on `slate`.
-   Whether to keep them as-is pending the wet dress rehearsal, or clean
-   them up, is Hidenori's own call -- not decided this session.
+7. D170's reuse-fingerprint producer-version gap: implement the cheap,
+   safe mitigation (#2, periodic reuse audit by real rebuild-and-diff)
+   whenever convenient; save the fingerprint-definition change (#1)
+   for whenever `slate`'s GDAL/PROJ toolchain is next upgraded, not
+   before.
+8. `bundle-store/mapterhorn-japan-bridge{,-lineage}.pmtiles` (the local
+   copies on `slate` that D173 published from) can now be considered
+   1.6号's own retained local archive -- no further action needed
+   unless disk headroom on `/Volumes/Migrate-2025-04` becomes tight
+   again, at which point they're the natural thing to reason about
+   keeping vs. archiving elsewhere, same as D171's treatment of 1.5号's
+   own local copies.
 
 ### Git state
 
