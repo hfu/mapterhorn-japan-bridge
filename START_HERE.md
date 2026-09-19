@@ -77,12 +77,13 @@ directory key the whole store is organized under.
   tiles). Mission complete, currently live on `stars` — but see §6 below,
   its published elevation archive has a known, already-fixed-in-code bug
   (nodata pixels rendering as fake 0m) not yet republished.
-- **1.6号 — the actual next launch (decided 2026-09-13), not "1.7号".** Same
+- **1.6号 — launched 2026-09-17 (D173), currently live on `stars`.** Same
   source data as 1.5号 again, plus D165's pipeline fixes (including the
-  nodata bug above) and a new land-area maxzoom upsampling feature (D149-151
-  design, D166 implementation). Generation_id not yet minted — see
-  `HANDOVER.md`'s current top section for the exact remaining steps before
-  it can launch.
+  nodata bug above) and the land-area maxzoom upsampling feature (D149-151
+  design, D166 implementation). `generation_id` `01M2EAPPYXT8RWNC6TXBRT36JE`.
+  Patched live 2026-09-19 for a real, nationwide "壁" (wall) 3D-terrain
+  artifact traced to a genuine upstream Copernicus GLO-30 inventory gap
+  (D174-D178) — see `HANDOVER.md`'s current top section for the full arc.
 - **2号** — the real next-*data* build, gated on GSI shipping a new DEM1A
   quarterly update. Now launches AFTER 1.6号, not before. Working estimate:
   end of November 2026.
@@ -168,42 +169,32 @@ These are not style preferences. Each one below cost real data or real days.
 > This section is the one part of this file that is expected to rot.
 > It is a pointer, not a record.
 
-- **Authoritative right now:** `DECISIONS.md` **D162-D166** and `HANDOVER.md`'s
-  topmost "Current state" section (compacted 2026-09-13 — read that section
+- **Authoritative right now:** `DECISIONS.md` **D174-D178** and `HANDOVER.md`'s
+  topmost "Current state" section (compacted 2026-09-19 — read that section
   in full before touching anything, it is dense and everything in it is
   current).
-- As of 2026-09-13: **a live data-quality bug was found and fixed** —
-  `aggregation_merge.py` was zero-filling every nodata pixel unconditionally,
-  so the alpha-based "preserve real gaps, don't fake 0m elevation" mechanism
-  was dead. **This bug is still live in the currently-published 1.5号
-  archive on `stars`** (measured: 5.59% of sampled leaf pixels affected);
-  the fix exists in `hfu-mapterhorn` but hasn't been republished yet.
-- D57's dirty-tracking design question (previously listed here as
-  undecided) is **resolved** — see D163/D164 for the safe, MD5-fingerprint-
-  based cross-generation reuse design, implemented and tested. The 5m/10m
-  corruption-bug-class question (also previously listed as untested) turned
-  out to have **already been closed on 2026-08-25** (D35) — a documentation-
-  tracking staleness, not an actual gap (D162).
-- **Next: 1.6号, not 2号.** Scope decision, Hidenori, 2026-09-13: "1.7号"
-  stays unassigned; the next real launch is called **1.6号** — same source
-  data as 1.5号, plus this session's own fixes (D165) and a new land-area
-  maxzoom upsampling feature (D149-151's original design, corrected and
-  implemented as D166 after a design review caught the original plan would
-  have broken ~half the national downsampling pyramid, unrelated to
-  upsampling — see `HANDOVER.md`'s own §0 for why "design-review before
-  code" is now standing practice). Code is implemented, design-reviewed,
-  code-reviewed, and tested against real 1.5号 data, but **`utils.
-  LAND_UPSAMPLE_ZOOM_BY_GENERATION` is still empty** — 1.6号's own
-  generation_id isn't minted yet. Remaining before launch: D165's own 5
-  still-open findings (`PLAN.md`/`DECISIONS1.md` D165), then mint the ID +
-  add the table entry together, then a dress rehearsal / wet dress
-  rehearsal. **2号 (the GSI-data-gated build) now launches after 1.6号, not
-  before** — still not triggered as of a 2026-09-11 live check.
-- All work through this session (`hfu-mapterhorn` `976884f`,
-  `mapterhorn-japan-bridge`'s own D166 documentation commit) is **pushed**
-  to both repos' `origin/main`. Still always check `git log
-  origin/main..HEAD` before assuming a later session's work is pushed —
-  this has bitten the project before.
+- **1.6号 is launched and live on `stars`** (D173, 2026-09-17) — both the
+  elevation and lineage archives. A post-launch visual spot-check of remote
+  islands found a real, nationwide "壁" (3D-terrain wall) artifact, root-
+  caused to a genuine upstream Copernicus GLO-30 data gap (not fixable by
+  re-downloading, not a bug in this project's own pipeline), designed
+  through two independent Opus reviews, implemented, run for real, and
+  **published live to `stars`** (D174-D178, 2026-09-19) — both originally
+  -reported wall positions confirmed fixed against the public endpoint. A
+  z13+ deeper-zoom extension is explicitly tracked and deferred, not a
+  blocker.
+- **Next: 2号**, gated on GSI shipping a new DEM1A quarterly update — not
+  triggered as of the last live check (2026-09-11, still 2026-07-31).
+  Nothing is currently running or blocking; before starting 2号 prep, check
+  `HANDOVER.md`'s own "What's next" list for the handful of open,
+  non-blocking follow-ups (D170's reuse-fingerprint gap, D172's 116-tile
+  lineage orphan gap, `bundle.py`'s own non-atomic write, the z13+
+  extension above).
+- All work through the 2026-09-19 session (`hfu-mapterhorn` `d7eedee`,
+  `mapterhorn-japan-bridge` `b4c551e`) is **pushed** to both repos'
+  `origin/main`. Still always check `git log origin/main..HEAD` before
+  assuming a later session's work is pushed — this has bitten the project
+  before.
 - `publish_cycle.py` is **hard-guarded off** (it `sys.exit(1)`s immediately,
   D115) and was never used for 1.5号's own publish either — publishing has
   been fully manual since 1号, per the runbook that's now in `DECISIONS.md`
