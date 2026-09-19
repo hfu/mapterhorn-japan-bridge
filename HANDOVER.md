@@ -6,571 +6,70 @@ for the standing rules (especially the repo×machine split table) and
 `DECISIONS.md` for why things are the way they are; this file is what
 actually happened, session by session.
 
-**Compacted 2026-09-13**: the 2026-09-11 (morning JST) "current state"
-section (D156-D161, the D160 strategic decision, D155/D154 publish) has
-been moved into `HANDOVER-archive.md`, unedited. This file keeps only
-the current state and a short recent-context summary. Compact again the
-same way once this file itself grows unwieldy — archive everything
-above the current-state section, keep only a fresh snapshot.
+**Compacted 2026-09-13, compacted again 2026-09-19**: both the 2026-09-11
+(D156-D161) and the 2026-09-17 (D162-D173, 1.6号's launch) "current
+state" sections have been moved into `HANDOVER-archive.md`, unedited.
+This file keeps only the current state and a short recent-context
+summary. Compact again the same way once this file itself grows
+unwieldy — archive everything above the current-state section, keep
+only a fresh snapshot.
 
 **This handover is deliberately long.** The outgoing session expects
 to be cleared and a fresh agent to pick up from here with zero memory
 of what happened — read it in full before touching anything, especially
 the strategic decision below and the exact next step in "What's next".
 
-## Current state (2026-09-17): D162-D173 -- 1.6号 LAUNCHED. Both elevation (272.9GB) and lineage (217MB) archives are live on `stars`, MD5-verified, publicly confirmed via TileJSON/tile URLs
+## Current state (2026-09-19): D174-D178 -- the "壁" (wall) problem, found, root-caused, designed, implemented, and PUBLISHED LIVE to `stars`. 1.6号's own launch (D162-D173) is unaffected and still live; this is a real fix layered on top of it
 
-**1.6号 is done.** Everything from D162 (live data-quality bug fix) through D173 (the actual `stars` publish) is complete: safe cross-generation reuse, the upsampling feature (after a design review caught a catastrophic flaw in the original plan), all of D165's deferred findings, the full national dress rehearsal build, final assembly, visual verification, and now the publish itself. See D173 in `DECISIONS1.md` for the publish details, including a new transfer-then-atomic-rename procedure (replacing the old delete-then-transfer pattern now that `stars` has ample free space) and a caution about remote `md5sum` on `stars` being much slower, proportionally, than the same check on `slate` — use `/proc/<pid>/io`'s `rchar`, not `ps`'s CPU-time field, to confirm a long-running remote hash is actually progressing rather than stuck.
+**The short version**: days after 1.6号 launched (D173), a visual spot-check of small/remote islands (波照間島 Hateruma, 久場島 Kuba-jima/Senkaku) found a real, ugly artifact in the 3D terrain viewer -- a vertical "wall" where MapLibre renders a giant cliff. This turned out to be a genuine, nationwide, previously-undetected characteristic of the archive (not new to 1.6号 -- present in 1.5号 too, just never spotted before), was root-caused all the way to a real Copernicus GLO-30 upstream data gap, designed and re-designed through two independent Opus reviews that each caught real, serious problems in the proposed fix, implemented as real committed pipeline code, run for real against production, and published live. **As of this snapshot, the fix is live on `stars` and directly verified against the public service.** Read `DECISIONS1.md` D174 through D178 for the full, detailed arc -- this section is a compressed summary; the detail file has exact numbers, code, and reasoning for every step.
 
-Open, non-blocking follow-ups only (nothing currently running, nothing blocking): D170's reuse-fingerprint producer-version gap (latent until a toolchain upgrade), D172's 116-tile lineage orphan gap (pre-existing in 1.5号 too, low-severity), `bundle.py`'s own non-atomic `create_archive()` (D171), a handful of minor items below D165's top-10 cutoff, and 2号 itself (gated on GSI's next DEM1A update, last checked 2026-09-11 as still 2026-07-31).
+**Read in this order if you want the full story**: D174 (investigation: root cause, scope, two design reviews, the exact upstream MapLibre bug identified) is the longest and most important; D175 (a quick, independent viewer-side mitigation) is a side branch; D176 (prototype implementation, verified, a real bug caught mid-implementation) and its own promotion-to-committed-code addendum (which caught a SECOND instance of nearly the same bug during promotion -- a genuinely important methodological lesson, see below); D177 (the real production run against `bundle-store/`); D178 (the actual `stars` publish, live-verified).
 
-**Read `DECISIONS.md` D162 through D166 for the full arc (all in
-`DECISIONS1.md`, the detail file `DECISIONS.md`'s own table links
-into) — this was one long session with five numbered decisions, two of
-which (D165, D166) are substantial engineering work, not just records.**
-Summary, most important first:
+### 1. D174: the wall problem -- root cause, scope, and a staged design that survived two rounds of adversarial review
 
-### 0. The single most important methodological result of this session: ask for review BEFORE writing code, not just after
+Hidenori's own visual spot-check (the same D79/D172 practice, now applied to more remote locations post-launch) found large vertical walls in 3D terrain view at two small islands. Investigated methodically:
 
-This session validated, three times now, a workflow Hidenori explicitly
-requested mid-session and that should become standing practice for any
-nontrivial pipeline change from here on: **write a design as a text
-document, have an independent reviewer (Opus, via a background Agent)
-critique the DESIGN before any code exists, revise, THEN implement,
-THEN have Opus code-review the implementation, THEN re-verify against
-real data.**
+- **Ruled out**: raw data corruption (no `-9999`/`-32768`-class values anywhere sampled), a pyramid-depth hole near the islands themselves (both have real data to z16), a D165 #1 regression (directly diffed 1.5号 vs 1.6号 tile presence at the same positions -- byte-identical, this predates 1.6号 entirely).
+- **Root cause, confirmed three independent ways**: the specific missing tiles correspond to 1-degree cells genuinely absent from Copernicus GLO-30's own global inventory (not a curation gap -- verified against `source-catalog/glo30/file_list.txt`, a live HEAD check against the real upstream AWS bucket returning a genuine 404, and upstream Mapterhorn's own `tiles.mapterhorn.com` 404ing at the exact same positions). **Nothing to re-download; this is a real, permanent gap in the world's most widely-used sea-level DEM fallback.**
+- **Scope is nationwide, not two islands**: 13.2% of land-containing tiles at z9 sit directly adjacent to a missing tile, spread across Senkaku, Hateruma, southern Okinawa, Yaku-shima/Tanega-shima, Tsushima/Goto, the Shimane coast, offshore Chiba, Shakotan, the Kurils, Okinotorishima, Minamitorishima, and the Iwo-jima/Ogasawara chain. Confirmed present since at least 1.5号.
+- **The exact upstream MapLibre bug identified by reading its own source and issue history**: PR #5392 diagnoses this project's own tile server (Martin) by name -- missing (204) raster-dem tiles get stored as degenerate 1x1 images, producing rendering glitches. The actual fix (PR #8207, merged 2 weeks before this investigation) is already live in maplibre-gl 6.10.0 -- but this project's own viewer was pinned to v4 at the time (see D175).
+- **Two independent Opus design reviews**, launched separately (not nested), each found real problems: the first review corrected the original design's fill-scope math (the sea source tops out at z12, so filling z13-z16 would mean synthesizing the entire ocean, ~86M tiles -- staged the fix to z8-z12 instead, which covers both actual reported cases). The second review found three real blockers in even the staged design: (1) the proposed rectangular fill box would have stamped fake 0m sea level over REAL foreign land (Luzon, Sakhalin, Kamchatka, Beijing) -- fixed by using the GLO-30 global inventory itself as a free, precise land mask; (2) the z0-7 global overview's OWN gaps needed completing first, or the fill would create real orphans; (3) `pmtiles merge` copies metadata from its FIRST input only -- ordering matters.
+- **Decision (Hidenori, "欠損位置に合成0mタイルを差し込むことを承認する")**: approved the synthetic-fill direction (Option 2). Later ("z8-z12を本番実行・再公開(推奨)"): proceed with the staged z8-z12 fix now, treat any z13+ extension as an explicitly separate, deferred follow-up rather than a blocker -- partly because D175 already reduces the urgency for this project's OWN viewer specifically.
 
-The concrete payoff (see §4 below for the full story): the first
-design for 1.6号's upsampling feature proposed a `resolve_layer()` fix
-that — verified against real 1.5号 data — would have silently broken
-**49.9% of all real child-layer references nationwide, completely
-unrelated to upsampling**, the moment the code was merged. This was
-caught by a design review BEFORE a single line of that fix was
-written. A second Opus pass, this time reviewing the actual
-implementation of the corrected design, then found 7 more real issues
-(all fixed). A THIRD pass, the next day (§5, D167), reviewing what
-looked like a small, mechanical cleanup fix for D165's #10, found that
-its cleanup glob would delete the CURRENT item's own `.done`/`.todo`
-sidecars on every re-covering pass — a bug the fix's own
-author-written test could not have caught, since the test never gave
-the current item real sidecars to lose. If you are about to implement
-a nontrivial change to `aggregation_covering.py`,
-`downsampling_covering.py`, `utils.py`'s shared machinery, or anything
-else touching the generation/layer/datatype namespace, do the same:
-write the design as a short text file (not a live conversation — the
-reviewer needs a self-contained document), spawn an Opus-model Agent
-to review it in the background, and don't trust a "looks correct, my
-test passes" diff on its own — send it for code review too, even when
-the change looks small.
+### 2. D175: bumped the preview viewer's MapLibre GL JS from v4 to v6
 
-### 1. D162: two "already resolved but nobody updated the tracker" staleness bugs, both fixed
+Independent, safe, viewer-only change: `index.html`/`app.js` now load `maplibre-gl@6` (ESM-only now, no more classic global-script build -- `app.js` uses a namespace `import` so every existing `maplibregl.X` call needed no further changes). v6 already contains the upstream fix for the exact PR #5392 bug. Verified via CHANGELOG review, live HTTP/CORS checks, and a local Node import test (this session has no working browser -- `claude-in-chrome` never connected all session). **Does not touch or substitute for the archive-level fix** -- other consumers (Source Cooperative, Oliver Wipfli, the official viewer, anyone on an older MapLibre) still need the archive itself fixed.
 
-Unrelated to each other, found while checking whether `PLAN.md` §8's
-2号-readiness checklist was still accurate before touching it:
+### 3. D176: implementation, verified as a prototype, then promoted to real committed code -- catching the SAME bug twice
 
-- `PLAN.md` §3/§8's "5m/10m corruption-bug-class question, never
-  tested" line had been carried forward unchanged through at least
-  three later edits (2026-09-06/09/11) despite `DECISIONS0.md` D35
-  having actually closed it on **2026-08-25** — `screen_source.py`'s
-  real output files (`hfu-mapterhorn/pipelines/screen_results_
-  jpnational{5,10,sea}.csv`, still on disk, untracked, don't delete
-  them) were re-read this session and their row counts/zero-valid-pct
-  counts matched D35's own numbers exactly. Fixed the checklist; this
-  is no longer an open 2号-readiness item.
-- `japan-geotiff-dem-repo`'s local clone on `slate` was simply ~1 month
-  behind its own `origin/main` (fast-forwarded, clean). Separately,
-  even `origin/main` itself stopped recording D18's corruption-fix
-  saga partway through ("partially fixed, investigation ongoing") —
-  the actual closure (48/48 files fixed, full 109-mesh sweep done,
-  5m/10m/sea confirmed unaffected) only ever got written into *this*
-  repo's own `DECISIONS0.md` D35, never back into that repo's own
-  `HANDOVER.md`/`DECISIONS.md`. Backfilled a closing addendum there so
-  a future session reading that repo in isolation doesn't restart
-  already-finished work.
+Built the actual fix: `glo30_land_mask.py`-equivalent logic (a free, precise land mask from the GLO-30 inventory), a canonical 0m/nodata fill tile generated via this project's own `utils.save_terrarium_tile()`-equivalent encoding path, and a top-down, parent-gated enumeration (a position is only filled if its own PARENT is resolvable -- real, or already filled) -- this last part exists because the FIRST naive version (checking each zoom's mask-eligibility independently) produced 759 genuine orphans: a fine child tile's small footprint can be 100% GLO-30-absent while its own larger, coarser parent touches one additional cell that DOES have real data, and if that parent is also absent from the real archive, the child becomes an orphan. Fixed, reverified: zero orphans against the full real 273GB archive.
 
-### 2. D163/D164: safe cross-generation reuse (dirty-tracking) redesigned, implemented, and self-reviewed
+**Promoted to real, committed code** (`hfu-mapterhorn/pipelines/build_wall_fix_archive.py`, `d7eedee`) -- partly because this session's own scratchpad was wiped once already by an unrelated restart, losing real verified work that had to be rebuilt from scratch. **Promoting the logic reintroduced the exact same class of bug**: the committed script's z8-parent check consulted only the z0-7 fill archive, not the real z0-7 overview itself, undercounting the fill by ~15%. Caught immediately by diffing the promoted script's own output against the prototype's already-verified numbers (NOT by any structural check -- `pmtiles verify` passed both the buggy and the correct version). **Lesson worth remembering**: a bug fixed once in a prototype is not automatically safe once the same logic is retyped into a "cleaner" committed version -- always re-verify a promoted/rewritten script against the original's own known-good numbers, not just against generic structural checks.
 
-D57 (2026-08-29, see the archived handover) had ripped out
-`aggregation_covering.py`'s original cross-generation "skip if
-unchanged" optimization after it silently lost 2,343 native positions
-across 1号. This session designed and implemented the safe replacement
-Hidenori asked for, reusing D119/D120's existing `.done`-manifest
-fingerprint machinery instead of reinventing dirty-tracking:
+### 4. D177: the real production run against `bundle-store/`
 
-- `aggregation_covering.py`'s `try_reuse_from_previous_generation()`:
-  an item is only reused from the immediately-previous generation when
-  (a) that generation's own manifest is a real, non-legacy,
-  fingerprint-bearing one, (b) today's fingerprint — the covering
-  CSV's own content AND every referenced source file's own MD5 (new:
-  `utils.md5_input_entries_for_aggregation_csv()`, closing the exact
-  D18/D35 "same filename, same size, silently different content" gap a
-  content-only fingerprint can't see) — exactly matches what that
-  manifest recorded, and (c) the previous generation's own pmtiles-
-  store output file actually exists on disk. On a match, the file is
-  COPIED into the current generation's own folder and a fresh manifest
-  written — never a bare cross-generation reference.
-- A **self-review pass** (this session's own idea, before Hidenori
-  asked for Opus) found and fixed 10 more issues in that same feature,
-  most importantly: `done_is_current()`'s legacy-manifest bypass
-  (`{}` → "always current") was reachable from the new reuse check,
-  which would have silently reintroduced the exact D18/D35 gap the
-  whole feature exists to close if a future generation's predecessor
-  ever had a corrupt/legacy manifest. Also while re-checking D120's own
-  old Fable-review tracking table: 5 of 6 previously-"unaddressed"
-  items turned out to already be fixed (their own code comments cite
-  D120 by name — the table just never got updated); the 6th
-  (`aggregation_merge.py`'s non-atomic `merged-3857.tiff` write) was
-  genuinely still open and is fixed now.
-- 1.5号's own 6,373 `.done` manifests were backfilled (metadata-only,
-  no binary files touched) with the MD5 fingerprint entries needed so
-  a future generation can actually compare against it.
+Built both fill archives against real production data (exact match to every prior verified number: 8,321 z0-7-completion tiles, 152,267 z8-z12 tiles), merged into the live 272.9GB elevation archive (`pmtiles merge`, real archive first for correct metadata inheritance), and verified thoroughly BEFORE touching anything: `pmtiles verify` clean, `addressed_tiles_count` matches the exact expected sum (3,461,089 + 8,321 + 152,267 = 3,621,677), `check_pmtiles_integrity.py` -- this project's own official orphan checker, the same one D172 used to certify the original archive clean -- reports **CLEAN, zero orphans**, both originally-reported wall tiles decode correctly (0m, alpha=0), and real neighboring data is untouched. Swapped into `bundle-store/mapterhorn-japan-bridge.pmtiles` locally; old version preserved as `*.pre-wallfix-20260919`, not deleted. Fill archives themselves retained as a small (<2KB) provenance record.
 
-### 3. D165: an Opus review of the ENTIRE production pipeline (not just this session's own diff) found a live data-quality bug already affecting the published 1.5号 archive
+### 5. D178: published to `stars`. Live. Verified against the actual public service
 
-Per Hidenori's own explicit sequencing ("Claude's own findings clear
-first, then an independent Opus review, then a dress rehearsal only
-once bug-squashing feels thorough"), a background Opus Agent reviewed
-`source_download.py` through `bundle.py`/`merge_japan_bundles.py` — the
-whole chain, not just the D163/D164 diff. Found 10 confirmed issues;
-**4 fixed this session, 6 deferred with reasons recorded**:
-
-**Fixed, most important first**:
-- **`aggregation_merge.py` zero-filled every nodata pixel
-  unconditionally** (both its single-group and multi-group code paths)
-  before `aggregation_tile.py` ever saw the data — so the alpha-channel
-  "preserve gaps as real nodata, not fake 0m" mechanism
-  (`utils.save_terrarium_tile()`'s own docstring) was always fully
-  opaque. **Verified live: 315/315 sampled 1.5号 elevation tiles decode
-  with no alpha plane at all; a 519-tile sample found 5.59% of leaf
-  pixels affected.** Root cause traced to `1b6e4e1` (D114(B)'s "hard
-  cliff" fix, which correctly made the zero-fill unconditional to stop
-  a worse bug, but never restored nodata semantics afterward). Fixed by
-  snapshotting which pixels no group ever filled BEFORE the
-  numerically-required zero-fill, then restoring `-9999` afterward only
-  where the gaussian blur made zero contribution (preserving D114(B)'s
-  coastal-transition smoothing exactly — verified byte-identical in a
-  synthetic replay of that scenario). Re-verified against real
-  1.5号 source-only items: one goes from 0% to 97.4% correctly-nodata
-  instead of shipping as flat fake sea-level terrain. **This bug is
-  still live in the currently-published 1.5号 archive on `stars`** —
-  the fix is in `hfu-mapterhorn` but nothing has been republished yet.
-- `lineage_provenance.py`'s `compute_provenance()` had the exact D48
-  glob hazard `aggregation_merge.py`'s own glob was already narrowed to
-  avoid (an unguarded `*-3857.tiff` also matches `merged-3857.tiff` on
-  a crash-and-resume) — narrowed to match.
-- `aggregation_covering.py`'s `write_aggregation_todos()` ignored the
-  `AGGREGATION_ID` override `main()` had just honored — re-planning a
-  specific non-latest generation was a silent no-op while an unrelated
-  (actually-latest) generation got churned instead. Now takes an
-  explicit `aggregation_id` parameter.
-- `remove_dangling_pmtiles.py`'s D146 lineage-low-zoom exclusion (see
-  §4 below — this got folded into the same fix as the upsampling
-  feature's own version of the same problem).
-
-**Deferred, with reasons** (see `DECISIONS1.md` D165 for full text):
-`aggregation_run.py`'s/`downsampling_run.py`'s own `.done` checks don't
-verify output existence or freshness the way `aggregation_covering.py`'s
-reuse path does (#3/#5); `lineage_provenance.py`'s `compute_provenance()`
-reads whole rasters unwindowed, up to ~10.7 GiB/worker on the largest
-real items, the same memory axis D129's kernel panic came from (#6);
-`downsampling_run.py`'s tmp folder isn't datatype-scoped, a risk only
-if elevation/lineage passes are ever run concurrently (#8); stale
-coverings from a re-plan aren't cleaned up, dormant today (#10,
-PLAUSIBLE not CONFIRMED).
-
-### 4. D166: 1.6号's land-area maxzoom upsampling — implemented, after a design review caught the original plan would have been catastrophic
-
-Background: D149-151 (see archived handover, 2026-09-07) designed
-"1.6号" — upsampling land-only aggregation items whose native source
-resolution tops out at 5m/10m (51% of all land items, not just "a few
-remote islands") up to z16 via `gdalwarp -r cubicspline`, so
-tile-existence gaps stop rendering badly (HTTP 204 client-side
-fallback isn't in any released MapLibre yet). Two fixes were proposed
-but never implemented, blocked on: `downsampling_covering.py`'s
-`get_extents_from_coverings()` can't see upsampled leaves (their
-covering CSV filename keeps the native/planned child_z forever, by
-design, since D163/D164's dirty-tracking needs that identity stable).
-
-This session (a) asked Hidenori to confirm the scope decision, (b)
-wrote the fix as a design document, (c) got it reviewed by an Opus
-Agent BEFORE writing any code (see §0 above) — **which found the
-originally-proposed `resolve_layer()` fix (match by (z,x,y) position
-alone) would have flipped 49.9% of ALL real child-layer references in
-1.5号, unrelated to upsampling entirely**, because a leaf position and
-an overview recursively built from it legitimately coexist at the same
-(z,x,y) with a *different* child_z (confirmed: 3,344/6,373 real
-positions do this) — and also found the original design's reuse-safety
-reasoning was backwards: D163/D164's reuse does NOT fail safe in the
-actual 1.6号 direction (current generation upsamples, the immediately-
-previous one didn't), and would have silently copied 1.5号's
-non-upsampled output forward into 1.6号 for most of the very items
-upsampling exists to fix (their covering CSV content, which the reuse
-fingerprint depends on, doesn't change at all under upsampling).
-
-**Corrected design, implemented** (`hfu-mapterhorn` `4d0b783`):
-`utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` — a generation_id-keyed policy
-table (same pattern as `FLAT_LEGACY_GENERATION_ID`), because whether a
-leaf's effective child_z differs from its covering's own filename is a
-per-GENERATION fact, not derivable from a covering's content alone.
-`utils.leaf_child_z()` — one shared, memoized, pure function (covering
-content + that policy table, deliberately NOT a pmtiles-store file
-scan) computing each leaf's real child_z, used everywhere a covering
-filename's child_z used to be trusted: `resolve_layer()`,
-`get_extents_from_coverings()`, `remove_dangling_pmtiles.py`, the
-D163/D164 reuse fingerprint, `check_stale_duplicates_v2.py`. A hard
-`assert` in `aggregation_tile.py`/`lineage_tile.py` that the real,
-raster-derived child_z always equals `leaf_child_z()`'s prediction is
-the safety net for the whole scheme.
-
-**A second Opus code-review pass** (reviewing the actual implementation
-this time, `4d0b783`) independently re-verified both headline
-regression-test claims (zero diffs across all 14,489 real `resolve_
-layer()` references; identical `get_extents_from_coverings()` output
-replayed old-vs-new) and found 7 more real issues, all fixed and
-re-tested (`976884f`): `leaf_child_z()` lacked `reproject()`'s own
-`target_zoom > native` guard; duplicate same-position coverings
-(dormant today) would silently pick one instead of failing loudly;
-**`aggregation_run.py`'s own same-generation `.done` skip didn't check
-`leaf_child_z`, so adding a generation to the policy table AFTER some
-of its items were already built natively would skip re-upsampling them
-forever** (reproduced and fixed); the D146 lineage exclusion hardcoded
-`< 8` where that script's own zoom range is env-var-tunable; the
-backfill script trusted the policy table without checking a real file
-exists; a backfill counter bug overstated success on write failure;
-one more real (`--aggregation-id`-parameterized, not the 1号-hardcoded
-`check_covering_gaps.py`) audit tool still parsed covering filenames
-naively.
-
-**Verified end-to-end against real data, not just unit-level**: an
-actual land-only item (`11-1727-881-13`, Yonaguni-area, native z13, the
-same item D150's own disposable rehearsal used) was upsampled to z16
-through the real, permanent code path — 311.67m max elevation vs
-D150's own rehearsal recording 312m. All three reuse scenarios
-(no prior record → reject; prior recorded native, current wants
-upsampled → reject, the actual fix; sea-only item → still reuses
-normally) confirmed against real 1.5号 data in isolated test
-generations, cleaned up after each check.
-
-**Scope decision, Hidenori, 2026-09-13**: "1.7号" stays unassigned. The
-next real launch is **1.6号** itself — same source data as 1.5号, plus
-D165's fixes (including the live nodata/alpha bug) and this upsampling
-feature — reached via "major rework → upsampling implementation →
-dress rehearsal → 1.6号" rather than the earlier "major rework → dress
-rehearsal → 1.7号" framing. `PLAN.md` §0's generation table has a new
-1.6号 row.
-
-### 5. D167: D165's remaining 5 findings (#3/#5/#6/#8/#10) all fixed and verified -- including a THIRD near-miss caught by Opus review this session
-
-Picked up the next day (2026-09-14) as the explicit condition Hidenori
-set before a dress rehearsal. All 5 fixed and verified against real
-1.5号 data or synthetic scenarios built from real code paths, inside
-isolated fake generation_ids as usual:
-
-- **#3/#5**: `aggregation_run.py`/`downsampling_run.py`'s own-item
-  `.done`-skip checks now require an inputs-fingerprint freshness
-  match AND a real `os.path.isfile()` check on the actual output file
-  — not just `done_covers()`/`done_is_current()` alone, which never
-  verified the output was still on disk.
-- **#6**: `lineage_provenance.py`'s `compute_provenance()` rewritten to
-  read every per-group tiff in 512x512 windows instead of loading each
-  fully into RAM (was ~10.7 GiB peak on the largest real items — the
-  same `AGGREGATION_WORKERS=3` ceiling D129-D131 fixed elsewhere, and
-  about to matter a lot more once 1.6号's own upsampling pushes some
-  items to 32768x32768). Safe with no overlap margin — no cross-pixel
-  operation exists in this function. Verified byte-identical on a real
-  5-group, 33018x33018 item: 0 differing pixels out of ~1.09 billion.
-- **#8**: `downsampling_run.py`'s tmp folder now scoped by datatype.
-- **#10**: `aggregation_covering.py`'s `write_aggregation_items()` now
-  cleans up a superseded covering CSV (plus `.todo`/`.done` stubs)
-  when re-covering an EXISTING generation changes a position's
-  `child_z`, or drops it to zero coverage. **A first version of this
-  fix had a critical regression, caught by Opus code review BEFORE it
-  ever ran**: the cleanup glob also matched the CURRENT item's own
-  `.todo`/`.done` sidecars, so any re-covering pass into an existing
-  generation — including the single most common real case, a
-  same-composition no-op retry — would have silently deleted every
-  already-built item's completion marker generation-wide, forcing a
-  full national rebuild and destroying the D163/D164 fingerprint data
-  a later generation's reuse depends on. The test written alongside
-  the original fix could not have caught this (it never gave the
-  CURRENT item its own `.done`/`.todo` before the no-op-rerun
-  assertion) — rewritten to actually exercise it.
-
-This is the **third** time this session an independent Opus review
-caught something a locally-correct-looking diff (and its own
-author-written test) both missed — after the `resolve_layer()`
-position-only-match catastrophe and the reuse-direction reversal, both
-D166. Full narrative: `DECISIONS1.md` D167.
-
-**Unrelated lesson from this session's own verification work**: the #5
-test script hung for **over 12 hours** before being diagnosed as a bug
-in the ad hoc script itself, not the pipeline — it called
-`downsampling_run.main()` (which spawns a `multiprocessing.Pool`) at
-module level with no `if __name__ == '__main__':` guard, so macOS's
-`spawn` start method re-ran the whole test file as `__main__` inside
-each worker, recursively spawning more pools forever. Any future
-one-off script that calls `aggregation_run.main()` / `downsampling_
-run.main()` / `bundle.py` / `merge_japan_bundles.py` (the functions in
-this codebase that create a `Pool`) needs this guard, even for a
-"just call this once" throwaway.
-
-### 6. D168: 1.6号's generation_id minted; a small real dress-rehearsal (3 items) done, successfully
-
-Picked up the same day (2026-09-14), autonomously, once D167 closed the
-last blocker: minted `01M2EAPPYXT8RWNC6TXBRT36JE`, recorded it in
-`PLAN.md` §0 and `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` (target zoom
-16) in the same work session. Rather than stopping there, ran a
-**small, deliberately bounded** real rehearsal against this real
-generation_id (not a throwaway fake one, but also NOT the full
-national covering — that's a multi-hour, disk/compute-heavy operation
-left for a supervised session): hand-copied 3 real covering CSVs from
-1.5号's own store (1 sea-only, 1 pure-land, 1 mixed coastal) into the
-new generation's real directory and ran the real production functions
-against them directly.
-
-Result: **all 3 behaved exactly as designed** — the sea-only item
-reused cleanly from 1.5号 (a real file copy, `leaf_child_z: 12`
-unchanged); both land/mixed items correctly declined reuse and
-upsampled natively-z13 to z16, including the pure-land item at
-32768×32768px — the exact scale D166's own writeup flagged as
-"reaches this size, needs conscious verification before launch" but
-had never actually been exercised until now.
-
-**One result looked like a real bug and wasn't**: the 32768px land
-item came back 100% nodata everywhere. Spent real time chasing this
-(hand-reproducing the `gdalwarp` command, checking `gdallocationinfo`,
-comparing native-z13 vs upsampled-z16 rebuilds) before finding the
-actual explanation: this source file's real valid-data footprint (a
-tiny patch, `~0.003%` of the file) sits entirely outside this
-macrotile's bounds, even though the file's overall bounding rectangle
-happens to overlap it. 100% nodata is the geographically correct
-answer — `aggregation_covering.py`'s bounding-box-based grouping is
-necessarily conservative (checking real per-file coverage at national
-covering time would be far more expensive), so this kind of
-false-positive macrotile assignment is expected and harmless. **Read
-DECISIONS1.md D168 before assuming a similar "100% nodata" result
-during the real dress rehearsal is a bug** — check the source file's
-actual valid-data footprint first.
-
-**Bonus finding, not a new bug**: while chasing the above, checked
-1.5号's own ALREADY-PUBLISHED archive at this exact position — and it
-shows the OLD D165 bug exactly as documented (fully-opaque, flat fake
-0m, for a position with zero real coverage). A live, concrete,
-previously-unnamed instance of the "5.59% of sampled tiles" D165's own
-review measured. The rebuilt (D165-fixed) version correctly shows this
-position as nodata. Reassuring, not alarming.
-
-All 3 items' real output left in place (they're correct production
-data, not test artifacts) — `01M2EAPPYXT8RWNC6TXBRT36JE`'s own real
-directories now have exactly 3 `.done` items; when the full national
-covering eventually runs, these will correctly be recognized as
-already-current and skipped (D167 #3's own fix).
-
-### 7. D169: the full national dress rehearsal -- run for real, zero errors
-
-Hidenori approved it explicitly ("全国規模ドレスリハーサルの実施を承認する",
-2026-09-14) after D168. Ran `aggregation_covering.py`'s full national
-covering (4,245/6,373 reused from 1.5号, 2,128 queued), caught and
-fixed a real gap before the expensive stage (the covering run was
-first done without `EMIT_LINEAGE=1`, which would have made every
-reused item's `.done` certify elevation only -- re-ran the todo
-decision alone, with lineage required, before spending any real
-compute), then ran `aggregation_run.py` (6,373/6,373, 0 errors) and
-`downsampling_run.py` for both datatypes (8,415/8,415 each, 0 errors).
-~17 hours total (2026-09-14 07:07 -> 2026-09-15 00:10), entirely
-against the REAL `01M2EAPPYXT8RWNC6TXBRT36JE` directories, monitored
-throughout (disk headroom, free memory, full-log error grep every
-~20 minutes).
-
-**Zero errors, disk headroom unchanged from start to finish** on
-`/Volumes/Migrate-2025-04` (248GiB free before and after) -- **but see
-D171 (2026-09-16) for the correction**: this is NOT because of APFS
-clonefile sharing on that volume (it's actually HFS+, no clonefile
-capability at all). `pipelines/pmtiles-store` and `pipelines/tmp-store`
-are **symlinks to a wholly separate disk**, `/Volumes/pmtiles-store`
-(genuinely APFS) -- none of this work ever touched Migrate-2025-04's
-headroom in the first place. `bundle-store/` (used one stage later)
-is NOT a symlink, sits directly on Migrate-2025-04, and is exactly
-where D171's own real ENOSPC near-miss happened. Sample-verified 8
-random upsampled land positions directly from the real pmtiles output:
-real, varied elevation values (up to 933m), not degenerate data.
-
-This is the first time 1.6号's upsampling (D166), the D163/D164 reuse
-mechanism, and all of D167's fixes have run together at true national
-scale against real production directories, not an isolated test
-generation. Full detail: `DECISIONS1.md` D169.
-
-**Deliberately NOT run yet, as of the D169 snapshot**: `lineage_extend_low_zoom.py`,
-`bundle.py`, `merge_japan_bundles.py` -- these assemble the actual
-publishable archive, and that was a decision point posed to Hidenori
-explicitly rather than continued through automatically. Coordinated
-throughout with a concurrent peer session (`tokachi20260911`, a Claude
-Code agent on the same machine running OpenDroneMap/video work) about
-timing memory-heavy jobs around this run's two intensive phases -- no
-actual conflict occurred.
-
-### D170/D171: a peer-flagged reuse-fingerprint gap, and a real ENOSPC near-miss during final assembly
-
-Hidenori approved proceeding to final assembly 2026-09-16
-("最終組み立てまで進める"), with an explicit instruction to keep
-prioritizing `tokachi20260911`'s own machine-resource needs throughout
--- see this session's own transcript for the extended, genuinely
-collaborative coordination that followed (multiple ODM measurement
-windows, each respected by pausing all work on `slate`).
-
-**D170**: during that coordination, tokachi flagged a real gap in
-D163/D164's reuse mechanism -- the fingerprint covers inputs only, not
-the PRODUCER (GDAL/PROJ version). Latent today, real for any future
-toolchain-upgraded generation. Two mitigations tracked (mix producer
-version into the fingerprint, but only right before an actual
-toolchain upgrade; a periodic random-sample rebuild-and-diff audit,
-safe to add anytime) -- neither implemented this session. Read D170's
-own full entry for an important asymmetry tokachi later corrected: for
-THIS deterministic pipeline, a mismatched audit tile is decisive on
-its own (no sample-size threshold needed), while a matched tile only
-ever proves that one tile was fine -- design and read any future audit
-as early-breakage detection, not a health certification.
-
-**D171**: `lineage_extend_low_zoom.py` ran cleanly, then `bundle.py`
-(elevation) drove `/Volumes/Migrate-2025-04` from 248GiB to 112GiB
-free in ~35 minutes -- a real, alarming rate. Investigated and killed
-before ENOSPC hit. Root cause: `bundle-store/` (unlike `pmtiles-store/`/
-`tmp-store/`, which turned out to be **symlinks** to a wholly separate
-disk, `/Volumes/pmtiles-store`) is a real, non-symlinked directory
-directly on `/Volumes/Migrate-2025-04`, and already held **478GB of
-1.5号's own prior publish-cycle output** (`mapterhorn-japan-bridge.pmtiles`
-+ `.z8plus.pmtiles` + `-lineage.pmtiles`, 2026-09-10). This also means
-D169's own "disk headroom unchanged, APFS clonefile sharing" claim was
-WRONG in its explanation (right observation, wrong cause) -- corrected
-in both `DECISIONS1.md` D169's own entry and here: Migrate-2025-04 is
-HFS+, not APFS, and none of D169's own aggregation/downsampling work
-ever touched it at all, by construction (it all went to the symlinked
-`/Volumes/pmtiles-store` instead). Resolved by moving the 513GB to
-`/Volumes/pmtiles-store/1.5go-bundle-store-archive-20260916/` (asked
-Hidenori first via `AskUserQuestion` -- move, not delete, since these
-files are plausibly the live source of `stars`' current 1.5号
-publication) -- `/Volumes/Migrate-2025-04` now has 590GiB free.
-`bundle.py` (elevation) restarting. Full detail: `DECISIONS1.md` D170/D171.
-
-**Lesson for whoever resumes next**: before reasoning about disk
-headroom for ANY stage of this pipeline, check `ls -la` for symlinks
-and `diskutil info`/`df -h` on the REAL mount points -- `CLAUDE.md`'s
-own pipeline description reads as one directory tree, but it spans two
-physically separate disks (`/Volumes/Migrate-2025-04`, HFS+; `/Volumes/
-pmtiles-store`, APFS), and which stage's output lands on which one is
-not obvious without checking.
-
-### D172: the dress rehearsal's final assembly finished, end to end -- both datatypes, both fully verified
-
-Hidenori approved the last remaining step ("この工程も進めてよい", 2026-09-16):
-the z0-7 global-overview splice, `./pmtiles merge bundle-store/
-mapterhorn-japan-bridge.z8plus.pmtiles /Volumes/Migrate-2025-04/global-
-overview-backup.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles`
-(elevation only -- lineage's own `bundle-store/mapterhorn-japan-bridge-
-lineage.pmtiles` needs no splice, D109's own established convention).
-Ran clean (34m35s, 254GB merged, 0 errors).
-
-**Final archives, both fully verified**:
-- **elevation**: `mapterhorn-japan-bridge.pmtiles`, 272.9GB, min/max
-  zoom 0/16, 3,461,089 tiles, global bounds. `check_pmtiles_integrity.py`
-  (the deeper directory-walk orphan check, not just `pmtiles verify`) --
-  **CLEAN, zero orphaned tiles.**
-- **lineage**: `mapterhorn-japan-bridge-lineage.pmtiles`, 217MB, min/max
-  zoom 4/16, 3,447,709 tiles. `check_pmtiles_integrity.py` found **116
-  orphaned tiles, all at z8**. Investigated immediately: ran the SAME
-  check against 1.5号's own already-published lineage archive (moved
-  to `/Volumes/pmtiles-store/1.5go-bundle-store-archive-20260916/` by
-  D171) -- **identical 116 tiles, identical positions**, already there.
-  Pre-existing, not a regression from this session's own work; never
-  previously caught (this looks like the first time this integrity
-  check was ever run against the lineage archive specifically). Tracked
-  for a future root-cause pass (likely `lineage_extend_low_zoom.py`'s
-  own z7-from-z8 build step, per its own "440 source tiles -> 117
-  parent tiles, 29 skipped all-nodata" log not fully accounting for all
-  440 inputs -- not traced end-to-end this session). Full detail:
-  `DECISIONS1.md` D172.
-
-**Disk**: all of `bundle.py` (both datatypes) + `merge_japan_bundles.py`
-(both datatypes, including `pmtiles cluster` -- which itself leaves a
-large uncleaned temp file on `/Volumes/pmtiles-store` every time, see
-D171's own addendum, manually cleaned up twice this session) + the
-z0-7 splice completed within headroom after D171's fix, ending at
-**221GiB free on `/Volumes/Migrate-2025-04`**. No further ENOSPC risk
-materialized.
-
-**This closes out the dress-rehearsal arc Hidenori asked for**:
-covering → aggregation → downsampling → bundle → merge → cluster →
-z0-7 splice → integrity verification, all real, all against the real
-`01M2EAPPYXT8RWNC6TXBRT36JE` generation, all the way to a final
-archive in the same shape as what's currently live on `stars` for
-1.5号. What remains is Hidenori's own next call on the wet dress
-rehearsal / real launch sequencing below.
+Same transfer-then-atomic-rename procedure as D173 (`scp` as `.new`, remote MD5 matched local exactly this time -- `8ed3ac39e210e2ad6f187143c4cddf20` -- and completed quickly rather than being I/O-starved like D173's own ~20-hour experience, plausibly because `stars`' own load-testing had concluded by then), atomic rename with the pre-fix version preserved as a dated backup. **Verified live, directly against the public endpoint**: both originally-reported wall positions (`9/431/216` north of Kuba-jima, `9/432/221` south of Hateruma) now return `200`/52 bytes where they previously returned `204`. A real, untouched position (Mt. Fuji) still serves its own genuine data unchanged.
 
 ### What's next, in likely order
 
-1. **1.6号 is launched (D173). Nothing is currently blocking or
-   running.** Both archives are live on `stars`, verified. The old
-   1.5号 files are preserved as dated backups on `stars` itself
-   (`mapterhorn-japan-bridge.pmtiles.1.5go-backup-20260916`,
-   `mapterhorn-japan-bridge-lineage.pmtiles.1.5go-backup-20260916`) --
-   not deleted, per this project's own established caution around
-   destructive actions on live-published data.
-2. GSI's next DEM1A update — live-checked 2026-09-11, still
-   **2026-07-31** (no new update). This gates 2号's launch timing (the
-   decision to launch it at all is already settled, D160).
-3. Someday, not urgent (D160's own framing, unchanged): the coastal
-   erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) is a real
-   upstream-PR candidate whenever contributing upstream becomes a
-   priority.
-4. Not yet triaged, below D165's own top-10 cutoff (see D165's own
-   "also verified as real" list): a small batch of minor/dead-code
-   items.
-5. `bundle.py`'s own local `create_archive()` (distinct from
-   `utils.create_archive()`) writes non-atomically -- an ENOSPC or any
-   other crash mid-region-write leaves a truncated `.pmtiles` at its
-   real final path. Not fixed (D171); worth the same tmp+`os.replace()`
-   fix `aggregation_merge.py` already has, before this script is relied
-   on unattended again.
-6. D172's own 116-tile lineage orphan gap (z8, both 1.5号 and 1.6号) --
-   real, pre-existing, low-severity, needs root-causing before it's
-   worth fixing. Not blocking.
-7. D170's reuse-fingerprint producer-version gap: implement the cheap,
-   safe mitigation (#2, periodic reuse audit by real rebuild-and-diff)
-   whenever convenient; save the fingerprint-definition change (#1)
-   for whenever `slate`'s GDAL/PROJ toolchain is next upgraded, not
-   before.
-8. `bundle-store/mapterhorn-japan-bridge{,-lineage}.pmtiles` (the local
-   copies on `slate` that D173 published from) can now be considered
-   1.6号's own retained local archive -- no further action needed
-   unless disk headroom on `/Volumes/Migrate-2025-04` becomes tight
-   again, at which point they're the natural thing to reason about
-   keeping vs. archiving elsewhere, same as D171's treatment of 1.5号's
-   own local copies.
+1. **Nothing is currently blocking or running.** The wall fix is live, verified, done.
+2. **The z13+ extension** -- explicitly deferred, not forgotten. The staged z8-z12 fix covers both originally-reported cases and 13.2% of nationwide z9 exposure; whether deep ocean (z13-z16) actually shows the same wall in practice was never empirically confirmed (this whole session had no working browser). Revisit when: (a) a peer session or Hidenori can do a live-viewer check at z14 over open water ~30km off Tsushima, or (b) 2号 prep naturally revisits this area. If pursued, the same `build_wall_fix_archive.py` script's approach generalizes (would need a third mode or an extended zoom range, plus re-checking the ~86M-tile-scale cost this time since the staging was specifically to avoid that).
+3. GSI's next DEM1A update — last live-checked 2026-09-11, still 2026-07-31 (no new update). Gates 2号's launch timing (the decision to launch it at all is already settled, D160).
+4. D172's own 116-tile lineage orphan gap (z8, both 1.5号 and 1.6号) -- real, pre-existing, low-severity, not investigated further this session. Still open.
+5. D170's reuse-fingerprint producer-version gap -- still open, same framing as before (cheap mitigation #2 whenever convenient, fingerprint-definition change #1 only right before a toolchain upgrade).
+6. `bundle.py`'s own non-atomic `create_archive()` -- still open (D171).
+7. cafebabe (a peer session) was asked to visually confirm D175's viewer upgrade in a real browser; no reply had arrived by this session's own end. Worth checking `stars` conversation/peer messages for a reply, or re-asking, next session.
+8. Someday, not urgent (D160's own framing): the coastal erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) remains a real upstream-PR candidate.
 
 ### Git state
 
-Both repos should be fully committed and pushed as of this snapshot —
-verify with `git status --short` (expect clean) and `git log
-origin/main..HEAD` (expect empty) in both before trusting this note.
-`mapterhorn-japan-bridge` HEAD is this session's own D169 documentation
-commit. `hfu-mapterhorn` HEAD is `18db3a4` (minting 1.6号's
-generation_id into `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION`, on top of
-`79397e7`'s D167 FORK_NOTES.md entry and `ba6dbfd`'s actual D167
-fixes); the commit chain from `bfef7cd` (D164's atomicity fix) through
-`18db3a4` is entirely this session's own work. D168's own 3 real
-rehearsal items live only in `aggregation-store/`/`pmtiles-store/`
-(gitignored data directories, not tracked) under generation_id
-`01M2EAPPYXT8RWNC6TXBRT36JE` — nothing to commit there, but don't
-delete them (see §6 above). `hfu-mapterhorn` still has the same
-pre-existing untracked scratch files noted in the archived handover
-(`pipelines-rehearsal*/`, `screen_results_
-jpnational{5,10,sea}.csv` — the last three are now load-bearing
-evidence for D162's own re-verification, don't delete them,
-`stale_done_manifest.txt`) — leave them alone.
+Both repos should be fully committed and pushed as of this snapshot — verify with `git status --short` (expect clean, modulo `hfu-mapterhorn`'s own long-standing untracked scratch files: `pipelines-rehearsal*/`, `screen_results_jpnational{5,10,sea}.csv`, `stale_done_manifest.txt` -- leave these alone) and `git log origin/main..HEAD` (expect empty) in both before trusting this note. `mapterhorn-japan-bridge` HEAD is this session's own D178 documentation commit (`f270b59`). `hfu-mapterhorn` HEAD is `d7eedee` (`build_wall_fix_archive.py`, the committed production script). `bundle-store/` on `slate` now holds: the wall-fixed `mapterhorn-japan-bridge.pmtiles` (live/current), `mapterhorn-japan-bridge.pmtiles.pre-wallfix-20260919` (preserved backup), `mapterhorn-japan-bridge-lineage.pmtiles` (untouched), and `wall-fix-z0-7.pmtiles`/`wall-fix-z8-z12.pmtiles` (small provenance record, ~4KB combined) -- none of these last three should be deleted without a specific reason. `stars` mirrors the same live/backup split for the elevation file.
 
-If you're resuming and `git status`/`git log origin/main..HEAD` show
-anything other than clean, something changed after this snapshot was
-written — investigate before assuming this handover is still accurate.
+If you're resuming and `git status`/`git log origin/main..HEAD` show anything other than clean, something changed after this snapshot was written — investigate before assuming this handover is still accurate.
 
 ### 0. D160 — the mission does NOT wind down just because upstream caught up
 
