@@ -4209,3 +4209,24 @@ All testing above ran against throwaway output paths (`/tmp/wall_fix_test_out/`,
 
 **Not yet done**: publishing to `stars` (the live, public-facing archive is still the pre-fix version as of this entry) -- holding for one more explicit go-ahead before touching the live service, per this project's own standing practice around irreversible-ish actions on published data. `mapterhorn-japan-bridge-lineage.pmtiles` untouched (per the design's own MODERATE 7, lineage was deliberately not filled). The z13+ extension remains a tracked, explicitly-deferred follow-up, not forgotten -- revisit once the live-viewer empirical check becomes possible.
 
+## D178: Published to `stars`. The wall fix is live. Both originally-reported positions confirmed fixed on the public service
+
+**Status**: Done. `stars`' live `mapterhorn-japan-bridge.pmtiles` is now the wall-fixed archive. Verified directly against the public endpoint, not just locally.
+
+**Decision (Hidenori, 2026-09-19, "進めてよい")**: explicit go-ahead to publish, given as its own confirmation separate from the earlier "run it in production" decision -- kept as two distinct approval points (build+verify locally, then publish live) per this project's own standing practice around touching published data.
+
+**What ran, the same validated transfer-then-atomic-rename procedure from D173**:
+1. `scp bundle-store/mapterhorn-japan-bridge.pmtiles stars@stars.local:/home/stars/data/mapterhorn-japan-bridge.pmtiles.new` -- 272,864,950,554 bytes, transferred at the same historically-consistent ~11.5MB/s this project has seen before, monitored throughout with no errors.
+2. Remote size confirmed to match the local file exactly on completion.
+3. Remote `md5sum` -- **matched the local MD5 exactly** (`8ed3ac39e210e2ad6f187143c4cddf20`), and this time completed quickly (unlike D173's own ~20-hour remote-hash experience) rather than being I/O-starved -- plausibly because `stars`' Phase 2/3 load-testing (the peer coordination earlier in this session) had already concluded by this point, leaving the host's own I/O free.
+4. Atomic rename on `stars`: old live file -> `mapterhorn-japan-bridge.pmtiles.pre-wallfix-20260919` (preserved, not deleted -- same caution as every prior publish this project has done), `.new` -> the live filename.
+
+**Verified live against the actual public service, immediately after the rename**:
+- TileJSON (`https://stars.optgeo.org/mapterhorn-japan-bridge`): 200.
+- **Both originally-reported wall positions now serve correctly**: `9/431/216` (north of Kuba-jima) and `9/432/221` (south of Hateruma) each return **200, 52 bytes** -- exactly the synthetic fill tile's own size, where they previously returned 204. This is the concrete, live, public confirmation of the fix that started this whole investigation (D174) -- not just a local file property anymore.
+- A real, untouched position (Mt. Fuji, z13) still returns 200 with its own genuine 108,558-byte real tile, confirming the fill touched only its intended synthetic positions and nothing else.
+
+**This closes out D174's own arc, staged scope**: the wall problem's root cause (a genuine upstream Copernicus GLO-30 inventory gap, confirmed via three independent lines of evidence), its nationwide scope (13.2% of z9 land-containing tiles), the exact upstream MapLibre bug behind the visible symptom (PR #5392/#8207, already mitigated for this project's own viewer via D175's version bump), two independent Opus design reviews that caught and fixed three real blockers (foreign-land contamination risk, an 85.9M-tile scope explosion, and a genuine orphan-generating parent-resolution bug), a verified prototype, promotion to committed pipeline code (catching and fixing a real regression along the way), and now a real production run, fully verified, published, and live. The z13+ extension remains explicitly tracked and deferred (D177's own framing) -- not blocking, not forgotten, revisit once a live-viewer check becomes possible or upstream data changes make it moot.
+
+**State of `bundle-store/` and `stars` as of this entry**: both hold the wall-fixed elevation archive as the live/current version; both preserve the pre-fix version under a dated backup name (`*.pre-wallfix-20260919`) rather than deleting it; lineage untouched on both. `bundle-store/wall-fix-z0-7.pmtiles` and `wall-fix-z8-z12.pmtiles` retained locally as the small provenance record (per the second design review's own MODERATE 6 recommendation).
+
