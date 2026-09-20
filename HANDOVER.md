@@ -56,14 +56,18 @@ Same transfer-then-atomic-rename procedure as D173 (`scp` as `.new`, remote MD5 
 
 ### What's next, in likely order
 
+**Updated 2026-09-20 (D179, pre-2号 planning pass) — see that entry for the full writeup.** GSI re-checked live: still 2026-07-31, no change. Both repos confirmed clean/pushed. One real gap found and now tracked in `PLAN.md` §8: the wall fix was never written down as a step 2号's own launch must perform. Read `PLAN.md` §8 directly before starting 2号 prep — it now has two new ⬜ items (wall-fix reapplication, `LAND_UPSAMPLE_ZOOM_BY_GENERATION` same-commit discipline) plus one item corrected from ⬜ to ✅ (the publish-script transfer-then-delete reordering — already done via D173/D178, the checklist just hadn't been marked).
+
 1. **Nothing is currently blocking or running.** The wall fix is live, verified, done.
-2. **The z13+ extension** -- explicitly deferred, not forgotten. The staged z8-z12 fix covers both originally-reported cases and 13.2% of nationwide z9 exposure; whether deep ocean (z13-z16) actually shows the same wall in practice was never empirically confirmed (this whole session had no working browser). Revisit when: (a) a peer session or Hidenori can do a live-viewer check at z14 over open water ~30km off Tsushima, or (b) 2号 prep naturally revisits this area. If pursued, the same `build_wall_fix_archive.py` script's approach generalizes (would need a third mode or an extended zoom range, plus re-checking the ~86M-tile-scale cost this time since the staging was specifically to avoid that).
-3. GSI's next DEM1A update — last live-checked 2026-09-11, still 2026-07-31 (no new update). Gates 2号's launch timing (the decision to launch it at all is already settled, D160).
-4. D172's own 116-tile lineage orphan gap (z8, both 1.5号 and 1.6号) -- real, pre-existing, low-severity, not investigated further this session. Still open.
-5. D170's reuse-fingerprint producer-version gap -- still open, same framing as before (cheap mitigation #2 whenever convenient, fingerprint-definition change #1 only right before a toolchain upgrade).
-6. `bundle.py`'s own non-atomic `create_archive()` -- still open (D171).
-7. cafebabe (a peer session) was asked to visually confirm D175's viewer upgrade in a real browser; no reply had arrived by this session's own end. Worth checking `stars` conversation/peer messages for a reply, or re-asking, next session.
-8. Someday, not urgent (D160's own framing): the coastal erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) remains a real upstream-PR candidate.
+2. **[Updated D179]** When 2号 launches, its own fresh archive must have the wall fix re-applied before publish — `build_wall_fix_archive.py` is generation-agnostic and mechanically ready, but this step was missing from any checklist until D179 added it to `PLAN.md` §8. Do not skip it assuming 2号 "inherits" 1.6号's fix; 2号 rebuilds `jpnationalsea` coverage from scratch and will reproduce the same Copernicus GLO-30 gap.
+3. **The z13+ extension** -- explicitly deferred, not forgotten. The staged z8-z12 fix covers both originally-reported cases and 13.2% of nationwide z9 exposure; whether deep ocean (z13-z16) actually shows the same wall in practice was never empirically confirmed (this whole session had no working browser). Revisit when: (a) a peer session or Hidenori can do a live-viewer check at z14 over open water ~30km off Tsushima, or (b) 2号 prep naturally revisits this area. If pursued, the same `build_wall_fix_archive.py` script's approach generalizes (would need a third mode or an extended zoom range, plus re-checking the ~86M-tile-scale cost this time since the staging was specifically to avoid that).
+4. GSI's next DEM1A update — live-checked 2026-09-20, still 2026-07-31 (no new update). Gates 2号's launch timing (the decision to launch it at all is already settled, D160).
+5. D172's own 116-tile lineage orphan gap (z8, both 1.5号 and 1.6号) -- real, pre-existing, low-severity, not investigated further this session. Still open.
+6. D170's reuse-fingerprint producer-version gap -- still open, same framing as before (cheap mitigation #2 whenever convenient, fingerprint-definition change #1 only right before a toolchain upgrade).
+7. `bundle.py`'s own non-atomic `create_archive()` -- still open (D171).
+8. cafebabe (a peer session) was asked to visually confirm D175's viewer upgrade in a real browser; no reply had arrived as of D179's own check. Worth checking `stars` conversation/peer messages for a reply, or re-asking, next session.
+9. Someday, not urgent (D160's own framing): the coastal erosion-gate bug fix (`hfu-mapterhorn` commit `1b6e4e1`) remains a real upstream-PR candidate.
+10. Someday, not urgent, surfaced by D174 but not required: report the shared upstream Copernicus GLO-30 inventory gap to Oliver Wipfli (D174 found it also affects upstream Mapterhorn's own `tiles.mapterhorn.com`, not just this project).
 
 ### Git state
 
