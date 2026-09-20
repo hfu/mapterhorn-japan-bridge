@@ -633,18 +633,59 @@ downsamplingピラミッドの約半分を壊す設計ミスと判明し、実�
   (`--elevation`/`--overview`を明示指定する設計)なので機構としては
   再利用できるが、現状は「1.6号の後始末」としてのみ記録されており、
   「`merge_japan_bundles.py`の後・`stars`公開の前に必ず挟む標準
-  手順」としてはどこにも明文化されていない。**2号は新しいsource
+  手順」としてはどこにも明文化されていなかった。**2号は新しいsource
   データで`jpnationalsea`のカバレッジを一から作り直すため、対策を
-  講じなければ壁は2号でも再発する。** 起動前に本節へ具体的な手順
-  (z0-7完成→z8-z12 fill→`pmtiles merge`→`check_pmtiles_integrity.py`で
-  CLEAN確認、の順)を追記しておくこと。D174本文にも「2号で全国規模に
-  信頼して使う前に、孤立した小島の実例1件で検証済みであること」という
-  条件が明記されている(既に1.6号で満たされている)。あわせて、
-  D174が検討し不採用とした代替案 Option 1b(`jpnationalsea`の矩形
-  ボックス自体を~18-48N/120-155Eへ拡大し、そもそもの欠損cellを
-  減らす)を2号のsource-catalog更新と合わせて再検討する価値がある
-  かどうかも、2号着手時に判断すること(必須ではない、コスト0の
-  追加緩和策として)。
+  講じなければ壁は2号でも再発する。**
+
+  **2026-09-20時点で確定できる、実行可能なランブック**(D177で実際に
+  検証済みのコマンド列そのもの。プレースホルダは2号の実パスに置換
+  するだけでよい、コード変更は不要):
+  ```
+  # 1. z0-7グローバルオーバービュー自身の欠損を埋める
+  #    (D174のfill_eligible()はGLO-30インベントリのみに依存し、
+  #    generationの実データを参照しない — オーバービュー自体が
+  #    1.6号公開後に変わっていなければ bundle-store/wall-fix-z0-7.pmtiles
+  #    をそのまま再利用してよい。2026-09-20時点のベースラインmd5:
+  #    e66ed06ad81f15d9309cc98d2c0f0b95 (/Volumes/Migrate-2025-04/
+  #    global-overview-backup.pmtiles) — 2号着手時にこれと比較し、
+  #    一致すればstep 1を丸ごとスキップして良い。)
+  uv run python build_wall_fix_archive.py z0-7 \
+    --overview /Volumes/Migrate-2025-04/global-overview-backup.pmtiles \
+    --out bundle-store/wall-fix-z0-7.pmtiles
+
+  # 2. 2号自身のmerge済みelevationアーカイブに対してz8-z12 fillを作る
+  uv run python build_wall_fix_archive.py z8-z12 \
+    --elevation bundle-store/mapterhorn-japan-bridge.pmtiles \
+    --overview /Volumes/Migrate-2025-04/global-overview-backup.pmtiles \
+    --z0-7-fill bundle-store/wall-fix-z0-7.pmtiles \
+    --out bundle-store/wall-fix-z8-z12.pmtiles
+
+  # 3. 実アーカイブを先頭にしてmerge(メタデータは最初の入力から
+  #    継承される — D174 Major 4の教訓、順序を逆にしないこと)
+  ./pmtiles merge bundle-store/mapterhorn-japan-bridge.pmtiles \
+    bundle-store/wall-fix-z0-7.pmtiles \
+    bundle-store/wall-fix-z8-z12.pmtiles \
+    bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles
+
+  # 4. 検証(公開前に必ず両方ともパスすること)
+  ./pmtiles verify bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles
+  uv run python check_pmtiles_integrity.py bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles
+  # -> CLEAN、addressed_tiles_countが (2号のz8-z16タイル数) + 8,321 + (2号自身のz8-z12 fill数) と一致することを確認
+
+  # 5. 旧ファイルを日付付きで保存してから差し替え(削除しない)
+  mv bundle-store/mapterhorn-japan-bridge.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles.pre-wallfix-<YYYYMMDD>
+  mv bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles
+  ```
+  z0-7/z8-z12のタイル数は2号の実データ次第で1.6号(8,321/152,267)とは
+  変わりうる — 数字そのものではなく、`check_pmtiles_integrity.py`が
+  CLEANを返すこと、両者を足した`addressed_tiles_count`が一致すること
+  を確認基準とする。D174本文にも「2号で全国規模に信頼して使う前に、
+  孤立した小島の実例1件で検証済みであること」という条件が明記されて
+  いる(既に1.6号で満たされている)。あわせて、D174が検討し不採用と
+  した代替案 Option 1b(`jpnationalsea`の矩形ボックス自体を
+  ~18-48N/120-155Eへ拡大し、そもそもの欠損cellを減らす)を2号の
+  source-catalog更新と合わせて再検討する価値があるかどうかも、2号
+  着手時に判断すること(必須ではない、コスト0の追加緩和策として)。
 - ⬜ **[新規] `LAND_UPSAMPLE_ZOOM_BY_GENERATION`テーブルへの2号
   generation_id登録を、ID発番と「同じコミット」で行うこと**
   (`hfu-mapterhorn/pipelines/utils.py`): D166 finding #3が原因究明した
