@@ -1,16 +1,11 @@
 {
-  "version": 8,
-  "glyphs": "https://gsi-cyberjapan.github.io/optimal_bvmap/glyphs/{fontstack}/{range}.pbf",
-  "sprite": "https://gsi-cyberjapan.github.io/optimal_bvmap/sprite/std",
+  "glyphs": "https://stars.optgeo.org/font/{fontstack}/{range}",
+  "sprite": "https://stars.optgeo.org/sprite/bvmap-starlight",
   "sources": {
     "bvmap": {
-      "type": "vector",
-      "tiles": [
-        "https://stars.optgeo.org/bvmap/{z}/{x}/{y}"
-      ],
-      "minzoom": 4,
-      "maxzoom": 16,
-      "attribution": "国土地理院最適化ベクトルタイル"
+      "url": "https://stars.optgeo.org/bvmap",
+      "attribution": "国土地理院最適化ベクトルタイル。スプライトアイコンは国土地理院最適化ベクトルタイルの原本を改変(グレースケール化)して使用。改変者: dwg7/bvmap。国土地理院コンテンツ利用規約に基づく。",
+      "type": "vector"
     },
     "mapterhorn": {
       "type": "raster-dem",
@@ -23,7 +18,6 @@
   "layers": [
     {
       "id": "background",
-      "type": "background",
       "paint": {
         "background-color": [
           "step",
@@ -32,20 +26,21 @@
           ],
           "rgba(255,255,255,1)",
           4,
-          "rgba(209,209,209,1)",
+          "rgba(212,213,215,1)",
           8,
           "rgba(255,255,255,1)"
         ]
-      }
+      },
+      "type": "background"
     },
     {
       "id": "bvmap-行政区画",
-      "type": "fill",
-      "source": "bvmap",
-      "source-layer": "AdmArea",
       "paint": {
         "fill-color": "rgba(255,255,255,1)"
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "AdmArea",
+      "type": "fill"
     },
     {
       "id": "hillshade",
@@ -61,11 +56,8 @@
     {
       "id": "bvmap-水域",
       "maxzoom": 17,
-      "type": "fill",
-      "source": "bvmap",
-      "source-layer": "WA",
       "paint": {
-        "fill-color": "rgba(209,209,209,1)",
+        "fill-color": "rgba(212,213,215,1)",
         "fill-opacity": [
           "interpolate",
           [
@@ -101,13 +93,12 @@
           11,
           1
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "WA",
+      "type": "fill"
     },
     {
-      "id": "bvmap-地形表記面",
-      "type": "fill",
-      "source": "bvmap",
-      "source-layer": "TpgphArea",
       "filter": [
         "step",
         [
@@ -153,6 +144,7 @@
           ]
         ]
       ],
+      "id": "bvmap-地形表記面",
       "paint": {
         "fill-color": [
           "match",
@@ -181,13 +173,12 @@
           11,
           1
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "TpgphArea",
+      "type": "fill"
     },
     {
-      "id": "bvmap-海岸線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "Cstline",
       "filter": [
         "in",
         [
@@ -202,6 +193,7 @@
           ]
         ]
       ],
+      "id": "bvmap-海岸線",
       "paint": {
         "line-color": [
           "step",
@@ -236,13 +228,12 @@
           0
         ],
         "line-width": 1
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "Cstline",
+      "type": "line"
     },
     {
-      "id": "bvmap-河川中心線人工水路地下",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RvrCL",
       "filter": [
         "==",
         [
@@ -251,21 +242,21 @@
         ],
         5322
       ],
+      "id": "bvmap-河川中心線人工水路地下",
       "paint": {
         "line-color": [
           "step",
           [
             "zoom"
           ],
-          "rgba(209,209,209,1)",
+          "rgba(212,213,215,1)",
           16,
-          "rgba(88,88,88,1)"
+          "rgba(92,93,95,1)"
         ],
         "line-dasharray": [
           5,
           10
         ],
-        "line-width": 1,
         "line-opacity": [
           "interpolate",
           [
@@ -278,14 +269,14 @@
           0,
           14,
           1
-        ]
-      }
-    },
-    {
-      "id": "bvmap-河川中心線枯れ川部",
-      "type": "line",
+        ],
+        "line-width": 1
+      },
       "source": "bvmap",
       "source-layer": "RvrCL",
+      "type": "line"
+    },
+    {
       "filter": [
         "==",
         [
@@ -294,21 +285,21 @@
         ],
         5302
       ],
+      "id": "bvmap-河川中心線枯れ川部",
       "paint": {
         "line-color": [
           "step",
           [
             "zoom"
           ],
-          "rgba(209,209,209,1)",
+          "rgba(212,213,215,1)",
           16,
-          "rgba(88,88,88,1)"
+          "rgba(92,93,95,1)"
         ],
         "line-dasharray": [
           10,
           5
         ],
-        "line-width": 1,
         "line-opacity": [
           "interpolate",
           [
@@ -321,14 +312,14 @@
           0,
           14,
           1
-        ]
-      }
-    },
-    {
-      "id": "bvmap-河川中心線",
-      "type": "line",
+        ],
+        "line-width": 1
+      },
       "source": "bvmap",
       "source-layer": "RvrCL",
+      "type": "line"
+    },
+    {
       "filter": [
         "!",
         [
@@ -346,6 +337,7 @@
           ]
         ]
       ],
+      "id": "bvmap-河川中心線",
       "paint": {
         "line-color": [
           "step",
@@ -373,6 +365,19 @@
             "rgba(100,100,100,1)",
             "rgba(88,88,88,1)"
           ]
+        ],
+        "line-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          10,
+          0,
+          14,
+          1
         ],
         "line-width": [
           "interpolate",
@@ -404,27 +409,13 @@
             2,
             1
           ]
-        ],
-        "line-opacity": [
-          "interpolate",
-          [
-            "linear"
-          ],
-          [
-            "zoom"
-          ],
-          10,
-          0,
-          14,
-          1
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RvrCL",
+      "type": "line"
     },
     {
-      "id": "bvmap-海岸線堤防等に接する部分破線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "Cstline",
       "filter": [
         "==",
         [
@@ -433,23 +424,24 @@
         ],
         5103
       ],
+      "id": "bvmap-海岸線堤防等に接する部分破線",
       "layout": {
         "line-cap": "round"
       },
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
-        "line-width": 1.5,
+        "line-color": "rgba(113,114,116,1)",
         "line-dasharray": [
           0.2,
           4
-        ]
-      }
+        ],
+        "line-width": 1.5
+      },
+      "source": "bvmap",
+      "source-layer": "Cstline",
+      "type": "line"
     },
     {
       "id": "bvmap-水涯線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "WL",
       "paint": {
         "line-color": [
           "match",
@@ -478,13 +470,12 @@
           0
         ],
         "line-width": 1
-      }
-    },
-    {
-      "id": "bvmap-水涯線堤防等に接する部分破線",
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "WL",
+      "type": "line"
+    },
+    {
       "filter": [
         "in",
         [
@@ -499,23 +490,23 @@
           ]
         ]
       ],
+      "id": "bvmap-水涯線堤防等に接する部分破線",
       "layout": {
         "line-cap": "round"
       },
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
-        "line-width": 1.5,
+        "line-color": "rgba(113,114,116,1)",
         "line-dasharray": [
           0.2,
           4
-        ]
-      }
+        ],
+        "line-width": 1.5
+      },
+      "source": "bvmap",
+      "source-layer": "WL",
+      "type": "line"
     },
     {
-      "id": "bvmap-水部表記線polygon",
-      "type": "fill",
-      "source": "bvmap",
-      "source-layer": "WRltLine",
       "filter": [
         "==",
         [
@@ -523,16 +514,16 @@
         ],
         "Polygon"
       ],
+      "id": "bvmap-水部表記線polygon",
       "paint": {
         "fill-color": "rgba(255,255,255,1)",
-        "fill-outline-color": "rgba(100,100,100,1)"
-      }
-    },
-    {
-      "id": "bvmap-水部表記線line",
-      "type": "line",
+        "fill-outline-color": "rgba(113,114,116,1)"
+      },
       "source": "bvmap",
       "source-layer": "WRltLine",
+      "type": "fill"
+    },
+    {
       "filter": [
         "==",
         [
@@ -540,17 +531,16 @@
         ],
         "LineString"
       ],
+      "id": "bvmap-水部表記線line",
       "paint": {
         "line-color": "rgba(99,99,99,1)",
         "line-width": 1
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "WRltLine",
+      "type": "line"
     },
     {
-      "id": "bvmap-行政区画界線25000所属界（所属を明示する境界線）",
-      "minzoom": 11,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "AdmBdry",
       "filter": [
         "==",
         [
@@ -559,9 +549,11 @@
         ],
         1221
       ],
+      "id": "bvmap-行政区画界線25000所属界（所属を明示する境界線）",
       "layout": {
         "line-cap": "square"
       },
+      "minzoom": 11,
       "paint": {
         "line-color": "rgba(35,35,35,1)",
         "line-dasharray": [
@@ -584,14 +576,12 @@
           1
         ],
         "line-width": 1.5
-      }
-    },
-    {
-      "id": "bvmap-行政区画界線25000市区町村界",
-      "minzoom": 11,
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "AdmBdry",
+      "type": "line"
+    },
+    {
       "filter": [
         "==",
         [
@@ -600,9 +590,11 @@
         ],
         1212
       ],
+      "id": "bvmap-行政区画界線25000市区町村界",
       "layout": {
         "line-cap": "square"
       },
+      "minzoom": 11,
       "paint": {
         "line-color": "rgba(35,35,35,1)",
         "line-dasharray": [
@@ -627,13 +619,12 @@
           1
         ],
         "line-width": 1.5
-      }
-    },
-    {
-      "id": "bvmap-行政区画界線25000都府県界及び北海道総合振興局・振興局界",
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "AdmBdry",
+      "type": "line"
+    },
+    {
       "filter": [
         "==",
         [
@@ -642,6 +633,7 @@
         ],
         1211
       ],
+      "id": "bvmap-行政区画界線25000都府県界及び北海道総合振興局・振興局界",
       "layout": {
         "line-cap": "round"
       },
@@ -679,14 +671,12 @@
           9,
           2.5
         ]
-      }
-    },
-    {
-      "id": "bvmap-行政区画界線地方界",
-      "maxzoom": 8,
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "AdmBdry",
+      "type": "line"
+    },
+    {
       "filter": [
         "==",
         [
@@ -695,9 +685,11 @@
         ],
         1212
       ],
+      "id": "bvmap-行政区画界線地方界",
       "layout": {
         "line-cap": "square"
       },
+      "maxzoom": 8,
       "paint": {
         "line-color": "rgba(35,35,35,1)",
         "line-dasharray": [
@@ -720,14 +712,12 @@
           1
         ],
         "line-width": 1
-      }
-    },
-    {
-      "id": "bvmap-行政区画界線国の所属界",
-      "maxzoom": 8,
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "AdmBdry",
+      "type": "line"
+    },
+    {
       "filter": [
         "==",
         [
@@ -736,132 +726,21 @@
         ],
         1221
       ],
+      "id": "bvmap-行政区画界線国の所属界",
       "layout": {
         "line-cap": "square"
       },
+      "maxzoom": 8,
       "paint": {
         "line-color": "rgba(27,27,27,1)",
         "line-width": 1
-      }
-    },
-    {
-      "id": "bvmap-等高線",
-      "type": "line",
+      },
       "source": "bvmap",
-      "source-layer": "Cntr",
-      "paint": {
-        "line-color": "rgb(161,161,161)",
-        "line-width": [
-          "interpolate",
-          [
-            "linear"
-          ],
-          [
-            "zoom"
-          ],
-          9,
-          0.7,
-          12,
-          0.7,
-          13,
-          [
-            "case",
-            [
-              "==",
-              [
-                "%",
-                [
-                  "get",
-                  "vt_alti"
-                ],
-                50
-              ],
-              0
-            ],
-            1.4,
-            0.7
-          ]
-        ],
-        "line-opacity": [
-          "interpolate",
-          [
-            "linear"
-          ],
-          [
-            "zoom"
-          ],
-          9,
-          0,
-          10,
-          [
-            "case",
-            [
-              "==",
-              [
-                "%",
-                [
-                  "get",
-                  "vt_alti"
-                ],
-                50
-              ],
-              0
-            ],
-            1,
-            0
-          ],
-          14,
-          [
-            "case",
-            [
-              "==",
-              [
-                "%",
-                [
-                  "get",
-                  "vt_alti"
-                ],
-                50
-              ],
-              0
-            ],
-            1,
-            0
-          ],
-          15,
-          1,
-          16,
-          [
-            "case",
-            [
-              "==",
-              [
-                "get",
-                "vt_code"
-              ],
-              7353
-            ],
-            0,
-            1
-          ]
-        ]
-      }
-    },
-    {
-      "id": "bvmap-等深線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "Isbt",
-      "paint": {
-        "line-color": "rgb(88,88,88)",
-        "line-width": 1
-      }
+      "source-layer": "AdmBdry",
+      "type": "line"
     },
     {
       "id": "bvmap-地形表記線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "TpgphLine",
       "paint": {
         "line-color": [
           "match",
@@ -876,7 +755,6 @@
           "rgba(88,88,88,1)",
           "rgb(161,161,161)"
         ],
-        "line-width": 1,
         "line-opacity": [
           "interpolate",
           [
@@ -903,14 +781,15 @@
           ],
           16,
           1
-        ]
-      }
+        ],
+        "line-width": 1
+      },
+      "source": "bvmap",
+      "source-layer": "TpgphLine",
+      "type": "line"
     },
     {
       "id": "bvmap-水部構造物面",
-      "type": "fill",
-      "source": "bvmap",
-      "source-layer": "WStrA",
       "paint": {
         "fill-color": [
           "match",
@@ -924,13 +803,12 @@
           "rgba(255,255,255,1)",
           "rgba(0,0,0,1)"
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "WStrA",
+      "type": "fill"
     },
     {
-      "id": "bvmap-水部構造物線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "WStrL",
       "filter": [
         "step",
         [
@@ -976,6 +854,7 @@
           ]
         ]
       ],
+      "id": "bvmap-水部構造物線",
       "paint": {
         "line-color": [
           "match",
@@ -1054,14 +933,125 @@
             0
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "WStrL",
+      "type": "line"
     },
     {
-      "id": "bvmap-道路中心線ZL4-10国道",
-      "maxzoom": 11,
-      "type": "line",
+      "id": "bvmap-等高線",
+      "paint": {
+        "line-color": "rgba(168,169,172,1)",
+        "line-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9,
+          0,
+          10,
+          [
+            "case",
+            [
+              "==",
+              [
+                "%",
+                [
+                  "get",
+                  "vt_alti"
+                ],
+                50
+              ],
+              0
+            ],
+            1,
+            0
+          ],
+          14,
+          [
+            "case",
+            [
+              "==",
+              [
+                "%",
+                [
+                  "get",
+                  "vt_alti"
+                ],
+                50
+              ],
+              0
+            ],
+            1,
+            0
+          ],
+          15,
+          1,
+          16,
+          [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "vt_code"
+              ],
+              7353
+            ],
+            0,
+            1
+          ]
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9,
+          0.7,
+          12,
+          0.7,
+          13,
+          [
+            "case",
+            [
+              "==",
+              [
+                "%",
+                [
+                  "get",
+                  "vt_alti"
+                ],
+                50
+              ],
+              0
+            ],
+            1.4,
+            0.7
+          ]
+        ]
+      },
       "source": "bvmap",
-      "source-layer": "RdCL",
+      "source-layer": "Cntr",
+      "type": "line"
+    },
+    {
+      "id": "bvmap-等深線",
+      "paint": {
+        "line-color": "rgba(92,93,95,1)",
+        "line-width": 1
+      },
+      "source": "bvmap",
+      "source-layer": "Isbt",
+      "type": "line"
+    },
+    {
       "filter": [
         "in",
         [
@@ -1078,6 +1068,7 @@
           ]
         ]
       ],
+      "id": "bvmap-道路中心線ZL4-10国道",
       "layout": {
         "line-cap": "round",
         "line-join": "round",
@@ -1086,6 +1077,7 @@
           "vt_drworder"
         ]
       },
+      "maxzoom": 11,
       "paint": {
         "line-color": [
           "case",
@@ -1115,7 +1107,7 @@
               ],
               1
             ],
-            "rgba(157,157,157,0.5)",
+            "rgba(164,166,168,0.5)",
             [
               "match",
               [
@@ -1126,18 +1118,18 @@
                 "国道",
                 "主要道路"
               ],
-              "rgba(160,160,160,0.5)",
+              "rgba(167,169,171,0.5)",
               "都道府県道",
-              "rgba(100,100,100,0.5)",
+              "rgba(113,114,116,0.5)",
               "市区町村道等",
-              "rgba(100,100,100,0.5)",
+              "rgba(113,114,116,0.5)",
               "高速自動車国道等",
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               "その他",
-              "rgba(100,100,100,0.5)",
+              "rgba(113,114,116,0.5)",
               "不明",
-              "rgba(100,100,100,0.5)",
-              "rgba(100,100,100,0.5)"
+              "rgba(113,114,116,0.5)",
+              "rgba(113,114,116,0.5)"
             ]
           ],
           [
@@ -1151,7 +1143,7 @@
               2722,
               2723
             ],
-            "rgba(173,173,173,1)",
+            "rgba(179,180,183,1)",
             [
               2731,
               2732,
@@ -1168,7 +1160,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -1179,11 +1171,11 @@
                   "国道",
                   "主要道路"
                 ],
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 "rgba(255,255,255,1)"
               ]
             ]
@@ -1267,14 +1259,14 @@
             2
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RdCL",
+      "type": "line"
     },
     {
       "id": "bvmap-鉄道中心線ZL4-10",
       "maxzoom": 11,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RailCL",
       "paint": {
         "line-color": [
           "match",
@@ -1283,8 +1275,8 @@
             "vt_rtcode"
           ],
           "地下鉄",
-          "rgba(161,161,161,1)",
-          "rgb(100,100,100)"
+          "rgba(168,169,172,1)",
+          "rgba(113,114,116,1)"
         ],
         "line-opacity": [
           "match",
@@ -1342,14 +1334,12 @@
             ]
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RailCL",
+      "type": "line"
     },
     {
-      "id": "bvmap-道路中心線ZL4-10高速",
-      "maxzoom": 11,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RdCL",
       "filter": [
         "==",
         [
@@ -1358,6 +1348,7 @@
         ],
         "高速自動車国道等"
       ],
+      "id": "bvmap-道路中心線ZL4-10高速",
       "layout": {
         "line-cap": "round",
         "line-join": "round",
@@ -1366,6 +1357,7 @@
           "vt_drworder"
         ]
       },
+      "maxzoom": 11,
       "paint": {
         "line-color": [
           "case",
@@ -1392,18 +1384,18 @@
               "vt_rdctg"
             ],
             "国道",
-            "rgba(160,160,160,0.5)",
+            "rgba(167,169,171,0.5)",
             "都道府県道",
-            "rgba(226,226,226,0.5)",
+            "rgba(227,229,231,0.5)",
             "市区町村道等",
-            "rgba(100,100,100,0.5)",
+            "rgba(113,114,116,0.5)",
             "高速自動車国道等",
-            "rgba(157,157,157,0.5)",
+            "rgba(164,166,168,0.5)",
             "その他",
-            "rgba(100,100,100,0.5)",
+            "rgba(113,114,116,0.5)",
             "不明",
-            "rgba(100,100,100,0.5)",
-            "rgba(100,100,100,0.5)"
+            "rgba(113,114,116,0.5)",
+            "rgba(113,114,116,0.5)"
           ],
           [
             "match",
@@ -1416,7 +1408,7 @@
               2722,
               2723
             ],
-            "rgba(173,173,173,1)",
+            "rgba(179,180,183,1)",
             [
               2731,
               2732,
@@ -1430,13 +1422,13 @@
                 "vt_rdctg"
               ],
               "国道",
-              "rgba(160,160,160,1)",
+              "rgba(167,169,171,1)",
               "都道府県道",
-              "rgba(226,226,226,1)",
+              "rgba(227,229,231,1)",
               "市区町村道等",
               "rgba(255,255,255,1)",
               "高速自動車国道等",
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               "その他",
               "rgba(255,255,255,1)",
               "不明",
@@ -1458,12 +1450,13 @@
           9,
           4
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RdCL",
+      "type": "line"
     },
     {
       "id": "bvmap-道路中心線ククリ0",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -1823,11 +1816,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色0",
-      "minzoom": 11,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -2308,12 +2302,11 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11
     },
     {
       "id": "bvmap-鉄道中心線駅ククリ0",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -2476,12 +2469,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線0",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -2668,12 +2661,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿0",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -2783,12 +2776,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線ククリ橋0",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -3110,12 +3103,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色橋0",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -3186,7 +3179,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -3194,18 +3187,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -3218,7 +3211,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -3226,11 +3219,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -3241,7 +3234,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -3253,13 +3246,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -3293,7 +3286,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -3301,18 +3294,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -3325,7 +3318,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -3333,11 +3326,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -3349,13 +3342,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -3532,7 +3525,9 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-建築物0",
@@ -3555,15 +3550,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(233,233,233,1)",
+          "rgba(234,235,237,1)",
           3102,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3103,
-          "rgba(152,152,152,1)",
+          "rgba(160,161,163,1)",
           3111,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3112,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           "rgba(0,0,0,0)"
         ]
       }
@@ -3589,15 +3584,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3102,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3103,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3111,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3112,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           "rgba(0,0,0,0)"
         ],
         "line-width": [
@@ -3622,8 +3617,6 @@
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ黒0",
-      "minzoom": 15,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -3750,12 +3743,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 15,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ白0",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -3869,12 +3862,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋駅ククリ0",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -4041,12 +4034,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋0",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -4222,12 +4215,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿橋0",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -4326,12 +4319,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線ククリ1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -4679,12 +4672,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -4760,7 +4753,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -4768,18 +4761,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -4792,7 +4785,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -4800,11 +4793,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -4815,7 +4808,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -4827,13 +4820,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -4867,7 +4860,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -4875,18 +4868,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -4899,7 +4892,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -4907,11 +4900,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -4923,13 +4916,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -5106,12 +5099,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線駅ククリ1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -5289,12 +5282,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -5481,12 +5474,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿1",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -5596,12 +5589,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線ククリ橋1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -5923,12 +5916,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色橋1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -5999,7 +5992,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -6007,18 +6000,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -6031,7 +6024,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -6039,11 +6032,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -6054,7 +6047,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -6066,13 +6059,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -6106,7 +6099,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -6114,18 +6107,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -6138,7 +6131,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -6146,11 +6139,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -6162,13 +6155,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -6345,12 +6338,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ黒1",
-      "minzoom": 15,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -6477,12 +6470,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 15,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ白1",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -6596,12 +6589,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋駅ククリ1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -6768,12 +6761,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋1",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -6949,12 +6942,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿橋1",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -7053,7 +7046,9 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-建築物1",
@@ -7076,15 +7071,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(233,233,233,1)",
+          "rgba(234,235,237,1)",
           3102,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3103,
-          "rgba(152,152,152,1)",
+          "rgba(160,161,163,1)",
           3111,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3112,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           "rgba(0,0,0,0)"
         ]
       }
@@ -7110,15 +7105,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3102,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3103,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3111,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3112,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           "rgba(0,0,0,0)"
         ],
         "line-width": [
@@ -7143,8 +7138,6 @@
     },
     {
       "id": "bvmap-道路中心線ククリ2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -7492,12 +7485,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -7573,7 +7566,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -7581,18 +7574,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -7605,7 +7598,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -7613,11 +7606,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -7628,7 +7621,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -7640,13 +7633,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -7680,7 +7673,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -7688,18 +7681,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -7712,7 +7705,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -7720,11 +7713,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -7736,13 +7729,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -7919,12 +7912,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線駅ククリ2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -8102,12 +8095,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -8294,12 +8287,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿2",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -8409,12 +8402,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線ククリ橋2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -8736,12 +8729,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色橋2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -8812,7 +8805,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -8820,18 +8813,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -8844,7 +8837,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -8852,11 +8845,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -8867,7 +8860,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -8879,13 +8872,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -8919,7 +8912,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -8927,18 +8920,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -8951,7 +8944,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -8959,11 +8952,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -8975,13 +8968,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -9158,12 +9151,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ黒2",
-      "minzoom": 15,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -9290,12 +9283,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 15,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ白2",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -9409,12 +9402,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋駅ククリ2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -9581,12 +9574,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋2",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -9762,12 +9755,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿橋2",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -9866,7 +9859,9 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-建築物2",
@@ -9889,15 +9884,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(233,233,233,1)",
+          "rgba(234,235,237,1)",
           3102,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3103,
-          "rgba(152,152,152,1)",
+          "rgba(160,161,163,1)",
           3111,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3112,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           "rgba(0,0,0,0)"
         ]
       }
@@ -9923,15 +9918,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3102,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3103,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3111,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3112,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           "rgba(0,0,0,0)"
         ],
         "line-width": [
@@ -9956,8 +9951,6 @@
     },
     {
       "id": "bvmap-道路中心線ククリ3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -10305,12 +10298,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -10386,7 +10379,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -10394,18 +10387,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -10418,7 +10411,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -10426,11 +10419,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -10441,7 +10434,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -10453,13 +10446,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -10493,7 +10486,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -10501,18 +10494,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -10525,7 +10518,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -10533,11 +10526,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -10549,13 +10542,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -10732,12 +10725,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線駅ククリ3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -10915,12 +10908,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -11107,12 +11100,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿3",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -11222,12 +11215,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線ククリ橋3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -11549,12 +11542,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色橋3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -11625,7 +11618,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -11633,18 +11626,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -11657,7 +11650,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -11665,11 +11658,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -11680,7 +11673,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -11692,13 +11685,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -11732,7 +11725,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -11740,18 +11733,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -11764,7 +11757,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -11772,11 +11765,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -11788,13 +11781,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -11971,12 +11964,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ黒3",
-      "minzoom": 15,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -12103,12 +12096,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 15,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋ククリ白3",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -12222,12 +12215,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋駅ククリ3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -12394,12 +12387,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋3",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -12575,12 +12568,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線旗竿橋3",
-      "minzoom": 14,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -12679,7 +12672,9 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 14,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-建築物3",
@@ -12702,15 +12697,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(233,233,233,1)",
+          "rgba(234,235,237,1)",
           3102,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3103,
-          "rgba(152,152,152,1)",
+          "rgba(160,161,163,1)",
           3111,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3112,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           "rgba(0,0,0,0)"
         ]
       }
@@ -12736,15 +12731,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3102,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3103,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3111,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3112,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           "rgba(0,0,0,0)"
         ],
         "line-width": [
@@ -12768,12 +12763,6 @@
       }
     },
     {
-      "id": "bvmap-道路中心線ククリ4",
-      "minzoom": 11,
-      "maxzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RdCL",
       "filter": [
         "step",
         [
@@ -12886,6 +12875,7 @@
           ]
         ]
       ],
+      "id": "bvmap-道路中心線ククリ4",
       "layout": {
         "line-join": "round",
         "line-round-limit": 1.57,
@@ -12894,6 +12884,8 @@
           "vt_drworder"
         ]
       },
+      "maxzoom": 17,
+      "minzoom": 11,
       "paint": {
         "line-color": [
           "match",
@@ -13118,12 +13110,13 @@
             ]
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RdCL",
+      "type": "line"
     },
     {
       "id": "bvmap-道路中心線色4",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -13199,7 +13192,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -13207,18 +13200,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -13231,7 +13224,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -13239,11 +13232,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -13254,7 +13247,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -13266,13 +13259,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -13306,7 +13299,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -13314,18 +13307,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -13338,7 +13331,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -13346,11 +13339,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -13362,13 +13355,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -13545,12 +13538,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線駅ククリ4",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -13728,12 +13721,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線4",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -13920,15 +13913,11 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
-      "id": "bvmap-鉄道中心線旗竿4",
-      "minzoom": 14,
-      "maxzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RailCL",
       "filter": [
         "all",
         [
@@ -13975,6 +13964,9 @@
           4
         ]
       ],
+      "id": "bvmap-鉄道中心線旗竿4",
+      "maxzoom": 17,
+      "minzoom": 14,
       "paint": {
         "line-color": "rgb(255,255,255)",
         "line-dasharray": [
@@ -14035,12 +14027,13 @@
             ]
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RailCL",
+      "type": "line"
     },
     {
       "id": "bvmap-道路中心線ククリ橋4",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -14362,12 +14355,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-道路中心線色橋4",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RdCL",
@@ -14438,7 +14431,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -14446,18 +14439,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -14470,7 +14463,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -14478,11 +14471,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "case",
                   [
@@ -14493,7 +14486,7 @@
                     ],
                     "3m-5.5m未満"
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     "match",
                     [
@@ -14505,13 +14498,13 @@
                       2722,
                       2723
                     ],
-                    "rgba(173,173,173,1)",
+                    "rgba(179,180,183,1)",
                     [
                       2731,
                       2732,
                       2733
                     ],
-                    "rgba(200,200,200,1)",
+                    "rgba(204,205,207,1)",
                     "rgba(255,255,255,1)"
                   ]
                 ]
@@ -14545,7 +14538,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,0.5)",
+              "rgba(164,166,168,0.5)",
               [
                 "match",
                 [
@@ -14553,18 +14546,18 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,0.5)",
+                "rgba(167,169,171,0.5)",
                 "都道府県道",
-                "rgba(226,226,226,0.5)",
+                "rgba(227,229,231,0.5)",
                 "市区町村道等",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "高速自動車国道等",
-                "rgba(157,157,157,0.5)",
+                "rgba(164,166,168,0.5)",
                 "その他",
-                "rgba(100,100,100,0.5)",
+                "rgba(113,114,116,0.5)",
                 "不明",
-                "rgba(100,100,100,0.5)",
-                "rgba(100,100,100,0.5)"
+                "rgba(113,114,116,0.5)",
+                "rgba(113,114,116,0.5)"
               ]
             ],
             [
@@ -14577,7 +14570,7 @@
                 ],
                 1
               ],
-              "rgba(157,157,157,1)",
+              "rgba(164,166,168,1)",
               [
                 "match",
                 [
@@ -14585,11 +14578,11 @@
                   "vt_rdctg"
                 ],
                 "国道",
-                "rgba(160,160,160,1)",
+                "rgba(167,169,171,1)",
                 "都道府県道",
-                "rgba(226,226,226,1)",
+                "rgba(227,229,231,1)",
                 "高速自動車国道等",
-                "rgba(157,157,157,1)",
+                "rgba(164,166,168,1)",
                 [
                   "match",
                   [
@@ -14601,13 +14594,13 @@
                     2722,
                     2723
                   ],
-                  "rgba(173,173,173,1)",
+                  "rgba(179,180,183,1)",
                   [
                     2731,
                     2732,
                     2733
                   ],
-                  "rgba(200,200,200,1)",
+                  "rgba(204,205,207,1)",
                   "rgba(255,255,255,1)"
                 ]
               ]
@@ -14784,15 +14777,11 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
-      "id": "bvmap-鉄道中心線橋ククリ黒4",
-      "minzoom": 15,
-      "maxzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RailCL",
       "filter": [
         "all",
         [
@@ -14812,6 +14801,9 @@
           4
         ]
       ],
+      "id": "bvmap-鉄道中心線橋ククリ黒4",
+      "maxzoom": 17,
+      "minzoom": 15,
       "paint": {
         "line-color": "rgba(0,0,0,1)",
         "line-opacity": [
@@ -14916,15 +14908,12 @@
             ]
           ]
         ]
-      }
-    },
-    {
-      "id": "bvmap-鉄道中心線橋ククリ白4",
-      "minzoom": 14,
-      "maxzoom": 17,
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "RailCL",
+      "type": "line"
+    },
+    {
       "filter": [
         "all",
         [
@@ -14944,6 +14933,9 @@
           4
         ]
       ],
+      "id": "bvmap-鉄道中心線橋ククリ白4",
+      "maxzoom": 17,
+      "minzoom": 14,
       "paint": {
         "line-color": "rgba(255,255,255,1)",
         "line-width": [
@@ -15035,12 +15027,13 @@
             ]
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RailCL",
+      "type": "line"
     },
     {
       "id": "bvmap-鉄道中心線橋駅ククリ4",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -15207,12 +15200,12 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
       "id": "bvmap-鉄道中心線橋4",
-      "minzoom": 11,
-      "maxzoom": 17,
       "type": "line",
       "source": "bvmap",
       "source-layer": "RailCL",
@@ -15388,15 +15381,11 @@
             ]
           ]
         ]
-      }
+      },
+      "minzoom": 11,
+      "maxzoom": 17
     },
     {
-      "id": "bvmap-鉄道中心線旗竿橋4",
-      "minzoom": 14,
-      "maxzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RailCL",
       "filter": [
         "all",
         [
@@ -15432,6 +15421,9 @@
           4
         ]
       ],
+      "id": "bvmap-鉄道中心線旗竿橋4",
+      "maxzoom": 17,
+      "minzoom": 14,
       "paint": {
         "line-color": "rgb(255,255,255)",
         "line-dasharray": [
@@ -15492,7 +15484,10 @@
             ]
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RailCL",
+      "type": "line"
     },
     {
       "id": "bvmap-建築物4",
@@ -15515,15 +15510,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(233,233,233,1)",
+          "rgba(234,235,237,1)",
           3102,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3103,
-          "rgba(152,152,152,1)",
+          "rgba(160,161,163,1)",
           3111,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           3112,
-          "rgba(203,203,203,1)",
+          "rgba(206,208,210,1)",
           "rgba(0,0,0,0)"
         ]
       }
@@ -15549,15 +15544,15 @@
             "vt_code"
           ],
           3101,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3102,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3103,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3111,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           3112,
-          "rgba(164,164,164,1)",
+          "rgba(171,172,174,1)",
           "rgba(0,0,0,0)"
         ],
         "line-width": [
@@ -15581,11 +15576,6 @@
       }
     },
     {
-      "id": "bvmap-道路中心線破線",
-      "minzoom": 11,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RdCL",
       "filter": [
         "step",
         [
@@ -15638,6 +15628,7 @@
           ]
         ]
       ],
+      "id": "bvmap-道路中心線破線",
       "layout": {
         "line-join": "round",
         "line-round-limit": 1.57,
@@ -15646,8 +15637,9 @@
           "vt_drworder"
         ]
       },
+      "minzoom": 11,
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
+        "line-color": "rgba(113,114,116,1)",
         "line-dasharray": [
           5,
           5
@@ -15737,15 +15729,12 @@
           ]
         ],
         "line-width": 1
-      }
-    },
-    {
-      "id": "bvmap-道路中心線階段",
-      "minzoom": 11,
-      "maxzoom": 17,
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "RdCL",
+      "type": "line"
+    },
+    {
       "filter": [
         "in",
         [
@@ -15762,8 +15751,11 @@
           ]
         ]
       ],
+      "id": "bvmap-道路中心線階段",
+      "maxzoom": 17,
+      "minzoom": 11,
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
+        "line-color": "rgba(113,114,116,1)",
         "line-dasharray": [
           0.1,
           1
@@ -15852,14 +15844,12 @@
             ]
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RdCL",
+      "type": "line"
     },
     {
-      "id": "bvmap-鉄道中心線地下トンネルククリ",
-      "minzoom": 11,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RailCL",
       "filter": [
         "step",
         [
@@ -15957,6 +15947,8 @@
           ]
         ]
       ],
+      "id": "bvmap-鉄道中心線地下トンネルククリ",
+      "minzoom": 11,
       "paint": {
         "line-color": [
           "match",
@@ -15966,7 +15958,7 @@
           ],
           "地下鉄",
           "rgba(255,255,255,1)",
-          "rgb(100,100,100)"
+          "rgba(113,114,116,1)"
         ],
         "line-opacity": [
           "case",
@@ -16099,14 +16091,12 @@
             ]
           ]
         ]
-      }
-    },
-    {
-      "id": "bvmap-鉄道中心線地下トンネル",
-      "minzoom": 11,
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "RailCL",
+      "type": "line"
+    },
+    {
       "filter": [
         "step",
         [
@@ -16188,6 +16178,8 @@
           ]
         ]
       ],
+      "id": "bvmap-鉄道中心線地下トンネル",
+      "minzoom": 11,
       "paint": {
         "line-color": [
           "match",
@@ -16196,7 +16188,7 @@
             "vt_rtcode"
           ],
           "地下鉄",
-          "rgba(113,113,113,1)",
+          "rgba(124,126,128,1)",
           [
             "case",
             [
@@ -16207,8 +16199,8 @@
               ],
               "駅部分"
             ],
-            "rgb(173,173,173)",
-            "rgb(100,100,100)"
+            "rgba(179,180,183,1)",
+            "rgba(113,114,116,1)"
           ]
         ],
         "line-opacity": [
@@ -16342,14 +16334,12 @@
             ]
           ]
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RailCL",
+      "type": "line"
     },
     {
-      "id": "bvmap-軌道の中心線トンネル",
-      "minzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RailTrCL",
       "filter": [
         "!",
         [
@@ -16382,12 +16372,14 @@
           ]
         ]
       ],
+      "id": "bvmap-軌道の中心線トンネル",
       "layout": {
         "line-sort-key": [
           "get",
           "vt_drworder"
         ]
       },
+      "minzoom": 17,
       "paint": {
         "line-color": [
           "match",
@@ -16403,8 +16395,8 @@
             2832,
             2834
           ],
-          "rgba(30,30,30,1)",
-          "rgba(100,100,100,1)"
+          "rgba(35,37,39,1)",
+          "rgba(113,114,116,1)"
         ],
         "line-dasharray": [
           8,
@@ -16428,14 +16420,13 @@
           2,
           1
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RailTrCL",
+      "type": "line"
     },
     {
       "id": "bvmap-道路縁",
-      "minzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RdEdg",
       "layout": {
         "line-cap": "square",
         "line-sort-key": [
@@ -16443,8 +16434,9 @@
           "vt_drworder"
         ]
       },
+      "minzoom": 17,
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
+        "line-color": "rgba(113,114,116,1)",
         "line-width": [
           "match",
           [
@@ -16458,14 +16450,12 @@
           3,
           2
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RdEdg",
+      "type": "line"
     },
     {
-      "id": "bvmap-道路構成線トンネル内の道路",
-      "minzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RdCompt",
       "filter": [
         "==",
         [
@@ -16474,21 +16464,21 @@
         ],
         2401
       ],
+      "id": "bvmap-道路構成線トンネル内の道路",
+      "minzoom": 17,
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
+        "line-color": "rgba(113,114,116,1)",
         "line-dasharray": [
           10,
           8
         ],
         "line-width": 1
-      }
-    },
-    {
-      "id": "bvmap-道路構成線分離帯",
-      "minzoom": 17,
-      "type": "line",
+      },
       "source": "bvmap",
       "source-layer": "RdCompt",
+      "type": "line"
+    },
+    {
       "filter": [
         "==",
         [
@@ -16497,17 +16487,17 @@
         ],
         2411
       ],
+      "id": "bvmap-道路構成線分離帯",
+      "minzoom": 17,
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
+        "line-color": "rgba(113,114,116,1)",
         "line-width": 2
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RdCompt",
+      "type": "line"
     },
     {
-      "id": "bvmap-軌道の中心線",
-      "minzoom": 17,
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "RailTrCL",
       "filter": [
         "in",
         [
@@ -16537,12 +16527,14 @@
           ]
         ]
       ],
+      "id": "bvmap-軌道の中心線",
       "layout": {
         "line-sort-key": [
           "get",
           "vt_drworder"
         ]
       },
+      "minzoom": 17,
       "paint": {
         "line-color": [
           "match",
@@ -16561,8 +16553,8 @@
             2833,
             2836
           ],
-          "rgba(30,30,30,1)",
-          "rgba(100,100,100,1)"
+          "rgba(35,37,39,1)",
+          "rgba(113,114,116,1)"
         ],
         "line-width": [
           "match",
@@ -16584,15 +16576,15 @@
           2,
           1
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "RailTrCL",
+      "type": "line"
     },
     {
       "id": "bvmap-特定地区界",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "SpcfArea",
       "paint": {
-        "line-color": "rgba(150,150,150,1)",
+        "line-color": "rgba(158,159,162,1)",
         "line-dasharray": [
           5,
           4
@@ -16623,13 +16615,13 @@
           16,
           1
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "SpcfArea",
+      "type": "line"
     },
     {
       "id": "bvmap-構造物面",
-      "type": "fill",
-      "source": "bvmap",
-      "source-layer": "StrctArea",
       "paint": {
         "fill-color": [
           "match",
@@ -16638,32 +16630,32 @@
             "vt_code"
           ],
           4301,
-          "rgba(152,152,152,1)",
+          "rgba(160,161,163,1)",
           4302,
-          "rgba(233,233,233,1)",
+          "rgba(234,235,237,1)",
           "rgba(0,0,0,0)"
         ]
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "StrctArea",
+      "type": "fill"
     },
     {
       "id": "bvmap-構造物面の外周線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "StrctArea",
       "paint": {
-        "line-color": "rgba(164,164,164,1)",
-        "line-width": 1,
+        "line-color": "rgba(171,172,174,1)",
         "line-dasharray": [
           2,
           1
-        ]
-      }
+        ],
+        "line-width": 1
+      },
+      "source": "bvmap",
+      "source-layer": "StrctArea",
+      "type": "line"
     },
     {
       "id": "bvmap-構造物線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "StrctLine",
       "minzoom": 17,
       "paint": {
         "line-color": [
@@ -16675,42 +16667,41 @@
           4201,
           "rgba(0,0,0,1)",
           4202,
-          "rgba(100,100,100,1)",
+          "rgba(113,114,116,1)",
           "rgba(0,0,0,0)"
         ],
         "line-width": 1.5
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "StrctLine",
+      "type": "line"
     },
     {
       "id": "bvmap-送電線",
-      "type": "line",
+      "paint": {
+        "line-color": "rgba(113,114,116,1)",
+        "line-width": 0.5
+      },
       "source": "bvmap",
       "source-layer": "PwrTrnsmL",
-      "paint": {
-        "line-color": "rgba(100,100,100,1)",
-        "line-width": 0.5
-      }
+      "type": "line"
     },
     {
       "id": "bvmap-送電線破線",
-      "type": "line",
-      "source": "bvmap",
-      "source-layer": "PwrTrnsmL",
       "paint": {
-        "line-color": "rgba(100,100,100,1)",
+        "line-color": "rgba(113,114,116,1)",
         "line-dasharray": [
           0.5,
           15
         ],
         "line-gap-width": 2,
         "line-width": 2
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "PwrTrnsmL",
+      "type": "line"
     },
     {
-      "id": "bvmap-水部表記線point",
-      "type": "symbol",
-      "source": "bvmap",
-      "source-layer": "WRltLine",
       "filter": [
         "==",
         [
@@ -16718,22 +16709,22 @@
         ],
         "Point"
       ],
+      "id": "bvmap-水部表記線point",
       "layout": {
         "icon-allow-overlap": true,
         "icon-image": "流水方向",
-        "icon-size": 1.2,
         "icon-rotate": [
           "get",
           "vt_angle"
         ],
-        "icon-rotation-alignment": "map"
-      }
+        "icon-rotation-alignment": "map",
+        "icon-size": 1.2
+      },
+      "source": "bvmap",
+      "source-layer": "WRltLine",
+      "type": "symbol"
     },
     {
-      "id": "bvmap-等高線数値部",
-      "type": "symbol",
-      "source": "bvmap",
-      "source-layer": "Cntr",
       "filter": [
         "==",
         [
@@ -16742,33 +16733,33 @@
         ],
         7352
       ],
+      "id": "bvmap-等高線数値部",
       "layout": {
-        "text-allow-overlap": true,
-        "text-ignore-placement": true,
         "symbol-placement": "line-center",
-        "text-pitch-alignment": "viewport",
-        "text-rotation-alignment": "map",
-        "text-size": 13,
-        "text-font": [
-          "NotoSansJP-Regular"
-        ],
-        "text-max-angle": 360,
+        "text-allow-overlap": true,
         "text-field": [
           "get",
           "vt_alti"
-        ]
+        ],
+        "text-font": [
+          "Noto Sans JP Regular"
+        ],
+        "text-ignore-placement": true,
+        "text-max-angle": 360,
+        "text-pitch-alignment": "viewport",
+        "text-rotation-alignment": "map",
+        "text-size": 13
       },
       "paint": {
-        "text-color": "rgba(161,161,161,1)",
+        "text-color": "rgba(168,169,172,1)",
         "text-halo-color": "rgba(255,255,255,1)",
         "text-halo-width": 1.5
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "Cntr",
+      "type": "symbol"
     },
     {
-      "id": "bvmap-等深線数値部",
-      "type": "symbol",
-      "source": "bvmap",
-      "source-layer": "Isbt",
       "filter": [
         "==",
         [
@@ -16777,33 +16768,33 @@
         ],
         7372
       ],
+      "id": "bvmap-等深線数値部",
       "layout": {
-        "text-allow-overlap": true,
-        "text-ignore-placement": true,
         "symbol-placement": "line-center",
-        "text-pitch-alignment": "viewport",
-        "text-rotation-alignment": "map",
-        "text-size": 13,
-        "text-font": [
-          "NotoSansJP-Regular"
-        ],
-        "text-max-angle": 360,
+        "text-allow-overlap": true,
         "text-field": [
           "get",
           "vt_depth"
-        ]
+        ],
+        "text-font": [
+          "Noto Sans JP Regular"
+        ],
+        "text-ignore-placement": true,
+        "text-max-angle": 360,
+        "text-pitch-alignment": "viewport",
+        "text-rotation-alignment": "map",
+        "text-size": 13
       },
       "paint": {
-        "text-color": "rgba(88,88,88,1)",
+        "text-color": "rgba(92,93,95,1)",
         "text-halo-color": "rgba(255,255,255,1)",
         "text-halo-width": 1
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "Isbt",
+      "type": "symbol"
     },
     {
-      "id": "bvmap-注記シンボル付き重なり",
-      "type": "symbol",
-      "source": "bvmap",
-      "source-layer": "Anno",
       "filter": [
         "step",
         [
@@ -16918,6 +16909,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記シンボル付き重なり",
       "layout": {
         "icon-allow-overlap": true,
         "icon-image": [
@@ -17037,13 +17029,12 @@
           16,
           1
         ]
-      }
-    },
-    {
-      "id": "bvmap-注記道路番号",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -17158,6 +17149,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記道路番号",
       "layout": {
         "icon-allow-overlap": true,
         "icon-image": [
@@ -17230,10 +17222,15 @@
           0
         ],
         "text-allow-overlap": false,
+        "text-field": [
+          "get",
+          "vt_text"
+        ],
         "text-font": [
-          "NotoSansJP-Regular"
+          "Noto Sans JP Regular"
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
         "text-size": [
           "let",
           "size",
@@ -17272,12 +17269,7 @@
               ]
             ]
           ]
-        ],
-        "text-field": [
-          "get",
-          "vt_text"
-        ],
-        "text-max-width": 100
+        ]
       },
       "paint": {
         "text-color": [
@@ -17290,13 +17282,12 @@
           "rgba(0,0,0,1)",
           "rgba(255,255,255,1)"
         ]
-      }
-    },
-    {
-      "id": "bvmap-注記シンボル付きソート順100以上",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -17534,6 +17525,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記シンボル付きソート順100以上",
       "layout": {
         "icon-allow-overlap": false,
         "icon-image": [
@@ -18464,6 +18456,10 @@
           0
         ],
         "text-allow-overlap": false,
+        "text-field": [
+          "get",
+          "vt_text"
+        ],
         "text-font": [
           "match",
           [
@@ -18486,17 +18482,19 @@
           [
             "literal",
             [
-              "NotoSerifJP-SemiBold"
+              "Noto Serif JP SemiBold"
             ]
           ],
           [
             "literal",
             [
-              "NotoSansJP-Regular"
+              "Noto Sans JP Regular"
             ]
           ]
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
+        "text-radial-offset": 0.5,
         "text-size": [
           "let",
           "size",
@@ -18736,12 +18734,6 @@
             ]
           ]
         ],
-        "text-field": [
-          "get",
-          "vt_text"
-        ],
-        "text-max-width": 100,
-        "text-radial-offset": 0.5,
         "text-variable-anchor": [
           "top",
           "bottom",
@@ -18763,9 +18755,9 @@
               "vt_code"
             ],
             521,
-            "rgba(29,29,29,1)",
+            "rgba(34,36,38,1)",
             348,
-            "rgba(98,98,98,1)",
+            "rgba(101,103,105,1)",
             [
               411,
               412,
@@ -18783,14 +18775,14 @@
               2944,
               2945
             ],
-            "rgba(70,70,70,1)",
+            "rgba(74,76,78,1)",
             [
               7372,
               7711
             ],
-            "rgba(88,88,88,1)",
+            "rgba(92,93,95,1)",
             7352,
-            "rgba(161,161,161,1)",
+            "rgba(168,169,172,1)",
             [
               2901,
               2903,
@@ -18807,16 +18799,16 @@
               840,
               841
             ],
-            "rgba(68,68,68,1)",
+            "rgba(72,74,76,1)",
             220,
-            "rgba(80,80,80,1)",
+            "rgba(84,85,87,1)",
             312,
-            "rgba(42,42,42,1)",
+            "rgba(47,48,51,1)",
             [
               333,
               346
             ],
-            "rgba(59,59,59,1)",
+            "rgba(64,65,67,1)",
             [
               511,
               522,
@@ -18885,7 +18877,7 @@
               3243,
               3244
             ],
-            "rgba(50,50,50,1)",
+            "rgba(55,56,58,1)",
             "rgba(0,0,0,1)"
           ],
           [
@@ -18972,13 +18964,12 @@
           ]
         ],
         "text-halo-width": 1
-      }
-    },
-    {
-      "id": "bvmap-注記シンボルなし縦ソート順100以上",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -19222,6 +19213,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記シンボルなし縦ソート順100以上",
       "layout": {
         "symbol-sort-key": [
           "match",
@@ -19906,6 +19898,10 @@
             ]
           ]
         ],
+        "text-field": [
+          "get",
+          "vt_text"
+        ],
         "text-font": [
           "match",
           [
@@ -19928,17 +19924,18 @@
           [
             "literal",
             [
-              "NotoSerifJP-SemiBold"
+              "Noto Serif JP SemiBold"
             ]
           ],
           [
             "literal",
             [
-              "NotoSansJP-Regular"
+              "Noto Sans JP Regular"
             ]
           ]
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
         "text-size": [
           "let",
           "size",
@@ -20178,11 +20175,6 @@
             ]
           ]
         ],
-        "text-field": [
-          "get",
-          "vt_text"
-        ],
-        "text-max-width": 100,
         "text-writing-mode": [
           "vertical"
         ]
@@ -20195,9 +20187,9 @@
             "vt_code"
           ],
           521,
-          "rgba(29,29,29,1)",
+          "rgba(34,36,38,1)",
           348,
-          "rgba(98,98,98,1)",
+          "rgba(101,103,105,1)",
           [
             411,
             412,
@@ -20215,14 +20207,14 @@
             2944,
             2945
           ],
-          "rgba(70,70,70,1)",
+          "rgba(74,76,78,1)",
           [
             7372,
             7711
           ],
-          "rgba(88,88,88,1)",
+          "rgba(92,93,95,1)",
           7352,
-          "rgba(161,161,161,1)",
+          "rgba(168,169,172,1)",
           [
             2901,
             2903,
@@ -20239,16 +20231,16 @@
             840,
             841
           ],
-          "rgba(68,68,68,1)",
+          "rgba(72,74,76,1)",
           220,
-          "rgba(80,80,80,1)",
+          "rgba(84,85,87,1)",
           312,
-          "rgba(42,42,42,1)",
+          "rgba(47,48,51,1)",
           [
             333,
             346
           ],
-          "rgba(59,59,59,1)",
+          "rgba(64,65,67,1)",
           [
             511,
             522,
@@ -20317,18 +20309,17 @@
             3243,
             3244
           ],
-          "rgba(50,50,50,1)",
+          "rgba(55,56,58,1)",
           "rgba(0,0,0,1)"
         ],
         "text-halo-color": "rgba(255,255,255,1)",
         "text-halo-width": 1
-      }
-    },
-    {
-      "id": "bvmap-注記シンボルなし横ソート順100以上",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -20602,6 +20593,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記シンボルなし横ソート順100以上",
       "layout": {
         "symbol-sort-key": [
           "match",
@@ -21286,6 +21278,10 @@
             ]
           ]
         ],
+        "text-field": [
+          "get",
+          "vt_text"
+        ],
         "text-font": [
           "match",
           [
@@ -21308,17 +21304,18 @@
           [
             "literal",
             [
-              "NotoSerifJP-SemiBold"
+              "Noto Serif JP SemiBold"
             ]
           ],
           [
             "literal",
             [
-              "NotoSansJP-Regular"
+              "Noto Sans JP Regular"
             ]
           ]
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
         "text-size": [
           "let",
           "size",
@@ -21558,11 +21555,6 @@
             ]
           ]
         ],
-        "text-field": [
-          "get",
-          "vt_text"
-        ],
-        "text-max-width": 100,
         "text-writing-mode": [
           "horizontal"
         ]
@@ -21575,9 +21567,9 @@
             "vt_code"
           ],
           521,
-          "rgba(29,29,29,1)",
+          "rgba(34,36,38,1)",
           348,
-          "rgba(98,98,98,1)",
+          "rgba(101,103,105,1)",
           [
             411,
             412,
@@ -21595,14 +21587,14 @@
             2944,
             2945
           ],
-          "rgba(70,70,70,1)",
+          "rgba(74,76,78,1)",
           [
             7372,
             7711
           ],
-          "rgba(88,88,88,1)",
+          "rgba(92,93,95,1)",
           7352,
-          "rgba(161,161,161,1)",
+          "rgba(168,169,172,1)",
           [
             2901,
             2903,
@@ -21619,16 +21611,16 @@
             840,
             841
           ],
-          "rgba(68,68,68,1)",
+          "rgba(72,74,76,1)",
           220,
-          "rgba(80,80,80,1)",
+          "rgba(84,85,87,1)",
           312,
-          "rgba(42,42,42,1)",
+          "rgba(47,48,51,1)",
           [
             333,
             346
           ],
-          "rgba(59,59,59,1)",
+          "rgba(64,65,67,1)",
           [
             511,
             522,
@@ -21697,18 +21689,17 @@
             3243,
             3244
           ],
-          "rgba(50,50,50,1)",
+          "rgba(55,56,58,1)",
           "rgba(0,0,0,1)"
         ],
         "text-halo-color": "rgba(255,255,255,1)",
         "text-halo-width": 1
-      }
-    },
-    {
-      "id": "bvmap-注記角度付き線",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -21832,11 +21823,10 @@
           ]
         ]
       ],
+      "id": "bvmap-注記角度付き線",
       "layout": {
         "icon-allow-overlap": false,
         "symbol-placement": "line-center",
-        "text-pitch-alignment": "viewport",
-        "text-rotation-alignment": "map",
         "symbol-sort-key": [
           "match",
           [
@@ -22317,6 +22307,10 @@
           0
         ],
         "text-allow-overlap": false,
+        "text-field": [
+          "get",
+          "vt_text"
+        ],
         "text-font": [
           "match",
           [
@@ -22339,17 +22333,21 @@
           [
             "literal",
             [
-              "NotoSerifJP-SemiBold"
+              "Noto Serif JP SemiBold"
             ]
           ],
           [
             "literal",
             [
-              "NotoSansJP-Regular"
+              "Noto Sans JP Regular"
             ]
           ]
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
+        "text-pitch-alignment": "viewport",
+        "text-radial-offset": 0.5,
+        "text-rotation-alignment": "map",
         "text-size": [
           "let",
           "size",
@@ -22592,12 +22590,6 @@
             ]
           ]
         ],
-        "text-field": [
-          "get",
-          "vt_text"
-        ],
-        "text-max-width": 100,
-        "text-radial-offset": 0.5,
         "text-variable-anchor": [
           "center"
         ],
@@ -22614,9 +22606,9 @@
             "vt_code"
           ],
           521,
-          "rgba(29,29,29,1)",
+          "rgba(34,36,38,1)",
           348,
-          "rgba(98,98,98,1)",
+          "rgba(101,103,105,1)",
           [
             411,
             412,
@@ -22634,14 +22626,14 @@
             2944,
             2945
           ],
-          "rgba(70,70,70,1)",
+          "rgba(74,76,78,1)",
           [
             7372,
             7711
           ],
-          "rgba(88,88,88,1)",
+          "rgba(92,93,95,1)",
           7352,
-          "rgba(161,161,161,1)",
+          "rgba(168,169,172,1)",
           [
             2901,
             2903,
@@ -22658,16 +22650,16 @@
             840,
             841
           ],
-          "rgba(68,68,68,1)",
+          "rgba(72,74,76,1)",
           220,
-          "rgba(80,80,80,1)",
+          "rgba(84,85,87,1)",
           312,
-          "rgba(42,42,42,1)",
+          "rgba(47,48,51,1)",
           [
             333,
             346
           ],
-          "rgba(59,59,59,1)",
+          "rgba(64,65,67,1)",
           [
             511,
             522,
@@ -22736,18 +22728,17 @@
             3243,
             3244
           ],
-          "rgba(50,50,50,1)",
+          "rgba(55,56,58,1)",
           "rgba(0,0,0,1)"
         ],
         "text-halo-color": "rgba(255,255,255,1)",
         "text-halo-width": 1
-      }
-    },
-    {
-      "id": "bvmap-注記シンボル付きソート順100未満",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -22943,6 +22934,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記シンボル付きソート順100未満",
       "layout": {
         "icon-allow-overlap": false,
         "icon-image": [
@@ -23871,6 +23863,42 @@
           0
         ],
         "text-allow-overlap": false,
+        "text-field": [
+          "case",
+          [
+            "==",
+            [
+              "get",
+              "vt_code"
+            ],
+            7201
+          ],
+          [
+            "to-string",
+            [
+              "/",
+              [
+                "round",
+                [
+                  "*",
+                  [
+                    "to-number",
+                    [
+                      "get",
+                      "vt_text"
+                    ]
+                  ],
+                  1
+                ]
+              ],
+              1
+            ]
+          ],
+          [
+            "get",
+            "vt_text"
+          ]
+        ],
         "text-font": [
           "match",
           [
@@ -23893,17 +23921,19 @@
           [
             "literal",
             [
-              "NotoSerifJP-SemiBold"
+              "Noto Serif JP SemiBold"
             ]
           ],
           [
             "literal",
             [
-              "NotoSansJP-Regular"
+              "Noto Sans JP Regular"
             ]
           ]
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
+        "text-radial-offset": 0.5,
         "text-size": [
           "let",
           "size",
@@ -24162,44 +24192,6 @@
             ]
           ]
         ],
-        "text-field": [
-          "case",
-          [
-            "==",
-            [
-              "get",
-              "vt_code"
-            ],
-            7201
-          ],
-          [
-            "to-string",
-            [
-              "/",
-              [
-                "round",
-                [
-                  "*",
-                  [
-                    "to-number",
-                    [
-                      "get",
-                      "vt_text"
-                    ]
-                  ],
-                  1
-                ]
-              ],
-              1
-            ]
-          ],
-          [
-            "get",
-            "vt_text"
-          ]
-        ],
-        "text-max-width": 100,
-        "text-radial-offset": 0.5,
         "text-variable-anchor": [
           "top",
           "bottom",
@@ -24221,9 +24213,9 @@
               "vt_code"
             ],
             521,
-            "rgba(29,29,29,1)",
+            "rgba(34,36,38,1)",
             348,
-            "rgba(98,98,98,1)",
+            "rgba(101,103,105,1)",
             [
               411,
               412,
@@ -24241,14 +24233,14 @@
               2944,
               2945
             ],
-            "rgba(70,70,70,1)",
+            "rgba(74,76,78,1)",
             [
               7372,
               7711
             ],
-            "rgba(88,88,88,1)",
+            "rgba(92,93,95,1)",
             7352,
-            "rgba(161,161,161,1)",
+            "rgba(168,169,172,1)",
             [
               2901,
               2903,
@@ -24265,16 +24257,16 @@
               840,
               841
             ],
-            "rgba(68,68,68,1)",
+            "rgba(72,74,76,1)",
             220,
-            "rgba(80,80,80,1)",
+            "rgba(84,85,87,1)",
             312,
-            "rgba(42,42,42,1)",
+            "rgba(47,48,51,1)",
             [
               333,
               346
             ],
-            "rgba(59,59,59,1)",
+            "rgba(64,65,67,1)",
             [
               511,
               522,
@@ -24343,7 +24335,7 @@
               3243,
               3244
             ],
-            "rgba(50,50,50,1)",
+            "rgba(55,56,58,1)",
             "rgba(0,0,0,1)"
           ],
           [
@@ -24428,13 +24420,12 @@
           ]
         ],
         "text-halo-width": 1
-      }
-    },
-    {
-      "id": "bvmap-注記シンボルなし縦ソート順100未満",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -24771,6 +24762,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記シンボルなし縦ソート順100未満",
       "layout": {
         "symbol-sort-key": [
           "match",
@@ -25455,6 +25447,10 @@
             ]
           ]
         ],
+        "text-field": [
+          "get",
+          "vt_text"
+        ],
         "text-font": [
           "match",
           [
@@ -25477,17 +25473,18 @@
           [
             "literal",
             [
-              "NotoSerifJP-SemiBold"
+              "Noto Serif JP SemiBold"
             ]
           ],
           [
             "literal",
             [
-              "NotoSansJP-Regular"
+              "Noto Sans JP Regular"
             ]
           ]
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
         "text-size": [
           "let",
           "size",
@@ -25767,11 +25764,6 @@
             ]
           ]
         ],
-        "text-field": [
-          "get",
-          "vt_text"
-        ],
-        "text-max-width": 100,
         "text-writing-mode": [
           "vertical"
         ]
@@ -25784,9 +25776,9 @@
             "vt_code"
           ],
           521,
-          "rgba(29,29,29,1)",
+          "rgba(34,36,38,1)",
           348,
-          "rgba(98,98,98,1)",
+          "rgba(101,103,105,1)",
           [
             411,
             412,
@@ -25804,14 +25796,14 @@
             2944,
             2945
           ],
-          "rgba(70,70,70,1)",
+          "rgba(74,76,78,1)",
           [
             7372,
             7711
           ],
-          "rgba(88,88,88,1)",
+          "rgba(92,93,95,1)",
           7352,
-          "rgba(161,161,161,1)",
+          "rgba(168,169,172,1)",
           [
             2901,
             2903,
@@ -25828,16 +25820,16 @@
             840,
             841
           ],
-          "rgba(68,68,68,1)",
+          "rgba(72,74,76,1)",
           220,
-          "rgba(80,80,80,1)",
+          "rgba(84,85,87,1)",
           312,
-          "rgba(42,42,42,1)",
+          "rgba(47,48,51,1)",
           [
             333,
             346
           ],
-          "rgba(59,59,59,1)",
+          "rgba(64,65,67,1)",
           [
             511,
             522,
@@ -25906,18 +25898,17 @@
             3243,
             3244
           ],
-          "rgba(50,50,50,1)",
+          "rgba(55,56,58,1)",
           "rgba(0,0,0,1)"
         ],
         "text-halo-color": "rgba(255,255,255,1)",
         "text-halo-width": 1
-      }
-    },
-    {
-      "id": "bvmap-注記シンボルなし横ソート順100未満",
-      "type": "symbol",
+      },
       "source": "bvmap",
       "source-layer": "Anno",
+      "type": "symbol"
+    },
+    {
       "filter": [
         "step",
         [
@@ -26284,6 +26275,7 @@
           ]
         ]
       ],
+      "id": "bvmap-注記シンボルなし横ソート順100未満",
       "layout": {
         "symbol-sort-key": [
           "match",
@@ -26968,6 +26960,10 @@
             ]
           ]
         ],
+        "text-field": [
+          "get",
+          "vt_text"
+        ],
         "text-font": [
           "match",
           [
@@ -26990,17 +26986,18 @@
           [
             "literal",
             [
-              "NotoSerifJP-SemiBold"
+              "Noto Serif JP SemiBold"
             ]
           ],
           [
             "literal",
             [
-              "NotoSansJP-Regular"
+              "Noto Sans JP Regular"
             ]
           ]
         ],
         "text-justify": "auto",
+        "text-max-width": 100,
         "text-size": [
           "let",
           "size",
@@ -27280,11 +27277,6 @@
             ]
           ]
         ],
-        "text-field": [
-          "get",
-          "vt_text"
-        ],
-        "text-max-width": 100,
         "text-writing-mode": [
           "horizontal"
         ]
@@ -27297,9 +27289,9 @@
             "vt_code"
           ],
           521,
-          "rgba(29,29,29,1)",
+          "rgba(34,36,38,1)",
           348,
-          "rgba(98,98,98,1)",
+          "rgba(101,103,105,1)",
           [
             411,
             412,
@@ -27317,14 +27309,14 @@
             2944,
             2945
           ],
-          "rgba(70,70,70,1)",
+          "rgba(74,76,78,1)",
           [
             7372,
             7711
           ],
-          "rgba(88,88,88,1)",
+          "rgba(92,93,95,1)",
           7352,
-          "rgba(161,161,161,1)",
+          "rgba(168,169,172,1)",
           [
             2901,
             2903,
@@ -27341,16 +27333,16 @@
             840,
             841
           ],
-          "rgba(68,68,68,1)",
+          "rgba(72,74,76,1)",
           220,
-          "rgba(80,80,80,1)",
+          "rgba(84,85,87,1)",
           312,
-          "rgba(42,42,42,1)",
+          "rgba(47,48,51,1)",
           [
             333,
             346
           ],
-          "rgba(59,59,59,1)",
+          "rgba(64,65,67,1)",
           [
             511,
             522,
@@ -27419,12 +27411,17 @@
             3243,
             3244
           ],
-          "rgba(50,50,50,1)",
+          "rgba(55,56,58,1)",
           "rgba(0,0,0,1)"
         ],
         "text-halo-color": "rgba(255,255,255,1)",
         "text-halo-width": 1
-      }
+      },
+      "source": "bvmap",
+      "source-layer": "Anno",
+      "type": "symbol"
     }
-  ]
+  ],
+  "name": "GSI optimized vector tile basemap (bvmap-starlight), background/roads/labels only, no terrain/hillshade + mapterhorn-japan-bridge hillshade/terrain (mapterhorn-japan-bridge DECISIONS.md)",
+  "version": 8
 }

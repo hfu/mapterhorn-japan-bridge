@@ -4289,3 +4289,28 @@ D114(B)/D116のガウスぼかしは、当時証明された正当な理由(非�
 
 **この時点でコードは一切変更していない**。次のセッション/ターンでの選択肢: (1) このまま設計検討を継続する、(2) Opusサブエージェントへ設計レビューを委任する、(3) 2号の launch を優先し、この件は別途スコープする(D174が「2号までに解消したい」と明示的にスコープされたのとは異なり、今回はHidenoriさんからまだそのような期限付けの指示は受けていない)。
 
+## D181: プレビューサイトのベースマップを bvmap-starlight へ、MapLibre GL JS を明示バージョン6.11.1へ更新
+
+**Status**: Done、コミット済み。D180のOpus独立設計レビュー(2件、並列でバックグラウンド実行中)とは無関係の、独立したサイト更新作業。Hidenoriさんからの直接指示(「mapterhorn-japan-bridgeのサイトについて次の更新をして欲しい」)。
+
+### 1. ベースマップを `bvmap-starlight` へ
+
+Hidenoriさん自身が別リポジトリ`hfu/stars`で公開しているスタイル(`styles/bvmap-starlight.json`、PR #12「Add styles/bvmap-starlight.json: low-saturation silver-gray bvmap variant」)を採用。`gh api repos/hfu/stars/contents/styles/bvmap-starlight.json`で取得(27,409行、`name`フィールドに"GSI optimized vector tile basemap (bvmap-starlight), background/roads/labels only, no terrain/hillshade"と明記 -- 地形要素は含まない素のベースマップスタイル)。
+
+現行`style.json`から`mapterhorn`(raster-dem)ソースと`hillshade`レイヤーを、bvmap-starlight側の同名レイヤー構成(`background`→`bvmap-行政区画`→`bvmap-水域`→...)の中に**元のスタイルと同じ相対位置**(`bvmap-行政区画`の直後、`bvmap-水域`の前)へ挿入する形でマージ(Pythonスクリプトで機械的に実施、手編集ではない)。glyphs/sprite/bvmapソース定義はbvmap-starlight自身のもの(`https://stars.optgeo.org/font/...`、`https://stars.optgeo.org/sprite/bvmap-starlight`、TileJSON経由の`bvmap`ソース)をそのまま採用 -- 旧`style.json`の`gsi-cyberjapan.github.io`直参照よりstars自身がホストする経路に統一される。
+
+### 2. MapLibre GL JS を6.11.1へ明示ピン留め
+
+D175時点では`@6`という浮動タグ(unpkgが要求時点の最新6.x系を返す)のままだった。npm registryで最新版(6.11.1、2026-09-24時点)を確認し、`index.html`のCSS `<link>`と`app.js`のESM importを両方とも`@6.11.1`へ明示的に固定 -- 将来の6.x系リリースがこのページの挙動を無断で変えないようにする、というこのプロジェクト自身のバージョン固定規律に合わせた。unpkg経由で両ファイルとも200で取得可能なことを確認済み。
+
+### 検証
+
+このセッションはブラウザ接続(`claude-in-chrome`)なし。代わりに`python3 -m http.server`でリポジトリをローカル配信し、`playwright`(システムの Google Chrome.app をexecutablePathで直接指定、ローカルにChromiumバイナリを別途インストールする必要なし)でヘッドレスレンダリングし、実際のスクリーンショットで確認:
+- bvmap-starlightのグレースケール配色が正しく表示され、hillshade/3D地形(風不死岳、支笏湖畔)が正しく重なって表示されることを確認(スクリーンショット取得、Hidenoriさんへ送付済み)。
+- コンソールエラーは`/favicon.ico`の404のみ(このサイトはそもそもfaviconを持ったことがない、今回の変更と無関係の既存の欠落 -- スコープ外につき対応せず)。
+- ネットワーク到達性を個別に確認: `stars.optgeo.org/sprite/bvmap-starlight.{json,png}`(200)、`stars.optgeo.org/font/{fontstack}/{range}`(実際に使われているフォントスタック名`Noto Sans JP Regular`/`Noto Serif JP SemiBold`で200確認、当初の推測フォント名では404だったため要修正)、`stars.optgeo.org/bvmap`・`stars.optgeo.org/mapterhorn-japan-bridge`のTileJSON(いずれも200、正しいtiles URL/attributionを含む)。
+
+### 現在の状態
+
+`index.html`・`app.js`・`style.json`をコミット・push予定。GitHub Pagesへの反映は次のGitHub Actionsビルド(pushで自動トリガー)を待つのみ。cafebabeさんへ依頼していたD175の目視確認は依然未回答だが、これは別件として引き続き追跡する(HANDOVER.md「What's next」参照)。
+

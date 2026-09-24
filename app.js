@@ -1,7 +1,10 @@
 // v6 dropped the classic <script> global-exposing build (dist/maplibre-gl.js
 // no longer exists) -- ESM only now, dist/maplibre-gl.mjs, named exports.
 // A namespace import keeps every maplibregl.X call below unchanged.
-import * as maplibregl from 'https://unpkg.com/maplibre-gl@6/dist/maplibre-gl.mjs';
+// Pinned to an exact version (not a floating "@6" tag) so a future upstream
+// release can't silently change behavior underneath this page -- bump
+// deliberately, matching this project's own version-pinning discipline.
+import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.11.1/dist/maplibre-gl.mjs';
 
 window.onerror = (msg, src, line, col, err) => {
   document.title = 'JS ERROR: ' + msg;
