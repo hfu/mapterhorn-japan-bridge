@@ -84,9 +84,15 @@ directory key the whole store is organized under.
   Patched live 2026-09-19 for a real, nationwide "壁" (wall) 3D-terrain
   artifact traced to a genuine upstream Copernicus GLO-30 inventory gap
   (D174-D178) — see `HANDOVER.md`'s current top section for the full arc.
+- **1.7号 — minted 2026-09-24, national build running now.** Same source
+  data as 1.6号 again (not a data-update generation — Hidenori's own
+  decision to keep 2号 reserved for that), bundling D180's coastal
+  seam-blur fix and D182's z13-z16 wall extension. `generation_id`
+  `01M39W0T76QKN3GYJCPWX5MDHM`. See `HANDOVER.md`'s current top section
+  for exactly what's running and what's left.
 - **2号** — the real next-*data* build, gated on GSI shipping a new DEM1A
-  quarterly update. Now launches AFTER 1.6号, not before. Working estimate:
-  end of November 2026.
+  quarterly update. Now launches AFTER 1.6号 AND 1.7号, not before. Working
+  estimate: end of November 2026.
 
 **The label → ULID table lives in `PLAN.md` section 0 and nowhere else.**
 Do not copy it into other files; go read it. To find what the code thinks is
@@ -169,29 +175,34 @@ These are not style preferences. Each one below cost real data or real days.
 > This section is the one part of this file that is expected to rot.
 > It is a pointer, not a record.
 
-- **Authoritative right now:** `DECISIONS.md` **D174-D178** and `HANDOVER.md`'s
-  topmost "Current state" section (compacted 2026-09-19 — read that section
+- **Authoritative right now:** `DECISIONS1.md` **D179-D183** and `HANDOVER.md`'s
+  topmost "Current state" section (compacted 2026-09-24 — read that section
   in full before touching anything, it is dense and everything in it is
   current).
-- **1.6号 is launched and live on `stars`** (D173, 2026-09-17) — both the
-  elevation and lineage archives. A post-launch visual spot-check of remote
-  islands found a real, nationwide "壁" (3D-terrain wall) artifact, root-
-  caused to a genuine upstream Copernicus GLO-30 data gap (not fixable by
-  re-downloading, not a bug in this project's own pipeline), designed
-  through two independent Opus reviews, implemented, run for real, and
-  **published live to `stars`** (D174-D178, 2026-09-19) — both originally
-  -reported wall positions confirmed fixed against the public endpoint. A
-  z13+ deeper-zoom extension is explicitly tracked and deferred, not a
-  blocker.
-- **Next: 2号**, gated on GSI shipping a new DEM1A quarterly update — not
-  triggered as of the last live check (2026-09-11, still 2026-07-31).
-  Nothing is currently running or blocking; before starting 2号 prep, check
-  `HANDOVER.md`'s own "What's next" list for the handful of open,
-  non-blocking follow-ups (D170's reuse-fingerprint gap, D172's 116-tile
-  lineage orphan gap, `bundle.py`'s own non-atomic write, the z13+
-  extension above).
-- All work through the 2026-09-19 session (`hfu-mapterhorn` `d7eedee`,
-  `mapterhorn-japan-bridge` `b4c551e`) is **pushed** to both repos'
+- **1.6号 remains launched and live on `stars`** (D173, then patched with
+  the wall fix D174-D178, 2026-09-19) — unaffected by what follows below.
+- **1.7号 (`01M39W0T76QKN3GYJCPWX5MDHM`, minted 2026-09-24) is a NEW
+  generation, currently building.** Same source data as 1.6号, bundling two
+  fixes: D180 (a nationwide "loose coastline" artifact — real 1m DEM1A
+  relief smoothed away by up to 102m near the coast, root-caused to
+  `aggregation_merge.py`'s own coastal seam-blur being miscalibrated for
+  z16, fixed and verified via two independent Opus design reviews that
+  converged on the same design) and D182 (the z13+ deeper-zoom wall
+  extension D177 had left an open empirical question — now confirmed real
+  near Takeshima, root-caused to be much broader than one gap, and fixed).
+  **1.7号's own national aggregation run is running right now** in a
+  detached `screen` session on `slate` (`agg_1_7go`) — check
+  `HANDOVER.md`'s "Current state" section for exactly how to check on it
+  and what still needs to happen after aggregation finishes (downsampling,
+  bundle, merge, THEN re-applying the wall-fix scripts to 1.7号's own fresh
+  archive, THEN verification, THEN Hidenori's own separate go-ahead before
+  any `stars` publish).
+- **2号 stays reserved exclusively for GSI's next real DEM1A data update**
+  (Hidenori's own explicit 2026-09-24 decision) — not triggered as of the
+  last live check (2026-09-24, still 2026-07-31). Launches after both
+  1.6号 and 1.7号.
+- All work through the 2026-09-24 session (`hfu-mapterhorn` `dcd2e75`,
+  `mapterhorn-japan-bridge` `07b1a20`) is **pushed** to both repos'
   `origin/main`. Still always check `git log origin/main..HEAD` before
   assuming a later session's work is pushed — this has bitten the project
   before.
