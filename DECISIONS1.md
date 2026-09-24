@@ -4246,3 +4246,46 @@ All testing above ran against throwaway output paths (`/tmp/wall_fix_test_out/`,
 
 **No new engineering work done this entry** -- everything above is documentation-only, restoring `PLAN.md` §8 to a state that actually reflects what 2号's launch will need to do. The wall-fix-reapplication step and the upsample-table entry are not yet implemented against any 2号 data, since 2号 itself has not started (still gated on GSI). Revisit `PLAN.md` §8 directly when 2号 actually launches, not this entry -- entries here are not maintained after the fact.
 
+## D180: 【重要・未解決】Hidenoriさんの3D地形目視確認で、1mDEMのある海岸線がほぼ全国で「ゆるく」(輪郭がぼやけ、丸まって)見える問題を発見 -- 根本原因は2つの独立した、それぞれ正当な理由を持つ処理が z16 で組み合わさって生む副作用と特定。恒久修正は未着手、設計判断が必要
+
+**Status**: Open, tracked, real. 実データ(1.6号本番アーカイブ、シリパ岬周辺)で機序を直接検証済み。まだ何もコードは変更していない -- 全国スケールの`aggregation_merge.py`/`aggregation_reproject.py`という核心コードに触れる話であり、Hidenoriさん自身「極めて難易度の高い問題」と認めた通り、実装前に設計判断が要る。
+
+**発端**: Hidenoriさんが3D地形ビューアのスクリーンショット(北海道シリパ岬周辺、「大岩」ラベル付近)を共有。1mメッシュDEM(DEM1A)が存在する海岸線のほぼ全てで、地形が本来あるべき鋭い崖・岩肌ではなく、丸みを帯びた「ゆるい」輪郭になっていると指摘。「オーバーズームマージをしてもらった結果」という表現で発生を説明。
+
+**座標特定**: GSI自身のジオコーディングAPI(`msearch.gsi.go.jp/address-search/AddressSearch`)でシリパ岬の座標を特定(140.772436E, 43.227414N)。対応する1.6号の集約アイテムは`aggregation-store/01M2EAPPYXT8RWNC6TXBRT36JE/12-3649-1501-16-aggregation.csv`(z12マクロタイル、child_z=16)。
+
+### 検証1: D20の`lineage_inspect.py`で実際の勝者ソースを直接確認
+
+このアイテムに5つの優先グループが存在(jpnational1/A、jpnational5/A、jpnational5/B、jpnational10/b、jpnationalsea)。ピクセル数比: `jpnational1`(DEM1A、1m、43.4%)、`jpnationalsea`(GLO-30、56.3%)、残り3グループは合計0.2%程度。生成した provenance PNG(`lineage_inspect.py`は D20 以来、生産パイプラインに未組込の独立診断ツール)を目視すると、DEM1A(青)とjpnationalsea(灰)の境界に沿って、**連続した細い帯**が`jpnational10/b`(橙、global tier 5、最低精度の陸域ティア)で塗られていることを確認 -- DEM5(緑)がこの帯を埋めているのはごく一部(港湾構造物付近)のみで、海岸線の主要部分はDEM10が担っている。
+
+### 検証2: DEM1A自身の海側nodataは本物、正常(バグではない)
+
+このアイテムが参照する47個のDEM1Aソースファイルのうち、海岸に近い20ファイルを直接`rasterio`で読み込みnodata比率を計測。海に大きくかかるメッシュ(例: `FG-GML-6440-65-98`)は95.5%、`FG-GML-6440-66-43`は99.5%がnodata -- **DEM1A(航空レーザ測量)は水面上で反射が得られないため海側は原理的にnodataになる、正当かつ恒久的な特性**であり、GLO-30の壁問題(D174)と同種の「取得元の構造的限界」。ここまでは正常。
+
+### 検証3: なぜその「正常なnodata」の埋め方が問題を生むか -- 2つの独立した仕組みが z16 で重なる
+
+1. **`aggregation_reproject.py`の`create_warp()`(56-58行目)**: 地形(terrarium)エンコードでは`-r cubicspline`を**全グループに無条件で**適用し、しかも全グループを`grouped_source_items[0][0]['maxzoom']`(=最優先グループ、この場合DEM1A自身の実測解像度)に合わせて警告なくワープする(`aggregation_reproject.py`96-137行目のコメント参照、D8由来の設計)。**DEM10(実測z13)がz16へ8倍、jpnationalsea(実測z12)がz16へ16倍、cubicsplineで引き伸ばされる** -- この挙動自体は1号以来の既存設計で、1.6号のD166土地アップサンプリング機能とは独立(このアイテムではDEM1A自身が既にz16なので、D166の`target_zoom > maxzoom`条件は発火していない)。
+
+2. **`aggregation_merge.py`のD114(B)/D116ガウスぼかし境界処理(153-215行目)**: 「どのソースでも永久に埋まらない領域(本物の海岸線)」に隣接する境界で、そのまま`-9999→0`埋めすると1ピクセルで最大100m級の非現実的な垂直崖ができる(D116が実測・修正済みの問題)ため、意図的にガウスぼかしでランプ化する。ぼかし幅(`sigma`)は**固定の実世界150m**(`utils.macrotile_buffer_3857`)から算出される: `overlap = 150m / resolution`, `sigma = overlap/4 - 1`。**このconstant自体はz16に対して初めて設計・検証されたものではなく(D116の合成テストはz16/sigma30で実施され「100m崖→1.43m」への改善を確認・採用された)、原理的には正しい**。しかし、この境界処理は`boundary_tile`が処理中に累積する**全ての**ティア間遷移境界に一律適用される(D114(B)コメント "The boundary_tile accumulated incrementally above, as each group's fill actually happened, is already correct" 参照) -- 「本物の海岸線(未来永劫埋まらない側)」と「DEM10のような、粗いが実在するデータで埋まった側」を区別せず、**同じ150m/sigma30の幅**で扱っている。
+
+**実測したsigma値(z12→z16)**:
+```
+z12: resolution=19.109m/px, buffer_pixels=7,  sigma=1px  (~19m)
+z13: resolution=9.555m/px,  buffer_pixels=15, sigma=2px  (~19m)
+z14: resolution=4.777m/px,  buffer_pixels=31, sigma=6px  (~29m)
+z15: resolution=2.389m/px,  buffer_pixels=62, sigma=14px (~33m)
+z16: resolution=1.194m/px,  buffer_pixels=125,sigma=30px (~36m, 到達距離~143m)
+```
+1号・1.5号時代に一般的だった、より粗いターゲットズーム(z12前後)では同じ150m定数がわずか1pxのぼかしにしかならず視覚的にほぼ無害だった。DEM1Aが実測でz16に達し(かつD166がさらに他の土地アイテムをz16へ引き上げ)ことで初めて、**同じコード・同じ定数が、1mピクセルの世界では30px(~36m)幅の強いぼかしとして牙を剥いた** -- これが「オーバーズームマージをした結果」の実体だとHidenoriさんが直感的に捉えた現象と一致する。
+
+### まとめ: バグではなく、解像度が変わったことで露呈した設計トレードオフ
+
+D114(B)/D116のガウスぼかしは、当時証明された正当な理由(非現実的な瞬間崖の除去)のために導入され、今も必要 -- 単純に無効化すれば崖問題が復活する。同時に、DEM1A/5が海側でnodataになるのも正常。**問題は、この2つの正しい仕組みの組み合わせが、z16という高解像度で初めて可視化される副作用を持つこと**: 本来DEM1Aが持っていたはずの、海岸線ぎりぎりまでの鋭い岩肌・崖の実測ディテールが、(a) 粗いフォールバック層(DEM10/sea)のcubicspline大幅アップサンプルと、(b) その上に重ねてかかる固定150m幅のガウスぼかし、の二重の平滑化によって、視覚的に「輪郭が丸まった」ように失われている。
+
+**修正の難しさ、Hidenoriさんの認識通り**: DEM1A自体が海側にデータを持たない以上、失われた実測ディテールを「復元」することはできない(D174のGLO-30欠損と同種、恒久的な取得限界)。改善できるとすれば「粗いデータをどう滑らかに見せるか」の調整のみ:
+- 候補1: グループの実測maxzoomとターゲットzoomの差が大きい(=大幅アップサンプルが必要な)ケースに限り、`cubicspline`より滑らかさの少ないリサンプリング(`bilinear`や`near`)を使う。
+- 候補2: `aggregation_merge.py`のぼかし幅を、固定の実世界メートル数ではなく、「本当に永久に埋まらない境界(D116が対象とした本来のケース)」と「粗いが実在するデータで埋まった境界」を区別して変える -- 後者は現行より狭い幅で十分なはず。
+- どちらも1号以来の中核コード(`aggregation_reproject.py`/`aggregation_merge.py`)への変更であり、全国・全世代に影響する。2号を含め将来の全ビルドに波及するため、**D174と同様、実装前に独立設計レビュー(Opus)を経るべき**とHidenoriさんに提案予定。
+
+**この時点でコードは一切変更していない**。次のセッション/ターンでの選択肢: (1) このまま設計検討を継続する、(2) Opusサブエージェントへ設計レビューを委任する、(3) 2号の launch を優先し、この件は別途スコープする(D174が「2号までに解消したい」と明示的にスコープされたのとは異なり、今回はHidenoriさんからまだそのような期限付けの指示は受けていない)。
+
