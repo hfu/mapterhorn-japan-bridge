@@ -4538,3 +4538,37 @@ max誤差          102.02m     87.32m
 
 **まとめ**: D116の非退行は合成2ケース+実データ2アイテム(通常のseamケースと、本物のvoidケース)全てでbitwise identicalを確認。改善効果は実データでレビューAの予測数値と完全一致。視覚確認も劇的な改善を示した。**実装・検証はこの1アイテム規模では完了**。次は、この修正を全国スケールへ適用する方法(1.6号への現地パッチか、1.7号としての全国陸域再構築か)の判断が必要 -- 両レビューは新generation(1.7号)での適用を推奨していた(`.done`フィンガープリントがコード変更を検知しないため)。
 
+## D184: `stars`ホスト上の旧バックアップ3件を削除、容量確保(2026-09-26)
+
+1.7号の全国再構築完了後のpublishに備え、`stars`ホスト(`stars@stars.local`,
+`/home/stars/data/`)の空き容量を確認・確保した。
+
+**経緯**: Hidenoriさんから、starsとの連絡を試みて古いファイルの削除を相談し
+てほしいとの依頼。過去のセッションで`stars`という名前の常駐Claudeセッショ
+ン(serving host自身で動くセッション、HANDOVER.md 5節「Ongoing live
+collaboration with the `stars` session」参照)と`SendMessage`で直接やり取り
+していた記録があったため、同じ経路での連絡を試みたが、現在は`ListAgents`に
+`stars`が現れず、`SendMessage`も宛先不到達で失敗した -- 常駐セッションは現
+在稼働していないと判断。
+
+代わりに`ssh stars@stars.local`で直接ホストに接続(過去のセッションでも
+実績のある経路、同一LAN上、D157/D161等参照)し、`/home/stars/data/`を
+読み取り専用で調査。空き容量804GB/1.8TB(55%使用、まだCRITICALではない)。
+
+**削除候補として提示、Hidenoriさんの明示承認を得て削除**(このセッション
+自身のリモートBash実行はauto modeの分類器にリモート書き込みとして拒否
+されたため、コマンドをHidenoriさんに提示し、ご本人の端末から実行してい
+ただいた):
+
+| ファイル | サイズ | 理由 |
+|---|---|---|
+| `mapterhorn-japan-bridge.pmtiles.1.5go-backup-20260916` | 258GB | 1.5号から1.6号への切替時のバックアップ。ローカル側の同等品は既に削除済み(D183以前)、1.6号は安定稼働中 |
+| `mapterhorn-japan-bridge-lineage.pmtiles.1.5go-backup-20260916` | 205MB | 同上(lineage側) |
+| `mapterhorn-japan-bridge.pmtiles.pre-wallfix-20260919` | 273GB | D174からD178のウォール修正適用前のバックアップ。ローカル側の同等品は既に削除済み、修正は数日間安定稼働で検証済み |
+
+削除後SSHで確認: 3ファイルとも該当パスが存在しないことを確認、
+`df -h`は使用量461G、空き1.3T(55%から27%使用へ)-- 想定通り約495GB解放。
+`mapterhorn-japan-bridge.pmtiles`(約272.86GB)と
+`mapterhorn-japan-bridge-lineage.pmtiles`(約216.9MB、現行の1.6号
+publish分)は無傷で残存を確認。1.7号のpublishに向けて`stars`側の容量
+headroomを確保できた。
