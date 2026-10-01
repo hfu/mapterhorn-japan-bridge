@@ -4572,3 +4572,119 @@ collaboration with the `stars` session」参照)と`SendMessage`で直接やり�
 `mapterhorn-japan-bridge-lineage.pmtiles`(約216.9MB、現行の1.6号
 publish分)は無傷で残存を確認。1.7号のpublishに向けて`stars`側の容量
 headroomを確保できた。
+
+## D185: 1.7号パイプライン完走(downsampling → bundle → merge)、`bundle-store/`の安全機構が作動して正しく一時停止、原因ファイル整理後に再開・完走(2026-09-26〜09-29)
+
+aggregation(D184時点で6,373/6,373完了確認済み)の後、残るパイプライン
+(`downsampling_covering.py` → `downsampling_run.py`(elevation/lineage) →
+`lineage_extend_low_zoom.py` → `bundle.py`(elevation/lineage) →
+`merge_japan_bundles.py`(elevation/lineage))を1本のスクリプトにまとめ、
+`pipeline_1_7go`スクリーンセッションで実行。
+
+**downsampling/bundleは無停止で完走**: elevation 709,240タイル、lineage
+241,060タイル超を処理、`bundle.py`は両datatypeとも23地域+planetを生成。
+
+**`merge_japan_bundles.py`(elevation)が安全機構で正しく停止**:
+`assert_inputs_complete()`(D117/D119由来)が、`bundle-store/*.pmtiles`の
+グロブと`meta-store/bundle/*.json`マニフェストを突き合わせ、以下5ファイルが
+「マニフェストにない余計なファイル」として検出され、「REFUSING TO MERGE」で
+意図通り停止した:
+- `mapterhorn-japan-bridge.pmtiles`(1.6号の現行公開相当ローカルコピー、254GB)
+- `mapterhorn-japan-bridge-lineage.pmtiles`(同、lineage版、217MB)
+- `mapterhorn-japan-bridge.z13fix.pmtiles`(D182の旧スタンドアロン修正版、
+  254GB、HANDOVER.mdに「1.7号完成後は削除可」と既に記載済みだった)
+- `wall-fix-z0-7.pmtiles`/`wall-fix-z8-z12.pmtiles`/`wall-fix-z13-z16.pmtiles`
+  (D174/D182の壁修正フィル記録、後続の壁修正再適用ステップで必要)
+
+同じタイミングで`/Volumes/Migrate-2025-04`がCRITICAL(98%使用、空き50GB、
+D157の閾値120GBを下回る)に達していたことも判明——downsampling/bundleの
+本番出力(762GB)が積み上がった結果で、想定内の増加だが次のmergeステップ
+分の空きがなかった。
+
+**対応**: 上記5ファイルのうち4つ(現行コピー・lineage現行コピー・壁修正
+記録3点)を`bundle-store/`から`bundle-store-setaside/`へ退避(同一ボリューム
+内move、データ損失なし、mergeの安全チェックを正しく通過させるため)。
+`mapterhorn-japan-bridge.z13fix.pmtiles`(254GB)はHidenoriさんの明示承認を
+得て削除——ディスクが375.7GBまで回復。
+
+**merge再実行、完走**: elevation 3,447,565タイル →
+`bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles`(271.5GB)。lineage
+3,447,709タイル→`mapterhorn-japan-bridge-lineage.pmtiles`(lineageは
+これで最終成果物、z0-7スプライス不要)。`pmtiles cluster`も両datatypeとも
+正常完走。エラーなし。
+
+**副次検証**: aggregation完了直後の整合性チェックで「`.done`は6,373件だが
+ログのstart/end行が6,308件しかない」という不一致を発見・精査した結果、
+(1) 40件はmultiprocessing.Poolの`with`ブロック終了時の`terminate()`による
+print出力ロスト(データ自体は無事)、(2) 27件は検証スクリプト自身のバグ
+(1.7号の陸地アップサンプリングで実ファイル名のchild_zが計画値と異なる
+ことを考慮していなかった)による誤検知——プレフィックス一致で再チェックし
+67件全てelevation/lineageとも実在確認、データ損失なしと判明。
+
+---
+
+## D186: D174/D182壁修正の1.7号への再適用 -- 実行中にENOSPCでクラッシュ、
+原因は自分自身の見積もりミス(3世代分の270GB級アーカイブを同時保持する
+設計)、バックアップを別ボリュームへ退避して復旧・完走・実データ検証済み
+(2026-09-30〜2026-10-01)
+
+**実行した手順**(PLAN.md §8のランブックを1.7号向けに拡張、D182のz13-z16
+モードも含む2段構成): (1) z0-7グローバルオーバービュー接合(`pmtiles merge`
+z8plus + global-overview-backup.pmtiles → `mapterhorn-japan-bridge.pmtiles`)、
+(2) z0-7フィルは既存のものを再利用(global-overview-backup.pmtilesのMD5が
+D179のベースライン`e66ed06ad81f15d9309cc98d2c0f0b95`と一致することを確認
+済み)、(3) z8-z12フィルを1.7号自身のアーカイブに対して新規ビルド、(4) 3方向
+マージ(本体+z0-7フィル+z8-z12フィル)→ `z8z12fix.pmtiles`、検証クリーン、
+(5) z13-z16フィルをz8-z12修正済みアーカイブに対して新規ビルド(`build_
+wall_fix_archive.py`のz13-z16モードは「`--elevation`はz8-z12フィル済みで
+あること」を要求するため、この順序が必須)、(6) 最終マージ(z8z12fix +
+z13-z16フィル)。
+
+**z8-z12・z13-z16フィルとも、1.6号時代に作ったものとはバイト内容が異なる
+ことを確認**(想定内・意図通り——1.7号自身のアーカイブに対して再計算した
+ため。ソースデータは同一だが、念のため実測で差分確認するステップを組み
+込んでおいた)。
+
+**STEP 6(最終マージ)がディスク枯渇でクラッシュ**: 1h10分進行・100GB/256GB
+書き込み時点で`no space left on device`。**原因は自分自身の設計ミス**——
+z0-7接合版(274.8GB)・z8-z12修正版(274.8GB)・最終版(274.8GB)の3世代を、
+前の世代を消さずに同時に保持する設計にしてしまい、STEP 1後に確保した
+空き(約356〜370GB)では全く足りなかった(実際には3世代同時成立時で
+800GB超が必要)。
+
+**復旧**: `/Volumes/Migrate-2025-04`が空き55MB・使用率100%まで低下、
+`ls`/`find`/Pythonの`os.listdir`が`bundle-store/`に対して「Operation not
+permitted」またはハング(`stat`のみ正常動作——おそらくAPFSがほぼ満杯の
+状態でディレクトリ走査系の操作を一部拒否したことによるものと推測、根本
+原因の完全特定はしていない)。Hidenoriさんに状況を報告・承認を得た上で、
+(1) 失敗した書き込みの中途半端な残骸`mapterhorn-japan-bridge.wallfix.
+pmtiles`(約100GB、明らかに破損)を削除、(2) z13-z16修正前の接合版
+`mapterhorn-japan-bridge.pmtiles`(274.8GB)を削除ではなく`/Volumes/
+pmtiles-store`(別ボリューム、空き384GB)へ`mapterhorn-japan-bridge.pmtiles.
+pre-wallfix-20261001`として退避——バックアップを失わずに本体ボリューム側の
+空きを確保する形にした。`/Volumes/Migrate-2025-04`は356GBまで回復。
+
+**STEP 6再実行、完走**: `z8z12fix.pmtiles` + z13-z16フィル →
+`mapterhorn-japan-bridge.wallfix.pmtiles`、`pmtiles verify`・
+`check_pmtiles_integrity.py`(孤立タイルチェック)ともCLEAN。本番ファイルへ
+swap完了。最終アーカイブ: `bundle-store/mapterhorn-japan-bridge.pmtiles`、
+274,805,441,205 bytes(約256GB)、67,311,837タイル、min_zoom=0
+max_zoom=16、グローバル境界(z0-7接合が効いていることを確認)。
+
+**実データでの目視・定量検証**(Hidenoriさんの「目視確認から進めてよい」
+という指示通り):
+
+| 地点 | 検証内容 | 結果 |
+|---|---|---|
+| シリパ岬(43.227414N, 140.772436E, D180) | z16の5x5タイル(本番最終アーカイブから直接デコード)の標高レンジ | **-0.03m〜295.59m**(修正前は2.90〜14.64mまで潰れていた)。ヒルシェード画像をHidenoriさんへ送付済み、岩肌・崖の輪郭が明瞭 |
+| 竹島近辺の壁地点(37.3953N, 132.1873E, D182) | z13/z14/z15/z16全て | 全ズームで**タイル実在**(以前は204欠損)、標高0.00m(開放海域への正当なフラットフィル)。以前確認された退化値(-19732m)なし |
+| 富士山頂(35.3606N, 138.7274E、非回帰確認) | z16の標高 | **3775m**(実標高3776mとほぼ一致)、広域変更にもかかわらずランドマークは無傷 |
+
+**今後の世代への申し送り**: D174/D182の壁修正ランブック(PLAN.md §8)は
+z8-z12単段のみを前提に書かれていたが、z13-z16を含む2段構成では最大3世代
+分の本体アーカイブサイズ(1世代あたり約275GB)が同時に必要になりうる。
+次回(2号以降)この手順を使う際は、着手前に800GB級の空きを確保するか、
+各中間成果物を検証後すぐ削除する設計に書き直すこと。PLAN.md §8に追記
+予定。
+
+**残作業**: `stars`への公開(Hidenoriさんの別途明示承認が必要)。
