@@ -4688,3 +4688,36 @@ z8-z12単段のみを前提に書かれていたが、z13-z16を含む2段構成
 予定。
 
 **残作業**: `stars`への公開(Hidenoriさんの別途明示承認が必要)。
+
+---
+
+## D187: 1.7号 published to `stars` — MD5-verified, atomic swap, live checks clean (2026-10-02)
+
+D186の完成品(elevation + lineage)を、Hidenoriさんの明示承認(「公開して」)に基づいて`stars`へ公開。D173/D178と同じ transfer-then-atomic-rename 手順。
+
+**lineage**(207MB): 2026-10-01 23:33 JSTに`stars`上のライブファイルが更新された(ファイル時刻による)。旧版は`mapterhorn-japan-bridge-lineage.pmtiles.pre-1.7go-20261001`として保存。
+
+**elevation**(274,805,441,205 B、約256GB):
+1. `/home/stars/data/mapterhorn-japan-bridge.pmtiles.new`へscp転送。所要約6.6時間、`stars`上のファイル時刻で転送完了は2026-10-02 06:21 JST。
+2. ローカルとリモートのMD5を比較: `4595d7010bc18392dab5d2171708d555`で一致。
+3. 一致を確認した後、06:40 JSTにatomic rename(旧版→`mapterhorn-japan-bridge.pmtiles.pre-1.7go-20261001`、`.new`→ライブ)。`martin`はfs-watchなので再起動不要。
+4. 旧版(272,864,950,554 B)は1.6号相当(D174のz8-z12壁修正済み)。
+
+**ライブ確認**(`curl -L`、公開エンドポイント経由):
+
+| 地点 | z13 | z16 |
+|---|---|---|
+| 富士山 (35.3606N, 138.7274E) | 200 / 141KB、実データ | 200 / 173KB、実データ |
+| シリパ岬 (43.227414N, 140.772436E) | 200 / 55KB、実データ | 200 / 53KB、実データ |
+| 竹島 (37.3953N, 132.1873E、D182の壁地点) | 200 / 52B(平坦な海面0m) | 200 / 52B(同) |
+
+TileJSONは両アーカイブとも200。竹島はD182修正前は204だった地点で、今回タイルが存在する。
+
+**公開直後の空き容量**: slate本体(`/Volumes/Migrate-2025-04`) 356GiB(81%使用)、`/Volumes/pmtiles-store` 128GiB(94%使用)、`stars` 約1.1TB。
+
+**記録上の注意**: 公開スクリプトとそのログ(`/tmp/d182/`)は、この記録を書いた時点では既に消えていた(`/tmp`はOS再起動等で消える)。MD5値と各時刻はスクリプト実行時の記録と`stars`上のファイル時刻に基づく。再現・再確認が必要なら、`stars`上の`ls -l --time-style=full-iso`とローカルのMD5を取り直すこと。
+
+**バックアップと未決の整理**(いずれもHidenoriさんの明示承認が出るまで削除しない):
+- `stars`上: `*.pre-1.7go-20261001`(elevation 255GB、lineage 207MB)
+- `/Volumes/pmtiles-store/mapterhorn-japan-bridge.pmtiles.pre-wallfix-20261001`(274.8GB、pmtiles-storeの空きが128GiBしかない)
+- `hfu-mapterhorn/pipelines/bundle-store-setaside/`(約254GB、1.6号ローカルコピーと旧壁修正ファイル)

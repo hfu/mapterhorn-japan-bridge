@@ -84,12 +84,12 @@ directory key the whole store is organized under.
   Patched live 2026-09-19 for a real, nationwide "壁" (wall) 3D-terrain
   artifact traced to a genuine upstream Copernicus GLO-30 inventory gap
   (D174-D178) — see `HANDOVER.md`'s current top section for the full arc.
-- **1.7号 — minted 2026-09-24, national build running now.** Same source
+- **1.7号 — minted 2026-09-24, national build complete & published 2026-10-02.** Same source
   data as 1.6号 again (not a data-update generation — Hidenori's own
   decision to keep 2号 reserved for that), bundling D180's coastal
   seam-blur fix and D182's z13-z16 wall extension. `generation_id`
-  `01M39W0T76QKN3GYJCPWX5MDHM`. See `HANDOVER.md`'s current top section
-  for exactly what's running and what's left.
+  `01M39W0T76QKN3GYJCPWX5MDHM`. Lineage (207MB) live on `stars` since
+  2026-10-01 23:33 JST, elevation (274.8GB) since 2026-10-02 06:40 JST (D187).
 - **2号** — the real next-*data* build, gated on GSI shipping a new DEM1A
   quarterly update. Now launches AFTER 1.6号 AND 1.7号, not before. Working
   estimate: end of November 2026.
