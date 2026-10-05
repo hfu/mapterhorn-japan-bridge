@@ -4717,7 +4717,8 @@ TileJSONは両アーカイブとも200。竹島はD182修正前は204だった�
 
 **記録上の注意**: 公開スクリプトとそのログ(`/tmp/d182/`)は、この記録を書いた時点では既に消えていた(`/tmp`はOS再起動等で消える)。MD5値と各時刻はスクリプト実行時の記録と`stars`上のファイル時刻に基づく。再現・再確認が必要なら、`stars`上の`ls -l --time-style=full-iso`とローカルのMD5を取り直すこと。
 
-**バックアップと未決の整理**(いずれもHidenoriさんの明示承認が出るまで削除しない):
-- `stars`上: `*.pre-1.7go-20261001`(elevation 255GB、lineage 207MB)
-- `/Volumes/pmtiles-store/mapterhorn-japan-bridge.pmtiles.pre-wallfix-20261001`(274.8GB、pmtiles-storeの空きが128GiBしかない)
-- ~~`hfu-mapterhorn/pipelines/bundle-store-setaside/`(約254GB、1.6号ローカルコピーと旧壁修正ファイル)~~ → 2026-10-05にHidenoriさんの明示承認で削除済み。1.6号相当ファイルは`stars`上の`.pre-1.7go-20261001`と同一サイズ(272,864,950,554 B / 216,946,594 B)で残っていることを確認してから削除。slate本体の空きは356GiB→610GiB
+**バックアップの整理**(2026-10-05、Hidenoriさんの明示承認で全て削除済み):
+- `hfu-mapterhorn/pipelines/bundle-store-setaside/`(約254GB): 1.6号相当ファイルが`stars`上の`.pre-1.7go-20261001`と同一サイズ(272,864,950,554 B / 216,946,594 B)で残っていることを確認してから削除。slate本体の空きは356GiB→610GiB
+- `/Volumes/pmtiles-store/mapterhorn-japan-bridge.pmtiles.pre-wallfix-20261001`(274.8GB): 削除。pmtiles-storeの空きは128GiB→384GiB
+- `stars`上の`*.pre-1.7go-20261001`(elevation 272.9GB、lineage 207MB): 削除。`stars`の空きは約1.1TB→1.3TB
+- **帰結**: 1.6号相当のアーカイブはこれで`stars`・ローカルのどこにも残っていない。1.6号へ戻す必要が生じた場合は再ビルドになる。1.6号のgeneration(`01M2EAPPYXT8RWNC6TXBRT36JE`)の`aggregation-store/`は削除時点でローカルに残っているが、そこから先(downsampling以降)を再現できるかは未検証。現行の1.7号は`stars`上とローカル`bundle-store/`の2か所にある
