@@ -4720,4 +4720,4 @@ TileJSONは両アーカイブとも200。竹島はD182修正前は204だった�
 **バックアップと未決の整理**(いずれもHidenoriさんの明示承認が出るまで削除しない):
 - `stars`上: `*.pre-1.7go-20261001`(elevation 255GB、lineage 207MB)
 - `/Volumes/pmtiles-store/mapterhorn-japan-bridge.pmtiles.pre-wallfix-20261001`(274.8GB、pmtiles-storeの空きが128GiBしかない)
-- `hfu-mapterhorn/pipelines/bundle-store-setaside/`(約254GB、1.6号ローカルコピーと旧壁修正ファイル)
+- ~~`hfu-mapterhorn/pipelines/bundle-store-setaside/`(約254GB、1.6号ローカルコピーと旧壁修正ファイル)~~ → 2026-10-05にHidenoriさんの明示承認で削除済み。1.6号相当ファイルは`stars`上の`.pre-1.7go-20261001`と同一サイズ(272,864,950,554 B / 216,946,594 B)で残っていることを確認してから削除。slate本体の空きは356GiB→610GiB
