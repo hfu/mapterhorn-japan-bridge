@@ -596,7 +596,15 @@ need Hidenori's explicit go at the time.
   11 MB/s before, so a 275 GB archive should take roughly 50 minutes
   instead of 6.6 hours. Not yet measured: the write speed of `stars`'s own
   disk and the ssh cipher ceiling (the test was CPU-visible at 10.9 s
-  user time). Judge by the first real transfer. Note: any stored
+  user time). Judge by the first real transfer. **Internet side
+  (measured 2026-11-01, the router swap does not change it)**: 19 ms
+  latency, 0% loss; upload about 9.7 MB/s (77 Mbps) to a nearby CDN
+  edge; download about 7.8 MB/s (62 Mbps) from a single stream to France
+  and about 46-63 Mbps from the Source Cooperative bucket (overhead-
+  limited probes, treat as rough). So stage C uploads are likely bound
+  by the WAN line at roughly 60-80 Mbps, not by the LAN: about 100 GB of
+  changed GeoTIFFs would take on the order of 3 hours. Hidenori's ISP
+  plan speed is not recorded here. Note: any stored
   `192.168.11.x` address is now stale; `.local` names still resolve.
 - ⬜ **Upstream staging on slate.** `process_pack.py` refuses to start
   unless `src/1z`, `src/1`, `src/1-skip`, `dst/1` are empty. Measured
@@ -655,9 +663,15 @@ need Hidenori's explicit go at the time.
   `--mount /Volumes/Migrate-2025-04:w` (without the mount, bind mounts
   are silently empty), and confirm the `gmldem2tif:latest` image exists
   in that VM (rebuild from `unopengis/gmldem2tif` if not).
-- ⬜ **Source Cooperative login.** Hidenori runs `source-coop login`;
-  verify with `aws s3 ls s3://smartmaps/japan-geotiff-dem/ --profile source-coop`
-  (checked 2026-11-01: "No cached credentials found").
+- ✅ **Source Cooperative login (2026-11-01).** Hidenori runs
+  `source-coop login`; verify with
+  `aws s3 ls s3://smartmaps/japan-geotiff-dem/ --profile source-coop`.
+  Lesson: a login done inside a **Screen Sharing** session did not leave
+  a credential cache that Claude's shell (or even a later check) could
+  see; the same login over **ssh** wrote
+  `~/Library/Caches/source-coop/credentials/_default.json` and worked.
+  Do the login over ssh. Tokens last about 1 hour: expect to repeat it
+  during a long upload.
 - ⬜ **Toolchain fingerprint (D170).** Record `gdalinfo --version` and the
   PROJ version now and compare at launch. Cross-generation reuse
   fingerprints cover inputs, not the producer; reuse is only safe if
