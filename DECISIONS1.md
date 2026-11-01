@@ -4785,3 +4785,11 @@ upstream code, so each needs Hidenori's go before implementation.
 would not reach the Source Cooperative package. Revisit after the base
 station is swapped (re-measure link speed) and after the first real GSI
 update arrives.
+
+**Addendum (2026-11-01, same day)**: Hidenori replaced the router. Result:
+slate `en0` `1000baseT`, `stars` `eth0` 1000 Mb/s, subnet now
+`192.168.50.0/24`; public `stars.optgeo.org` unaffected (tile 200, TileJSON
+200). Measured about 89 MB/s over ssh (2 GB in 22.6 s) versus about
+11 MB/s before, an eightfold gain; the 275 GB publish transfer should drop
+from about 6.6 h to roughly 50 minutes (to be confirmed on a real
+transfer). `PLAN.md` section 8.4 updated.

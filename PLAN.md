@@ -587,17 +587,17 @@ negotiate 100 Mbps (see 8.4).
 Status as of 2026-11-01. Items marked "approval" delete or move data and
 need Hidenori's explicit go at the time.
 
-- ⬜ **Network.** Measured 2026-11-01: slate `en0` is `100baseTX`, `stars`
-  `eth0` is 100 Mb/s, both on `192.168.11.0/24` via gateway
-  `192.168.11.1` (the WiFi base station). Hidenori plans to replace the
-  base station on 2026-11-01. After the swap, require **1000 Mb/s on
-  both ends** (`ifconfig en0 | grep media` on slate;
-  `cat /sys/class/net/eth0/speed` on stars) and measure a real transfer
-  before trusting it. If a link still negotiates 100 Mb/s, suspect the
-  cable (needs Cat5e or better) or the switch port. Expected gain:
-  ~6.6 h -> well under 1 h for a 275 GB archive. It also helps the
-  Source Cooperative uploads in stage C only to the extent the LAN was
-  the bottleneck (the WAN uplink is unaffected).
+- ✅ **Network (done 2026-11-01).** Before: slate `en0` `100baseTX`, `stars`
+  `eth0` 100 Mb/s (D188). Hidenori replaced the router the same day.
+  After: slate `1000baseT`, `stars` `eth0` 1000 Mb/s, new subnet
+  `192.168.50.0/24`, public `stars.optgeo.org` still serves (tile 200,
+  TileJSON 200). Measured LAN throughput over ssh to `stars`
+  (2 GB, discarded on arrival): 22.6 s, about 89 MB/s, versus about
+  11 MB/s before, so a 275 GB archive should take roughly 50 minutes
+  instead of 6.6 hours. Not yet measured: the write speed of `stars`'s own
+  disk and the ssh cipher ceiling (the test was CPU-visible at 10.9 s
+  user time). Judge by the first real transfer. Note: any stored
+  `192.168.11.x` address is now stale; `.local` names still resolve.
 - ⬜ **Upstream staging on slate.** `process_pack.py` refuses to start
   unless `src/1z`, `src/1`, `src/1-skip`, `dst/1` are empty. Measured
   2026-11-01 in `japan-geotiff-dem-repo`: `src/1z` holds 25
