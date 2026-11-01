@@ -635,10 +635,20 @@ need Hidenori's explicit go at the time.
   (3) `verify` compares MD5 (ETag), not only size. First prove that
   `gmldem2tif` output is byte-deterministic: reconvert a few already
   published meshes (the 613 zips in `src/1`) and compare against the
-  published MD5s. Without determinism, an MD5 comparison produces false
-  "changed" results and the guard has to fall back to comparing decoded
-  pixels.
-- ⬜ **Docker/colima on slate.** No daemon is running. `colima list`
+  published MD5s. **Determinism proven 2026-11-01**: re-converting 40
+  packs (1,618 meshes, DEM1A 2025-04-23 and 2026-06-03 vintages) gave
+  1,618/1,618 byte-identical GeoTIFFs versus both the existing `dst/1`
+  files and the published MD5s in the bridge's `file_list.csv.gz`, so an
+  MD5 comparison is a sound change detector. Speed reference: 1,618
+  meshes in 3 min 47 s with 4 workers in a 6-CPU/8 GiB colima VM, about
+  7 meshes/s, so converting all ~291k meshes without `skip-published`
+  would take on the order of 11-12 hours there (scales with CPUs).
+- ✅ **Docker/colima on slate (2026-11-01).** Started profile `default`
+  with 6 CPU, 8 GiB and `--mount /Volumes/Migrate-2025-04:w`; the
+  `gmldem2tif:latest` image is present and the mount works (a full
+  convert run succeeded). Raise CPUs/memory for the real run if RAM
+  allows (slate has 16 GB and other jobs run on it). Original note:
+  no daemon was running. `colima list`
   shows profile `default` (2 CPU, 2 GiB, 100 GiB) and `odm` (8 CPU,
   12 GiB, 60 GiB, the current docker context). Pick or create a profile
   sized for national conversion, start it with
