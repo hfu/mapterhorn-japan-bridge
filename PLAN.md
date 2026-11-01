@@ -33,7 +33,7 @@ updated whenever a new generation starts:
 | 1.5号 | `01M1MKD73P0KDT719H21NJV9VR` | **Mission complete (D145/D146), 2026-09-06.** Both goals achieved: D95 namespace separation validated at national scale, lineage feature implemented/published/extended to z4. elevation (314.66GB) + lineage (204.6MB) both live on stars, verified clean. Worker count fixed at **3, permanently, for both 1.5号 and 2号 (D130/D131)**. 1号 untouched throughout. See DECISIONS.md D124-D146 for the full runbook and PLAN.md §9 for lessons handed to 2号 |
 | 1.6号 | `01M2EAPPYXT8RWNC6TXBRT36JE` (minted 2026-09-14) | **LAUNCHED 2026-09-17 (D173), then patched live 2026-09-19 (D174-D178, the "壁" wall fix).** Same source data as 1.5号, plus (a) D165's own fixes including the live nodata/alpha bug, (b) land-area maxzoom upsampling (D149-151 design, corrected and implemented as D166 after a design review caught the original plan's `resolve_layer()` fix would have broken ~half the national downsampling pyramid). D165's remaining 5 findings all fixed and tested (D167). ID minted 2026-09-14 into `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION`. Small real dress-rehearsal (D168), then the full national build (D169, zero errors across ~17 hours), then final assembly — `bundle.py` → `merge_japan_bundles.py` → `pmtiles cluster` → z0-7 splice → integrity verification (D172; elevation clean, lineage has a pre-existing 116-tile z8 orphan gap also present in 1.5号's own archive, tracked not fixed), then visual verification against 5 real-world locations (D172, all positive, including Fuji's summit elevation within 3.5m of the real 3776m), then the `stars` publish itself (D173): both `mapterhorn-japan-bridge.pmtiles` (272.9GB, elevation) and `mapterhorn-japan-bridge-lineage.pmtiles` (217MB) transferred, MD5-verified, atomically swapped live, confirmed via public TileJSON/tile URLs. Old 1.5号 files preserved as dated backups on `stars`, not deleted. **D174-D178, post-launch**: a visual spot-check of remote islands (Hateruma, Kuba-jima/Senkaku) found a real, nationwide "壁" artifact (13.2% of z9 land tiles nationwide affected) traced to a genuine upstream Copernicus GLO-30 inventory gap (not a curation bug, not fixable by re-downloading). Two independent Opus design reviews caught real blockers in the proposed fix (foreign-land contamination risk, an 85.9M-tile scope explosion, a genuine orphan-generating bug). Staged fix (z8-z12 only, GLO-30-inventory-masked, top-down parent-gated synthetic 0m fill) implemented as committed pipeline code (`hfu-mapterhorn/pipelines/build_wall_fix_archive.py`), run for real against `bundle-store/`, verified clean (`check_pmtiles_integrity.py`: zero orphans across 3,621,677 tiles), and published live to `stars` (D178) -- both originally-reported positions confirmed fixed via the public endpoint. z13+ extension explicitly deferred, not forgotten (no browser access this session to empirically confirm necessity). |
 | 1.7号 | `01M39W0T76QKN3GYJCPWX5MDHM` (minted 2026-09-24) | **Same source data as 1.6号 again** (not a GSI data-update generation -- Hidenori's explicit naming decision, 2026-09-24: "2号はデータ更新を反映したときに使いたい", so this pipeline-only fix round gets its own label instead of overloading 2号, matching the 1.5号/1.6号 precedent of same-data-different-pipeline generations). Bundles two fixes, both verified before this ID was minted: (a) D180's coastal Gaussian-blur-seam split (`aggregation_merge.py`, two independent Opus design reviews converged on the design; verified bitwise-identical to D116's own non-regression case, both synthetic and real production data, plus a measured real improvement matching review predictions exactly -- see D180's own addenda), (b) D182's z13-z16 wall extension (already built and merged against 1.6号's own archive as a standalone proof of concept; the SAME synthetic-fill mechanism will be re-run against 1.7号's own fresh archive once built, per its own runbook). ID added to `utils.LAND_UPSAMPLE_ZOOM_BY_GENERATION` (target z16, same as 1.6号) in the same commit as minting, per D166 finding #3's own discipline. **Full pipeline completed 2026-09-30 through 2026-10-01, both fixes (D180 coastal blur + D182 z13-z16 wall) verified real-data clean, both datatypes public on stars (lineage 2026-10-01 23:33 JST, elevation swapped live 2026-10-02 06:40 JST after MD5 match; D187)** — elevation 274.8GB (67,311,837 tiles, z0-16), lineage 207MB, live checks passed (Fuji/Shiripa real data, Takeshima wall fixed). Backups preserved on stars (`.pre-1.7go-20261001`) and local pmtiles-store. |
-| 2号 | *(not started)* | Gated on GSI's next quarterly DEM1A update (section 1). **Live-checked 2026-09-06: still 2026-07-31, no new update yet**. Now launches after 1.6号 AND 1.7号, not before -- reserved exclusively for when a real GSI DEM1A data update actually lands (Hidenori's explicit 2026-09-24 decision, see 1.7号's row above). |
+| 2号 | *(not started)* | Gated on GSI's next quarterly DEM1A update (section 1). **Live-checked 2026-11-01: still 2026-07-31, no new 1m/5m update yet** (runbook: section 8). Now launches after 1.6号 AND 1.7号, not before -- reserved exclusively for when a real GSI DEM1A data update actually lands (Hidenori's explicit 2026-09-24 decision, see 1.7号's row above). |
 
 ## 1. What triggers 2号
 
@@ -498,231 +498,259 @@ lack LERC support). Not decided yet.
   on one Canada tile), revisit only if `source_to_cog.py` work above
   actually starts.
 
-## 8. 2号 launch readiness checklist (2026-09-06 rewrite, post-1.5号)
+## 8. 2号 launch runbook (rewritten 2026-11-01, D188)
 
-**この節は2026-09-01時点(「1号完了まで待つ」フェーズ)の古い版を全面刷新したもの。**
-当時の「今すぐ着手してよい/1号完了まで待つべき」という枠組みは、1号・1.5号
-両方が完了した今では意味をなさない。1.5号自身の存在理由(§6/§9)が「2号では
-コードを変更せず高速に流すだけにする」ことだったため、この節は**2号を実際に
-起動する前に確認すべきことのチェックリスト**として書き直す。**このセッションでの
-作業範囲はこのチェックリストの確認・整理のみ——2号自体の起動(新しい
-generation_id発行・aggregation開始)は別セッションで行う合意のまま変更なし。**
+The previous §8 (a 2026-09-06 readiness checklist that grew through
+2026-10-01) is archived verbatim in `PLAN-archive.md`. Everything in it
+that was still open is carried into the pre-flight list below or was
+closed by D163-D187. Read this section top to bottom on launch day.
 
-**コード面: 実質的に準備完了**
-- ✅ D95/D124の名前空間分離(`get_pmtiles_folder()`のlayer/datatype/generation_id分離) — 1.5号で全国スケール実装・検証済み。2号は新しいgeneration_idを発行するだけでよい。
-- ✅ lineage機能(D93/D94/D96) — 1.5号で実装・公開済み。D144でclusteringもコードに組み込み済み。
-- ✅ lineageの低ズーム拡張(D146、`lineage_extend_low_zoom.py`) — 2号でも標準手順として実行すること(PLAN.md §9参照、実装済み・再現性確認済み)。
-- ✅ ワーカー数(`AGGREGATION_WORKERS=3`固定、D131) — コードのデフォルト値として組み込み済み、2号は環境変数指定不要。
-- ✅ `bundle.py`のpmtiles-storeレース修正(D37/D44) — 恒久修正済み、2号は自動的に恩恵を受ける。
-- ✅ **JGD2011→JGD2024座標系変更(§1で発見、2026-09-07調査・2026-09-09解決・D147)**:
-  実データは既に`srsName="fguuid:jgd2024.bl"`だが、EPSGは新コードではなく
-  `EPSG:6668`自体を「JGD2011」から「JGD2024」へリネームする形で決着させた
-  (`OSGeo/PROJ`コミット`7f1fdb39`、v12.055、2026-04)。番号が変わらないため
-  `gmldem2tif.rb`/`aggregation_reproject.py`とも**対応不要**。詳細は
-  DECISIONS.md D147の2026-09-09追記参照。
+### 8.1 What 2号 is
 
-**2026-09-12の再チェックで判明**: 以下2項目のうち1つ(5m/10m破損チェック)は
-実際には2026-08-25に既にクローズ済み(D35)だったが、その後の`PLAN.md`更新
-セッションで一度も反映されず「未解決」のまま3週間近く放置されていた。§3を
-参照して修正済み——このチェックリスト自体、次に触る前に本当に未解決かどうか
-D番号まで遡って確認すること(タイトルだけで信用しない)。
+2号 is the first generation built from **new GSI source data**. Every
+generation between 1号 and 1.7号 re-ran the same source data through a
+changed pipeline (1.5号: structure + lineage, 1.6号: nodata fix + land
+upsampling, 1.7号: coastal-blur fix + z13-z16 wall extension). 2号 is
+the only one that changes the data (D183). The pipeline code is not
+supposed to change for it: a fresh `generation_id`, the 1.7号 code, and
+a fast run. 1.7号 (`01M39W0T76QKN3GYJCPWX5MDHM`) is the baseline that
+2号's cross-generation reuse (D163) compares against.
 
-**未解決・2号起動前に確認が必要な項目**:
-- ✅ **5m/10mデータの破損チェック — 実は2026-08-25(D35)に完了済み(§3参照)**:
-  `screen_source.py`で`jpnational10`/`jpnationalsea`は全数ゼロエラー、
-  `jpnational5`の2,062件0%validは別現象(正当な空メッシュ)と判明・除外済み。
-  2026-09-12にscreen_results_*.csvの生データで再検証し数字が一致することを
-  確認済み。**2号起動前の追加作業は不要。**
-- ✅ **dirty-tracking(差分再処理)——安全な設計を実装・小規模検証済み(D163、
-  2026-09-12)**: D57が撤去した世代間再利用を、D119/D120の`.done`マニフェスト
-  フィンガープリント機構を流用して再設計・実装。`aggregation.csv`の内容一致
-  だけでなく、各ソースファイル自身のMD5(`file_list.csv.gz`由来)まで突き
-  合わせ、かつ前世代の出力ファイルが実在することを確認した場合のみ、その
-  ファイルを現世代自身のフォルダにコピーして新規`.done`を発行する(前世代への
-  裸の参照は一切作らない)。D18/D35型の「同名・同サイズだが中身が違う」ケース
-  も明示的にテストし、正しく再利用を拒否することを確認済み。1.5号の全6,373件
-  の`.done`マニフェストにもMD5フィンガープリントを後付け済み(`backfill_
-  aggregation_md5_fingerprints.py`、バイナリ成果物は一切触れていない)——
-  これにより2号は起動した瞬間から1.5号との比較が可能。**小規模(単一/複数
-  ソース、両datatype、正常系・異常系)は実データで検証済み。全国規模での
-  実地検証は2号自身の起動時が初めて**——詳細はDECISIONS1.md D163参照。
-- ⚠️ **GSIの次回更新確認(§1)**: 2026-09-11時点でもまだ2026-07-31が最新
-  (新規更新なし、ライブ確認済み)。想定は2026年11月末——起動直前に必ず
-  再確認すること。
+The duty behind it (D160): `japan-geotiff-dem`'s `latest_file_list.csv.gz`
+is also what upstream Mapterhorn's `jpdem1a` reads. Publishing the
+refreshed list is the hand-off to Oliver Wipfli; building 2号 from the
+same list is how we find out what breaks in it.
 
-**2026-09-13、Opusによる本番パイプライン全体の独立レビューで新たに判明
-(D165)**: Hidenoriさんの方針(「Claudeの指摘が晴れたらOpusにもレビュー
-させる、ドレスリハーサルはバグ潰しが万全になってから」)に沿って実施。
-10件の確証済み指摘のうち5件は修正・実データ検証済み
-(**うち1件は既に公開中の1.5号データに実害あり**——`aggregation_merge.py`
-がnodataを常に偽の標高0mとして0埋めしており、alphaマスク機構が死んでいた。
-修正・検証済み。#7の`remove_dangling_pmtiles.py`のD146誤検出もD166で
-合わせて修正済み)。残り5件はD167(2026-09-14)で全件修正・実データ検証済み:
-- ✅ `aggregation_run.py`の完了判定が鮮度・出力実在を確認しない(D18/D35型
-  の再発リスク、#3) → `done_is_current()`+出力実在チェックに修正済み。
-- ✅ `downsampling_run.py`の完了判定も同様に自分の出力実在を確認しない(#5)
-  → 同様に修正済み。
-- ✅ lineageの`compute_provenance()`がラスタ全体を無圧縮でメモリに読み込む
-  (最大ワーカー1つで約10.7GiB、D129のクラッシュと同じ機構、#6) →
-  512pxウィンドウ処理に書き換え、実データ(5ソース・33018×33018px、約
-  10.9億ピクセル)で新旧実装の差分0を確認。1.6号のアップサンプリングで
-  一部アイテムが32768×32768pxに達する点を踏まえると、放置していれば
-  1.6号でむしろ悪化するところだった。
-- ✅ `downsampling_run.py`のtmpフォルダがdatatypeでスコープされていない(#8)
-  → 修正済み。
-- ✅ 古いcoveringが削除されず、2ワーカーが互いの出力を削除しうる
-  (PLAUSIBLE、#10) → 修正済み。**ただし最初の修正案には、同一世代への
-  再カバリング実行(変更なしの再実行を含む)のたびに既存アイテム全ての
-  `.done`を誤って削除してしまう重大な回帰バグがあり、Opusのコードレビュー
-  で実行前に検出・修正**(詳細はDECISIONS1.md D167参照)。
+### 8.2 Trigger status (live check 2026-11-01)
 
-詳細・各項目の対応方針はDECISIONS1.md D165(元の発見)・D167(修正)参照。
+GSI's update-info page: the latest 1m and 5m (laser) update is still
+**2026-07-31**; the latest 5m (photogrammetry) update is 2026-02-27. Past
+cadence: 2025-07-31, 2025-10-31, 2026-02-27, 2026-07-31 (3 to 5 months
+apart), so the next one is plausible from late November onward.
 
-**方針転換(2026-09-13、Hidenoriさんの決定)**: 当初想定していた
-「大改修→ドレスリハーサル→1.7号」の流れを**「大改修→アップサンプリング
-実装→ドレスリハーサル→1.6号」に変更**——1.7号は未発番のまま据え置き、
-D149-151で既に使われていた「1.6号」という呼称を次の実launchの正式名称
-として確定した。1.6号の「アップサンプリング実装」自体はD166として
-実装・設計レビュー・コードレビュー・実データ検証済み(詳細はDECISIONS1.md
-D166参照)——当初案(`resolve_layer()`を位置だけで一致判定)はOpusの設計
-レビューにより実データで検証した結果、アップサンプル無関係に全国の
-downsamplingピラミッドの約半分を壊す設計ミスと判明し、実装前に修正済み。
-**`LAND_UPSAMPLE_ZOOM_BY_GENERATION`テーブルは1.6号自身のgeneration_id
-発番待ちでまだ空。D165の残り5件は2026-09-14(D167)に全件対応済み——
-ドレスリハーサル・1.6号本launchの残る前提条件はこのID発番のみ**、という
-のがHidenoriさんの指示した流れ。
+One new notice since the last check: on **2026-10-07** GSI paused and
+replaced the 1m DEM for four 2nd-order meshes (473173, 483101, 483102,
+483103) because of a data defect, and replaced the Kyushu regional
+package (confirmed 2026-10-08). **Hidenori's decision (2026-11-01): ignore
+it for now.** It needs no separate action because 2号's fresh download
+picks up the replaced files anyway. Until then, our `jpnational1` Kyushu
+data predates the replacement. (Details above come from a WebFetch
+summary of the page, not a reading of the original; confirm mesh codes
+against the page before relying on them.) Plain `curl` against the page
+returns 403; use WebFetch or a browser for the check.
 
-**2号起動前に片付ける小口の整理(D160、2026-09-11)**:
-いずれも2号の成否を左右するものではないが、放置すると次のセッションを
-誤誘導する/事故を誘発する類のもの。**2号ローンチ以前に対応を済ませる**、
-というのがHidenoriさんの指示。
-- ✅ **古い上流クローン`github/mapterhorn`の整理**(2026-09-11完了、
-  Hidenoriさんの承認を得て削除): 123MB、最終コミット2026-06-10の素の
-  upstreamクローンが`github/hfu-mapterhorn`(実際の作業用fork)の隣に
-  残っており、D156と同種の「隣に紛らわしいものがある」事故の温床だった。
-  削除前に未コミット変更・未pushコミット・stashのいずれも無いこと、
-  remoteが到達可能で再クローン可能なことを検証済み。上流の内容が必要な
-  場合は`hfu-mapterhorn`側の`upstream` remote(`git fetch upstream`)を
-  使うこと——そちらが唯一の正しい参照経路になった。
-- ✅ **`START_HERE.md`の機材表の更新**(2026-09-11完了): `optgeo/japan-geotiff-dem`
-  の所在をslate(`github/japan-geotiff-dem-repo`)に修正。あわせて
-  「Everything computational happens on slate **over SSH**」という
-  D156の原因になった断定を、「まず`hostname`で確認せよ」という形に
-  書き換え、ディスクを`diskN`ではなくマウントポイントで呼ぶよう明記
-  (D158でdisk6→disk4に変わった実例つき)。
-- ✅ **`check_disk_headroom.py`の閾値見直し**(2026-09-11完了、
-  `hfu-mapterhorn` commit `216fb22`): 既定を警告300GB/critical 120GBへ。
-  1.5号の実成果物から逆算した根拠(merge 237.4GiB in→out、splice後
-  240.4GiB)をコード内コメントに明記。あわせて**圧迫時にscratch木の
-  サイズを併記**する機能を追加——D157の真因(1週間前のクラッシュ由来の
-  孤立scratch 578GB)は、ボリューム単位の空き容量だけ見ていては実データと
-  区別できなかったため。
-- ✅ **公開スクリプトをtransfer-then-delete順に変更 — 実は1.6号自身の
-  公開(D173, 2026-09-17)で既に実施・検証済み**(2026-09-20の本節再チェック
-  で判明。このチェックリスト自体、D178の壁修正公開でも同じ手順が繰り返し
-  実証されている): `.new`で`scp`転送→ローカル/リモートMD5一致確認→
-  同一ディレクトリ内で旧ファイルを日付付きバックアップ名へ`mv`→`.new`を
-  正式名へ`mv`、の2段atomic renameへ移行済み。`martin`はfsウォッチで
-  数秒以内に追従、再起動不要。D173(elevation/lineage)・D178(壁修正済み
-  elevation)の計3回、実データで検証済み。**2号の公開作業もこの手順を
-  そのまま使えばよく、新規実装は不要。**
+### 8.3 Stages and owners
 
-**2026-09-20 再チェックで新たに判明した項目(2号起動前に確認・対応が必要)**:
-- ⬜ **[新規] 壁修正(D174-D178)の2号への再適用を、2号自身の標準launch
-  手順に組み込むこと**: `build_wall_fix_archive.py`
-  (`hfu-mapterhorn/pipelines/`, commit `d7eedee`)はgeneration非依存
-  (`--elevation`/`--overview`を明示指定する設計)なので機構としては
-  再利用できるが、現状は「1.6号の後始末」としてのみ記録されており、
-  「`merge_japan_bundles.py`の後・`stars`公開の前に必ず挟む標準
-  手順」としてはどこにも明文化されていなかった。**2号は新しいsource
-  データで`jpnationalsea`のカバレッジを一から作り直すため、対策を
-  講じなければ壁は2号でも再発する。**
+| # | Stage | Who | Notes |
+|---|---|---|---|
+| A | Detect the update | Hidenori / scheduled check | Not automated yet. |
+| B | Download region packs from GSI | **Hidenori**, by hand | Browser, session-bound, no bulk API and no diff API: it is a full re-download per product. Serial, one pack at a time. |
+| C | `japan-geotiff-dem`: extract, skip-published, convert, sync, verify | Claude, **on slate** | `scripts/process_pack.py <res> <zone> <pack>` per pack, as packs land (overlaps with B). Then `just filelists <res>`, changelog entry, `just docs`. Needs `colima start -f --mount /Volumes/Migrate-2025-04:w` and a fresh `source-coop login` by Hidenori (tokens last about 1 hour). |
+| C2 | Refresh the bridge's own copy of the file list | Claude, slate | `hfu-mapterhorn/source-catalog/jpnational{1,5,10}/file_list.csv.gz` is a **git-tracked local copy**, not fetched from the bucket (jpnational1: 291,779 rows, last regenerated 2026-08-25 by hand, D18 commits). No generator script exists in `hfu-mapterhorn`; write one and commit the regenerated lists, otherwise `source_download.py` keeps downloading the old set. |
+| D | `hfu-mapterhorn` pipeline | Claude, slate | Run the "Pipeline" block of `CLAUDE.md` in order; wall fix and splice per 8.6. |
+| E | Publish to `stars` | Claude, after Hidenori's explicit go | 8.7. |
 
-  **2026-09-20時点で確定できる、実行可能なランブック**(D177で実際に
-  検証済みのコマンド列そのもの。プレースホルダは2号の実パスに置換
-  するだけでよい、コード変更は不要):
-  ```
-  # 1. z0-7グローバルオーバービュー自身の欠損を埋める
-  #    (D174のfill_eligible()はGLO-30インベントリのみに依存し、
-  #    generationの実データを参照しない — オーバービュー自体が
-  #    1.6号公開後に変わっていなければ bundle-store/wall-fix-z0-7.pmtiles
-  #    をそのまま再利用してよい。2026-09-20時点のベースラインmd5:
-  #    e66ed06ad81f15d9309cc98d2c0f0b95 (/Volumes/Migrate-2025-04/
-  #    global-overview-backup.pmtiles) — 2号着手時にこれと比較し、
-  #    一致すればstep 1を丸ごとスキップして良い。)
-  uv run python build_wall_fix_archive.py z0-7 \
-    --overview /Volumes/Migrate-2025-04/global-overview-backup.pmtiles \
-    --out bundle-store/wall-fix-z0-7.pmtiles
+**Who may do what upstream (confirmed 2026-11-01).** `optgeo/japan-geotiff-dem`
+is Hidenori's own repo (`origin` = `https://github.com/optgeo/japan-geotiff-dem.git`,
+`main` in sync with `origin/main`), so Claude may edit its scripts, run
+its `just` recipes and `scripts/*.py`, run `aws ... --profile source-coop`,
+and commit/push, following that repo's own `CLAUDE.md`. Human-only steps:
+`source-coop login` (tokens last about 1 hour), downloading packs from
+GSI, and anything Hidenori reserves for himself. Never run
+`source-coop creds` (prints secrets), never add `--delete` to `sync`
+(D9), and ask before inventing a `quadrans` upload (D6). Bucket writes
+(`sync`, `filelists`, `docs`) are public-facing: Hidenori gives the
+go-ahead per batch at launch, not per file. State on 2026-11-01:
+`source-coop` has **no cached credentials** (login needed first) and no
+docker daemon is running (8.4).
 
-  # 2. 2号自身のmerge済みelevationアーカイブに対してz8-z12 fillを作る
-  uv run python build_wall_fix_archive.py z8-z12 \
-    --elevation bundle-store/mapterhorn-japan-bridge.pmtiles \
-    --overview /Volumes/Migrate-2025-04/global-overview-backup.pmtiles \
-    --z0-7-fill bundle-store/wall-fix-z0-7.pmtiles \
-    --out bundle-store/wall-fix-z8-z12.pmtiles
+**Is the Source Cooperative package guaranteed to be corrected?** Only
+for meshes whose filename changes. The mechanism is: `convert` -> `sync`
+-> `just filelists <res>` (rebuilds `latest_file_list.csv.gz` and
+`obsolete_file_list.csv.gz` from the live bucket listing, so the lists
+always equal what is in the bucket; `latest` = newest 8-digit date per
+mesh key, a tie at the newest date aborts) -> changelog + `just docs`.
+That chain is sound for a new-dated file. It silently misses a **same-name
+replacement** (GSI re-issues a mesh under the same filename), because:
+`skip_already_published.py` skips by filename alone, `sync` is
+`--size-only`, and `process_pack.py` verifies sizes only, never content.
+D18 already hit the size-only blind spot once (a corrected file with the
+same byte size as its broken original). Hence the guard in 8.4.
 
-  # 3. 実アーカイブを先頭にしてmerge(メタデータは最初の入力から
-  #    継承される — D174 Major 4の教訓、順序を逆にしないこと)
-  ./pmtiles merge bundle-store/mapterhorn-japan-bridge.pmtiles \
-    bundle-store/wall-fix-z0-7.pmtiles \
-    bundle-store/wall-fix-z8-z12.pmtiles \
-    bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles
+Measured reference points: a full national recompute (aggregation plus
+both downsampling datatypes) took about 17 hours (D169); the 1.7号
+publish transfer took about 6.6 hours because both ends of the link
+negotiate 100 Mbps (see 8.4).
 
-  # 4. 検証(公開前に必ず両方ともパスすること)
-  ./pmtiles verify bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles
-  uv run python check_pmtiles_integrity.py bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles
-  # -> CLEAN、addressed_tiles_countが (2号のz8-z16タイル数) + 8,321 + (2号自身のz8-z12 fill数) と一致することを確認
+### 8.4 Pre-flight (do before GSI ships)
 
-  # 5. 旧ファイルを日付付きで保存してから差し替え(削除しない)
-  mv bundle-store/mapterhorn-japan-bridge.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles.pre-wallfix-<YYYYMMDD>
-  mv bundle-store/mapterhorn-japan-bridge.wallfix.pmtiles bundle-store/mapterhorn-japan-bridge.pmtiles
-  ```
-  z0-7/z8-z12のタイル数は2号の実データ次第で1.6号(8,321/152,267)とは
-  変わりうる — 数字そのものではなく、`check_pmtiles_integrity.py`が
-  CLEANを返すこと、両者を足した`addressed_tiles_count`が一致すること
-  を確認基準とする。D174本文にも「2号で全国規模に信頼して使う前に、
-  孤立した小島の実例1件で検証済みであること」という条件が明記されて
-  いる(既に1.6号で満たされている)。あわせて、D174が検討し不採用と
-  した代替案 Option 1b(`jpnationalsea`の矩形ボックス自体を
-  ~18-48N/120-155Eへ拡大し、そもそもの欠損cellを減らす)を2号の
-  source-catalog更新と合わせて再検討する価値があるかどうかも、2号
-  着手時に判断すること(必須ではない、コスト0の追加緩和策として)。
+Status as of 2026-11-01. Items marked "approval" delete or move data and
+need Hidenori's explicit go at the time.
 
-  **[2026-10-01追記、D186]: 上記ランブックはz8-z12単段のみを前提に
-  書かれているが、D182以降はz13-z16の第三モードも標準手順に含める
-  必要がある。** 1.7号での実施順序: (1) z0-7接合→`mapterhorn-japan-
-  bridge.pmtiles`、(2) z8-z12フィル作成→3方向マージ(本体+z0-7フィル+
-  z8-z12フィル)→中間アーカイブ、(3) **z13-z16フィルは(2)の中間
-  アーカイブを`--elevation`に渡して作成すること**(`build_wall_fix_
-  archive.py`のz13-z16モード自身が「z8-z12フィル済みであること」を
-  要求する——z8-z12フィルで新たに「実在」になったz12タイルもz13-z16の
-  葉ノード候補に含める必要があるため)、(4) 中間アーカイブ+z13-z16
-  フィル→最終マージ。**ディスク見積もりの教訓**: 2段構成では、本体
-  アーカイブ1世代分(1.7号実績で約275GB)が最大3世代分(z0-7接合版・
-  z8-z12修正版・最終版)同時に存在しうる——前の世代をすぐ消さない設計
-  にすると合計800GB超が必要になり、1.7号では実際にこれでディスク
-  枯渇(ENOSPC)を起こした(D186)。**次回この手順を使う際は、着手前に
-  800GB級の空きを確保するか、各中間成果物を検証後すぐ削除する設計に
-  すること。**
-- ⬜ **[新規] `LAND_UPSAMPLE_ZOOM_BY_GENERATION`テーブルへの2号
-  generation_id登録を、ID発番と「同じコミット」で行うこと**
-  (`hfu-mapterhorn/pipelines/utils.py`): D166 finding #3が原因究明した
-  のと同じ事故クラス — テーブルへの追加が`aggregation_run.py`の
-  着手より後になると、既に処理済みのアイテムが永久にupsampleされない
-  まま残る。現状このテーブルには1.6号のIDしか入っておらず、
-  コード内コメントも1.6号固有の記述のまま。2号のIDを追加する際、
-  同じ規律(mint翌日ではなく同一コミット)を再適用すること。
+- ⬜ **Network.** Measured 2026-11-01: slate `en0` is `100baseTX`, `stars`
+  `eth0` is 100 Mb/s, both on `192.168.11.0/24` via gateway
+  `192.168.11.1` (the WiFi base station). Hidenori plans to replace the
+  base station on 2026-11-01. After the swap, require **1000 Mb/s on
+  both ends** (`ifconfig en0 | grep media` on slate;
+  `cat /sys/class/net/eth0/speed` on stars) and measure a real transfer
+  before trusting it. If a link still negotiates 100 Mb/s, suspect the
+  cable (needs Cat5e or better) or the switch port. Expected gain:
+  ~6.6 h -> well under 1 h for a 275 GB archive. It also helps the
+  Source Cooperative uploads in stage C only to the extent the LAN was
+  the bottleneck (the WAN uplink is unaffected).
+- ⬜ **Upstream staging on slate.** `process_pack.py` refuses to start
+  unless `src/1z`, `src/1`, `src/1-skip`, `dst/1` are empty. Measured
+  2026-11-01 in `japan-geotiff-dem-repo`: `src/1z` holds 25
+  `kyushu_okinawa-DEM1-20260603` packs from 2026-08-11 (about 99 GB),
+  `src/1` 613 mesh zips, `dst/1` 34,522 GeoTIFFs (37 GB). Check what is
+  already published (`skip_already_published.py`, `latest_file_list.csv.gz`),
+  then clear (approval). The Kyushu packs are the ones GSI replaced on
+  2026-10-08, so they must not be reused.
+- ⬜ **Where downloads land.** slate's internal disk has only about
+  33 GiB free. Point the browser's download folder at a directory on
+  `/Volumes/Migrate-2025-04` (packs are about 2 GB each, extracted
+  output is much larger). The disks themselves are sufficient: slate
+  already has two 2 TB external SSDs (`/Volumes/Migrate-2025-04`, HFS+,
+  and `/Volumes/pmtiles-store`, APFS); no additional disk is required.
+- ⬜ **Disk plan** (measured 2026-11-01). Free: Migrate-2025-04 610 GiB,
+  pmtiles-store 384 GiB. One generation in pmtiles-store costs about
+  252 GB (aggregation/elevation 185 GB + downsampling/elevation 67 GB;
+  both lineage layers about 0.1 GB). 1.5号, 1.6号 and 1.7号 are all
+  still there (about 750 GB). `source-store/jpnational1` is 308 GB
+  (`5` 24 GB, `10` 4.3 GB, `sea` 5.9 GB). `bundle-store/` currently holds
+  the live 1.7号 archive (275 GB) plus lineage. Proposed, each with
+  approval: (1) delete the 1.5号 generation's aggregation and
+  downsampling layers before 2号 starts; (2) before `bundle.py`, move the
+  1.7号 local archive out of `bundle-store/` (it is live on `stars`);
+  (3) never hold more than two full-size elevation archives at once
+  (D186: three at once is what caused the ENOSPC).
+- ⬜ **Same-name replacement guard (upstream code change, needs
+  Hidenori's go).** Proposed: (1) after `convert`, compare each local
+  `.tif`'s MD5 with the `md5` column of the current
+  `latest_file_list.csv.gz`; a same-name file with a different MD5 is
+  uploaded with an explicit overwrite (`aws s3 cp`, not `--size-only`
+  sync), logged in `logs/*_pack_log.jsonl`, and the lists are rebuilt
+  afterwards; (2) a `--no-skip` mode (or per-pack override) for packs
+  GSI announces as replaced, since `skip-published` cannot see content;
+  (3) `verify` compares MD5 (ETag), not only size. First prove that
+  `gmldem2tif` output is byte-deterministic: reconvert a few already
+  published meshes (the 613 zips in `src/1`) and compare against the
+  published MD5s. Without determinism, an MD5 comparison produces false
+  "changed" results and the guard has to fall back to comparing decoded
+  pixels.
+- ⬜ **Docker/colima on slate.** No daemon is running. `colima list`
+  shows profile `default` (2 CPU, 2 GiB, 100 GiB) and `odm` (8 CPU,
+  12 GiB, 60 GiB, the current docker context). Pick or create a profile
+  sized for national conversion, start it with
+  `--mount /Volumes/Migrate-2025-04:w` (without the mount, bind mounts
+  are silently empty), and confirm the `gmldem2tif:latest` image exists
+  in that VM (rebuild from `unopengis/gmldem2tif` if not).
+- ⬜ **Source Cooperative login.** Hidenori runs `source-coop login`;
+  verify with `aws s3 ls s3://smartmaps/japan-geotiff-dem/ --profile source-coop`
+  (checked 2026-11-01: "No cached credentials found").
+- ⬜ **Toolchain fingerprint (D170).** Record `gdalinfo --version` and the
+  PROJ version now and compare at launch. Cross-generation reuse
+  fingerprints cover inputs, not the producer; reuse is only safe if
+  GDAL/PROJ are unchanged since 1.7号.
+- ⬜ **Commit a publish script.** The 1.7号 publish script and its log
+  lived in `/tmp/d182/` and were gone after the restart. Commit a
+  parameterized version of the 8.7 procedure to `hfu-mapterhorn` and keep
+  its log somewhere durable.
+- ⬜ **One-shot wall-fix chain.** 8.6 as a single script that verifies and
+  deletes each intermediate immediately (D186).
+- ⬜ **Optional: no-change rehearsal.** Mint a throwaway generation ID and
+  run covering plus aggregation with reuse on, against unchanged sources.
+  It exercises D163 at national scale (never done: 1.7号 ran with
+  `DISABLE_AGGREGATION_REUSE=1`) and shows the expected reuse rate
+  before real data arrives. Costs disk (see the plan above).
+- ✅ Carried forward unchanged from earlier readiness work: namespace
+  separation and `generation_id` store layer (D95/D124), lineage and its
+  low-zoom extension (D93/D146), `AGGREGATION_WORKERS=3` default (D131),
+  D165/D167 pipeline fixes, D180 coastal-blur fix, D182/D186 wall fix,
+  JGD2011 -> JGD2024 needs no change (D147), publish procedure (D173/D178/D187).
 
-**インフラ面: 準備完了**
-- ✅ disk5(`/Volumes/pmtiles-store`)は1.5号のままアタッチ継続で問題なし
-  (2026-09-06時点で384Gi/413Gi空き、1.5号のデータと2号のデータは
-  generation_id分離により共存可能)。デタッチ不要。
-- ✅ `source-coop`/`aws`資格情報はslate側にセットアップ済み。
+### 8.5 Launch sequence
 
-**2026-09-20時点のGSI DEM1Aライブ確認**: `https://service.gsi.go.jp/kiban/
-app/data_update_info/`を直接確認、依然として2026-07-31が最新(新規更新
-なし)。11月末という現在の想定と整合。次に確認するのは10月末〜11月頭
-あたりで十分。
+1. Hidenori confirms which products GSI actually updated (1m, 5m laser,
+   5m photogrammetry); only those resolutions are redone.
+2. Stages B and C overlap: as each pack lands, run `process_pack.py`.
+   Do not run two machines on the same zone.
+3. After the last pack: `just filelists <res>`, add the dated changelog
+   entry to `source-coop/README.md`, `just docs`, and tell Oliver (the
+   `mapterhorn/mapterhorn#142` thread) with the list URLs.
+4. Regenerate and commit `hfu-mapterhorn/source-catalog/jpnational*/file_list.csv.gz`
+   from the freshly published `latest_file_list.csv.gz` (stage C2),
+   then in `hfu-mapterhorn/pipelines`: `source_download.py` for each refreshed
+   source, `source_prune_obsolete.py` (D19), `source_bounds.py`,
+   `source_polygonize.py`.
+5. Mint the 2号 ULID **and add it to `LAND_UPSAMPLE_ZOOM_BY_GENERATION`
+   in `utils.py` in the same commit** (D166 finding #3). Value 16, as for
+   1.6号 and 1.7号.
+6. `aggregation_covering.py`, then the K4 roster cross-check (D123/D127:
+   CSV count, `.todo` count, orphans, inconsistencies, duplicate
+   coordinates, two-way match against `source-store`). New source data is
+   exactly when a partial roster/reality break (Tsushima/Goto, D113-D115)
+   is most likely.
+7. `EMIT_LINEAGE=1 uv run python aggregation_run.py` with reuse **on**
+   (unset `DISABLE_AGGREGATION_REUSE`). Sanity-check the reuse rate: the
+   expected churn is roughly one third of files (Oliver's measurement,
+   D42). If the numbers look wrong, fall back to
+   `DISABLE_AGGREGATION_REUSE=1` (about 17 h).
+8. `downsampling_covering.py`, `downsampling_run.py` per datatype,
+   `lineage_extend_low_zoom.py` (after lineage downsampling, before
+   lineage bundle), `bundle.py 1` per datatype, `merge_japan_bundles.py`
+   per datatype. Never trust a `.done` count alone: run
+   `check_downsampling_done_integrity.py` and `check_pmtiles_integrity.py`.
+9. Elevation only: z0-7 splice and the wall fix (8.6).
+10. Visual and numeric spot checks against real data, including areas
+    that changed in the new GSI release plus the fixed landmarks:
+    Shiripa Cape (43.227414N, 140.772436E), the Takeshima wall
+    (37.3953N, 132.1873E), Mt. Fuji summit (35.3606N, 138.7274E).
+11. Publish (8.7) after Hidenori's explicit approval.
+
+### 8.6 Wall fix and z0-7 splice (elevation only)
+
+Order is fixed (D186). Paths are relative to `hfu-mapterhorn/pipelines`.
+`G` = the 2号 final-merge name `bundle-store/mapterhorn-japan-bridge.pmtiles`.
+
+1. Splice: `./pmtiles merge bundle-store/mapterhorn-japan-bridge.z8plus.pmtiles /Volumes/Migrate-2025-04/global-overview-backup.pmtiles G`.
+   The overview's baseline MD5 is `e66ed06ad81f15d9309cc98d2c0f0b95`; if
+   it still matches, the z0-7 fill `wall-fix-z0-7.pmtiles` can be reused.
+2. `uv run python build_wall_fix_archive.py z8-z12 --elevation G --overview <overview> --z0-7-fill bundle-store/wall-fix-z0-7.pmtiles --out bundle-store/wall-fix-z8-z12.pmtiles`
+3. Three-way merge **with the real archive first** (metadata is inherited
+   from the first input, D174): `./pmtiles merge G wall-fix-z0-7 wall-fix-z8-z12 <z8z12fix>`.
+   Verify (`./pmtiles verify`, `check_pmtiles_integrity.py` must be CLEAN),
+   then delete the pre-fill splice archive.
+4. `uv run python build_wall_fix_archive.py z13-z16 --elevation <z8z12fix> --out bundle-store/wall-fix-z13-z16.pmtiles`.
+   The z13-z16 mode requires the z8-z12-filled archive as input.
+5. Final merge `<z8z12fix>` + `wall-fix-z13-z16` -> `<final>`; verify both
+   checks again; delete `<z8z12fix>`; swap `<final>` in. Peak disk:
+   two archives (about 550 GB) plus the 3 GB overview.
+   Counts differ per generation; the acceptance criterion is
+   CLEAN plus `addressed_tiles_count` equal to the expected sum, not
+   1.7号's numbers (final 1.7号 archive: 67,311,837 tiles).
+
+### 8.7 Publish to `stars` (D173/D178/D187)
+
+`publish_cycle.py` stays hard-disabled (D115); publishing is manual.
+1. `scp` to `/home/stars/data/<name>.pmtiles.new` on `stars@stars.local`.
+2. Compare local and remote `md5`; stop on any mismatch.
+3. On `stars`, two atomic `mv`: live -> dated backup, `.new` -> live.
+   `martin` fs-watches, no restart needed. Lineage archive likewise.
+4. Live checks with `curl -L` (the endpoint 301-redirects extensionless
+   URLs): TileJSON 200, real tiles at Fuji and Shiripa, flat 52-byte
+   tiles at Takeshima.
+5. Keep the dated backup until Hidenori approves deleting it. `stars`
+   had 1.3 TB free on 2026-11-01.
+
+### 8.8 Non-blocking items carried forward
+
+- D172: 116 orphaned z8 lineage tiles (pre-existing, also in 1.5号).
+- D170: reuse fingerprint does not cover the GDAL/PROJ producer version.
+- D171: `bundle.py` creates archives non-atomically.
+- Report the shared GLO-30 inventory gap to Oliver Wipfli.
+- Dashboard (`mapterhorn-monitor`) generation-independence; see §9.
+- Re-run the documentation staleness audit once at 2号 launch (§9).
 
 ## 9. 1.5号 runからの教訓(2026-09-05時点、2号への申し送り)
 
