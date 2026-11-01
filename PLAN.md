@@ -743,7 +743,34 @@ Order is fixed (D186). Paths are relative to `hfu-mapterhorn/pipelines`.
 5. Keep the dated backup until Hidenori approves deleting it. `stars`
    had 1.3 TB free on 2026-11-01.
 
-### 8.8 Non-blocking items carried forward
+### 8.8 Communication (do not forget; agreed 2026-11-01)
+
+- **One coordination issue for this cycle**, to be posted when
+  preparation is going well (not before; no date promised). It goes on
+  `mapterhorn/mapterhorn` as a new issue that links back to #142 (the
+  long-running Japan thread, 26 comments, last activity 2026-08-21).
+  English body for Oliver Wipfli and other upstream readers, **plus a
+  Japanese summary** so Japanese volunteers can follow and help.
+- Content: what 2号 is, what we are waiting for (GSI's next DEM update),
+  how the chain works (download -> `japan-geotiff-dem` -> Source
+  Cooperative lists -> `jpdem1a`/the bridge), the same-name replacement
+  question for Oliver (8.3/8.4: does `japan-download` re-fetch when the
+  `md5` of an unchanged URL changes?), and how volunteers can help
+  (local visual spot-checks of the tiles; stage B is the human-bound
+  step). Link only the parts Oliver needs (8.2, 8.3); machine, network
+  and disk details stay out of it.
+- Milestone updates on that issue: GSI release seen; lists republished
+  (give the list URLs); 2号 build done; published. Facts only, no
+  dates promised.
+- Hidenori approves each post; Claude posts it as `hfu` via `gh` only
+  after seeing the final text. Reply to #350 (per-pixel provenance
+  request) with a pointer to the lineage tiles is a separate, optional
+  post.
+- Trigger to draft: when 8.4 is mostly checked off (base station
+  verified at 1000 Mb/s, same-name guard decided, logins working).
+  Claude raises it then, and again at "GSI release seen".
+
+### 8.9 Non-blocking items carried forward
 
 - D172: 116 orphaned z8 lineage tiles (pre-existing, also in 1.5号).
 - D170: reuse fingerprint does not cover the GDAL/PROJ producer version.

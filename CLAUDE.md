@@ -9,9 +9,17 @@ happened*, session by session, and what to do first if resuming cold.
 ## Language policy
 
 Converse with Hidenori (chat, CLI turns, questions) in **Japanese**.
-Everything that lands in the repository — code, comments, `.md` prose,
-commit messages — stays in **English**, matching the `optgeo`/`hfu`
-family of sibling repos. Don't mix.
+
+What lands in the repository follows the audience (Hidenori, 2026-11-01):
+anything **Mapterhorn upstream may read** stays in **English** — code and
+comments in `hfu/mapterhorn`, commit messages, public posts to
+`mapterhorn/*` issues and PRs, and any doc we link from there. Purely
+internal notes (`DECISIONS*.md`, `HANDOVER.md`, `PLAN.md` parts nobody
+upstream is pointed at) may be in casual Japanese; do not translate
+existing entries for the sake of it. Pick one language per document or
+entry rather than mixing within a sentence. Anything meant for Japanese
+volunteers to read (e.g. a coordination issue) carries a Japanese summary
+next to the English.
 
 ## Mission
 
